@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
 
     # Embedding Settings
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     HUGGINGFACE_API_KEY: Optional[str] = None
     HF_TOKEN: Optional[str] = None
 
