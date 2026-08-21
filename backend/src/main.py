@@ -16,11 +16,14 @@ from src.api.routes import search, jobs, health, alerts, auth, admin
 from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
 
-# Automatically initialize and auto-migrate database schema + seed superadmin
-init_and_migrate_db()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Initialize and auto-migrate database schema + seed superadmin
+    try:
+        init_and_migrate_db()
+    except Exception as e:
+        print(f"Notice: Database init notice: {e}")
+
     # Startup: Run 3-day data retention cleanup
     try:
         db = SessionLocal()
@@ -102,3 +105,8 @@ def root():
         "health_check": "/api/v1/health",
         "frontend_url": getattr(settings, "FRONTEND_URL", "http://localhost:3000")
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("src.main:app", host="0.0.0.0", port=port)
