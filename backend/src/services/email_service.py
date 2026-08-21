@@ -1,4 +1,5 @@
 import os
+import socket
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -25,15 +26,22 @@ class EmailService:
     def _get_smtp_connection(self):
         from_email = self._get_from_email()
         password = self._get_password()
+        
+        # Explicitly resolve Gmail SMTP to IPv4 to prevent Render container IPv6 unreachable errors
         try:
-            server = smtplib.SMTP(self.smtp_server, 587, timeout=30)
-            server.ehlo()
-            server.starttls()
+            target_host = socket.gethostbyname(self.smtp_server)
+        except Exception:
+            target_host = self.smtp_server
+
+        try:
+            server = smtplib.SMTP_SSL(target_host, 465, timeout=30)
             server.login(from_email, password)
             return server
         except Exception as e:
-            print(f"[EmailService] Notice: 587 STARTTLS fallback to 465 SSL ({e})")
-            server = smtplib.SMTP_SSL(self.smtp_server, 465, timeout=30)
+            print(f"[EmailService] SSL 465 notice, attempting 587 STARTTLS ({e})")
+            server = smtplib.SMTP(target_host, 587, timeout=30)
+            server.ehlo()
+            server.starttls()
             server.login(from_email, password)
             return server
 
