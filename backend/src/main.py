@@ -15,6 +15,7 @@ from src.config import settings
 from src.api.routes import search, jobs, health, alerts, auth, admin
 from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
+from src.services.keepalive_service import keepalive_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,11 +35,18 @@ async def lifespan(app: FastAPI):
     
     # Startup: Start background daily email scheduler
     scheduler_task = asyncio.create_task(scheduler_service.start_background_scheduler())
+
+    # Startup: Start 60-second KeepAlive self-ping heartbeat
+    try:
+        keepalive_service.start()
+    except Exception as e:
+        print(f"Notice: KeepAlive start notice: {e}")
     
     yield
     
-    # Shutdown: Cancel background scheduler
+    # Shutdown: Cancel tasks & stop keepalive
     scheduler_task.cancel()
+    keepalive_service.stop()
 
 app = FastAPI(
     title="AI-Powered Job Aggregator Backend",
