@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
 
     # Embedding Settings
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    HUGGINGFACE_API_KEY: Optional[str] = None
+    HF_TOKEN: Optional[str] = None
 
     # Database Settings (Supabase / PostgreSQL cloud)
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/jobs"
