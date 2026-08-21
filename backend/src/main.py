@@ -1,5 +1,6 @@
 import sys
 import os
+import asyncio
 from contextlib import asynccontextmanager
 
 # Ensure backend directory is in sys.path
