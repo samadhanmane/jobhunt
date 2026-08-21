@@ -16,26 +16,40 @@ var _React = React,
   useRef = _React.useRef,
   useMemo = _React.useMemo;
 
-// Resolve Backend API URL from window.__APP_CONFIG__.VITE_BACKEND_URL, window.VITE_BACKEND_URL, or localStorage
+// Resolve Backend API URL from localStorage, config.js, or default
 var getApiBaseUrl = function getApiBaseUrl() {
   if (typeof window !== 'undefined') {
-    if (window.VITE_BACKEND_URL && typeof window.VITE_BACKEND_URL === 'string' && window.VITE_BACKEND_URL.trim()) {
-      return window.VITE_BACKEND_URL.replace(/\/+$/, '');
-    }
-    if (window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL && window.__APP_CONFIG__.VITE_BACKEND_URL.trim()) {
-      return window.__APP_CONFIG__.VITE_BACKEND_URL.replace(/\/+$/, '');
-    }
-    if (window.__APP_CONFIG__ && window.__APP_CONFIG__.BACKEND_URL && window.__APP_CONFIG__.BACKEND_URL.trim()) {
-      return window.__APP_CONFIG__.BACKEND_URL.replace(/\/+$/, '');
-    }
+    var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    // 1. Saved URL in LocalStorage
     try {
-      var savedUrl = localStorage.getItem('VITE_BACKEND_URL') || localStorage.getItem('BACKEND_URL');
+      var savedUrl = localStorage.getItem('VITE_BACKEND_URL') || localStorage.getItem('JOBHUNT_BACKEND_URL') || localStorage.getItem('BACKEND_URL');
       if (savedUrl && savedUrl.trim()) {
-        return savedUrl.replace(/\/+$/, '');
+        // If on Vercel/production, ignore leftover localhost
+        if (!isLocalhost && (savedUrl.includes('localhost') || savedUrl.includes('127.0.0.1'))) {
+          // ignore
+        } else {
+          return savedUrl.replace(/\/+$/, '');
+        }
       }
     } catch (e) {}
+
+    // 2. Global window configuration from config.js
+    if (window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL && window.__APP_CONFIG__.VITE_BACKEND_URL.trim()) {
+      var cfg = window.__APP_CONFIG__.VITE_BACKEND_URL.trim();
+      if (!isLocalhost && (cfg.includes('localhost') || cfg.includes('127.0.0.1'))) {
+        // ignore
+      } else {
+        return cfg.replace(/\/+$/, '');
+      }
+    }
+
+    // 3. Fallback for localhost
+    if (isLocalhost) {
+      return 'http://localhost:8000';
+    }
   }
-  return 'http://localhost:8000';
+  return '';
 };
 var API_BASE_URL = getApiBaseUrl();
 
@@ -202,18 +216,54 @@ function LoginScreen(_ref) {
     _useState16 = _slicedToArray(_useState15, 2),
     error = _useState16[0],
     setError = _useState16[1];
+
+  // Backend URL State
+  var _useState17 = useState(function () {
+      return API_BASE_URL || localStorage.getItem('VITE_BACKEND_URL') || "";
+    }),
+    _useState18 = _slicedToArray(_useState17, 2),
+    currentBackendUrl = _useState18[0],
+    setCurrentBackendUrl = _useState18[1];
+  var _useState19 = useState(!API_BASE_URL),
+    _useState20 = _slicedToArray(_useState19, 2),
+    showBackendConfig = _useState20[0],
+    setShowBackendConfig = _useState20[1];
+  var _useState21 = useState(currentBackendUrl),
+    _useState22 = _slicedToArray(_useState21, 2),
+    newBackendUrl = _useState22[0],
+    setNewBackendUrl = _useState22[1];
+  var handleSaveBackendUrl = function handleSaveBackendUrl(e) {
+    e.preventDefault();
+    var clean = newBackendUrl.trim().replace(/\/+$/, '');
+    if (clean) {
+      localStorage.setItem('VITE_BACKEND_URL', clean);
+      API_BASE_URL = clean;
+      setCurrentBackendUrl(clean);
+      setShowBackendConfig(false);
+      setError("");
+    }
+  };
   var handleSubmit = /*#__PURE__*/function () {
     var _ref2 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee(e) {
-      var res, data;
+      var activeUrl, res, data;
       return _regeneratorRuntime().wrap(function _callee$(_context) {
         while (1) switch (_context.prev = _context.next) {
           case 0:
             e.preventDefault();
             setError("");
+            activeUrl = currentBackendUrl || API_BASE_URL;
+            if (activeUrl) {
+              _context.next = 7;
+              break;
+            }
+            setError("Please configure your Backend API URL below first (e.g. https://your-backend-app.onrender.com)");
+            setShowBackendConfig(true);
+            return _context.abrupt("return");
+          case 7:
             setLoading(true);
-            _context.prev = 3;
-            _context.next = 6;
-            return fetch("".concat(API_BASE_URL, "/api/v1/auth/login"), {
+            _context.prev = 8;
+            _context.next = 11;
+            return fetch("".concat(activeUrl, "/api/v1/auth/login"), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
@@ -223,43 +273,44 @@ function LoginScreen(_ref) {
                 password: password
               })
             });
-          case 6:
+          case 11:
             res = _context.sent;
-            _context.next = 9;
+            _context.next = 14;
             return res.json();
-          case 9:
+          case 14:
             data = _context.sent;
             if (res.ok) {
-              _context.next = 12;
+              _context.next = 17;
               break;
             }
             throw new Error(data.detail || "Authentication failed.");
-          case 12:
+          case 17:
             onLoginSuccess(data.access_token, data.user);
-            _context.next = 18;
+            _context.next = 24;
             break;
-          case 15:
-            _context.prev = 15;
-            _context.t0 = _context["catch"](3);
-            setError(_context.t0.message);
-          case 18:
-            _context.prev = 18;
+          case 20:
+            _context.prev = 20;
+            _context.t0 = _context["catch"](8);
+            setError("".concat(_context.t0.message, " (Target Backend: ").concat(activeUrl, ")"));
+            setShowBackendConfig(true);
+          case 24:
+            _context.prev = 24;
             setLoading(false);
-            return _context.finish(18);
-          case 21:
+            return _context.finish(24);
+          case 27:
           case "end":
             return _context.stop();
         }
-      }, _callee, null, [[3, 15, 18, 21]]);
+      }, _callee, null, [[8, 20, 24, 27]]);
     }));
     return function handleSubmit(_x) {
       return _ref2.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-md"
+    className: "w-full max-w-md space-y-4"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-center mb-8"
+    className: "text-center mb-6"
   }, /*#__PURE__*/React.createElement("div", {
     className: "inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 shadow-xl shadow-indigo-500/25 mb-4 animate-float"
   }, /*#__PURE__*/React.createElement("span", {
@@ -275,14 +326,14 @@ function LoginScreen(_ref) {
   }, /*#__PURE__*/React.createElement("div", {
     className: "absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"
   }), error && /*#__PURE__*/React.createElement("div", {
-    className: "mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-start gap-2.5"
+    className: "mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-base"
   }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1"
+    className: "flex-1 leading-relaxed"
   }, error)), /*#__PURE__*/React.createElement("form", {
     onSubmit: handleSubmit,
-    className: "space-y-5"
+    className: "space-y-4"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2"
   }, "Email Address"), /*#__PURE__*/React.createElement("div", {
@@ -296,7 +347,7 @@ function LoginScreen(_ref) {
     onChange: function onChange(e) {
       return setEmail(e.target.value);
     },
-    placeholder: "name@company.com",
+    placeholder: "jobhuntadmin@gmail.com",
     className: "w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
   }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2"
@@ -319,7 +370,53 @@ function LoginScreen(_ref) {
     className: "w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all transform active:scale-[0.98] disabled:opacity-50 text-sm flex items-center justify-center gap-2"
   }, loading ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
     className: "inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-  }), /*#__PURE__*/React.createElement("span", null, "Authenticating...")) : /*#__PURE__*/React.createElement("span", null, "Sign In \u2192")))));
+  }), /*#__PURE__*/React.createElement("span", null, "Authenticating...")) : /*#__PURE__*/React.createElement("span", null, "Sign In \u2192"))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-6 pt-4 border-t border-white/5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between text-xs"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 flex items-center gap-1.5 truncate max-w-[240px]"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-2 h-2 rounded-full ".concat(currentBackendUrl ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-300 truncate",
+    title: currentBackendUrl || 'Not Configured'
+  }, "API: ", currentBackendUrl || 'No Backend Set')), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: function onClick() {
+      return setShowBackendConfig(!showBackendConfig);
+    },
+    className: "text-indigo-400 hover:text-indigo-300 font-semibold underline text-[11px]"
+  }, showBackendConfig ? 'Close' : '⚙️ Change URL')), showBackendConfig && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 p-3 rounded-xl bg-slate-900/90 border border-indigo-500/30 space-y-2 text-xs"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block font-bold text-indigo-300 uppercase tracking-wider text-[10px]"
+  }, "Render Backend URL"), /*#__PURE__*/React.createElement("input", {
+    type: "url",
+    value: newBackendUrl,
+    onChange: function onChange(e) {
+      return setNewBackendUrl(e.target.value);
+    },
+    placeholder: "https://your-backend-app.onrender.com",
+    className: "w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 pt-1"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: handleSaveBackendUrl,
+    className: "flex-1 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
+  }, "\uD83D\uDCBE Save Backend URL"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: function onClick() {
+      setNewBackendUrl("http://localhost:8000");
+      localStorage.setItem('VITE_BACKEND_URL', "http://localhost:8000");
+      API_BASE_URL = "http://localhost:8000";
+      setCurrentBackendUrl("http://localhost:8000");
+      setShowBackendConfig(false);
+    },
+    className: "py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs",
+    title: "Reset to localhost:8000"
+  }, "Localhost"))))));
 }
 
 // ==========================================
@@ -391,109 +488,109 @@ function JobSearchDashboard(_ref4) {
     user = _ref4.user,
     showToast = _ref4.showToast;
   // Form Inputs
-  var _useState17 = useState("AI ML Intern"),
-    _useState18 = _slicedToArray(_useState17, 2),
-    role = _useState18[0],
-    setRole = _useState18[1];
-  var _useState19 = useState("Pune"),
-    _useState20 = _slicedToArray(_useState19, 2),
-    location = _useState20[0],
-    setLocation = _useState20[1];
-  var _useState21 = useState("intern"),
-    _useState22 = _slicedToArray(_useState21, 2),
-    experienceLevel = _useState22[0],
-    setExperienceLevel = _useState22[1];
-  var _useState23 = useState("any"),
+  var _useState23 = useState("AI ML Intern"),
     _useState24 = _slicedToArray(_useState23, 2),
-    remotePreference = _useState24[0],
-    setRemotePreference = _useState24[1];
+    role = _useState24[0],
+    setRole = _useState24[1];
+  var _useState25 = useState("Pune"),
+    _useState26 = _slicedToArray(_useState25, 2),
+    location = _useState26[0],
+    setLocation = _useState26[1];
+  var _useState27 = useState("intern"),
+    _useState28 = _slicedToArray(_useState27, 2),
+    experienceLevel = _useState28[0],
+    setExperienceLevel = _useState28[1];
+  var _useState29 = useState("any"),
+    _useState30 = _slicedToArray(_useState29, 2),
+    remotePreference = _useState30[0],
+    setRemotePreference = _useState30[1];
 
   // Resume Profile State
-  var _useState25 = useState(null),
-    _useState26 = _slicedToArray(_useState25, 2),
-    resumeFile = _useState26[0],
-    setResumeFile = _useState26[1];
-  var _useState27 = useState(null),
-    _useState28 = _slicedToArray(_useState27, 2),
-    resumeProfile = _useState28[0],
-    setResumeProfile = _useState28[1];
-  var _useState29 = useState(false),
-    _useState30 = _slicedToArray(_useState29, 2),
-    parsingResume = _useState30[0],
-    setParsingResume = _useState30[1];
+  var _useState31 = useState(null),
+    _useState32 = _slicedToArray(_useState31, 2),
+    resumeFile = _useState32[0],
+    setResumeFile = _useState32[1];
+  var _useState33 = useState(null),
+    _useState34 = _slicedToArray(_useState33, 2),
+    resumeProfile = _useState34[0],
+    setResumeProfile = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    parsingResume = _useState36[0],
+    setParsingResume = _useState36[1];
 
   // Search Execution State
-  var _useState31 = useState(false),
-    _useState32 = _slicedToArray(_useState31, 2),
-    searching = _useState32[0],
-    setSearching = _useState32[1];
-  var _useState33 = useState(""),
-    _useState34 = _slicedToArray(_useState33, 2),
-    currentSearchId = _useState34[0],
-    setCurrentSearchId = _useState34[1];
-  var _useState35 = useState([]),
-    _useState36 = _slicedToArray(_useState35, 2),
-    allJobs = _useState36[0],
-    setAllJobs = _useState36[1];
-  var _useState37 = useState({
+  var _useState37 = useState(false),
+    _useState38 = _slicedToArray(_useState37, 2),
+    searching = _useState38[0],
+    setSearching = _useState38[1];
+  var _useState39 = useState(""),
+    _useState40 = _slicedToArray(_useState39, 2),
+    currentSearchId = _useState40[0],
+    setCurrentSearchId = _useState40[1];
+  var _useState41 = useState([]),
+    _useState42 = _slicedToArray(_useState41, 2),
+    allJobs = _useState42[0],
+    setAllJobs = _useState42[1];
+  var _useState43 = useState({
       total_found: 0,
       unique_count: 0
     }),
-    _useState38 = _slicedToArray(_useState37, 2),
-    searchStats = _useState38[0],
-    setSearchStats = _useState38[1];
+    _useState44 = _slicedToArray(_useState43, 2),
+    searchStats = _useState44[0],
+    setSearchStats = _useState44[1];
 
   // Filter Toolbar State
-  var _useState39 = useState(""),
-    _useState40 = _slicedToArray(_useState39, 2),
-    filterKeyword = _useState40[0],
-    setFilterKeyword = _useState40[1];
-  var _useState41 = useState("all"),
-    _useState42 = _slicedToArray(_useState41, 2),
-    filterLocation = _useState42[0],
-    setFilterLocation = _useState42[1];
-  var _useState43 = useState("all"),
-    _useState44 = _slicedToArray(_useState43, 2),
-    filterWorkMode = _useState44[0],
-    setFilterWorkMode = _useState44[1];
-  var _useState45 = useState(0),
+  var _useState45 = useState(""),
     _useState46 = _slicedToArray(_useState45, 2),
-    minScore = _useState46[0],
-    setMinScore = _useState46[1];
+    filterKeyword = _useState46[0],
+    setFilterKeyword = _useState46[1];
   var _useState47 = useState("all"),
     _useState48 = _slicedToArray(_useState47, 2),
-    filterSeniority = _useState48[0],
-    setFilterSeniority = _useState48[1];
+    filterLocation = _useState48[0],
+    setFilterLocation = _useState48[1];
   var _useState49 = useState("all"),
     _useState50 = _slicedToArray(_useState49, 2),
-    filterDate = _useState50[0],
-    setFilterDate = _useState50[1];
-  var _useState51 = useState("all"),
+    filterWorkMode = _useState50[0],
+    setFilterWorkMode = _useState50[1];
+  var _useState51 = useState(0),
     _useState52 = _slicedToArray(_useState51, 2),
-    filterSource = _useState52[0],
-    setFilterSource = _useState52[1];
-  var _useState53 = useState("score"),
+    minScore = _useState52[0],
+    setMinScore = _useState52[1];
+  var _useState53 = useState("all"),
     _useState54 = _slicedToArray(_useState53, 2),
-    sortBy = _useState54[0],
-    setSortBy = _useState54[1];
+    filterSeniority = _useState54[0],
+    setFilterSeniority = _useState54[1];
+  var _useState55 = useState("all"),
+    _useState56 = _slicedToArray(_useState55, 2),
+    filterDate = _useState56[0],
+    setFilterDate = _useState56[1];
+  var _useState57 = useState("all"),
+    _useState58 = _slicedToArray(_useState57, 2),
+    filterSource = _useState58[0],
+    setFilterSource = _useState58[1];
+  var _useState59 = useState("score"),
+    _useState60 = _slicedToArray(_useState59, 2),
+    sortBy = _useState60[0],
+    setSortBy = _useState60[1];
 
   // RAG AI Query State
-  var _useState55 = useState(false),
-    _useState56 = _slicedToArray(_useState55, 2),
-    ragModalOpen = _useState56[0],
-    setRagModalOpen = _useState56[1];
-  var _useState57 = useState(""),
-    _useState58 = _slicedToArray(_useState57, 2),
-    ragQuery = _useState58[0],
-    setRagQuery = _useState58[1];
-  var _useState59 = useState(""),
-    _useState60 = _slicedToArray(_useState59, 2),
-    ragAnswer = _useState60[0],
-    setRagAnswer = _useState60[1];
   var _useState61 = useState(false),
     _useState62 = _slicedToArray(_useState61, 2),
-    ragLoading = _useState62[0],
-    setRagLoading = _useState62[1];
+    ragModalOpen = _useState62[0],
+    setRagModalOpen = _useState62[1];
+  var _useState63 = useState(""),
+    _useState64 = _slicedToArray(_useState63, 2),
+    ragQuery = _useState64[0],
+    setRagQuery = _useState64[1];
+  var _useState65 = useState(""),
+    _useState66 = _slicedToArray(_useState65, 2),
+    ragAnswer = _useState66[0],
+    setRagAnswer = _useState66[1];
+  var _useState67 = useState(false),
+    _useState68 = _slicedToArray(_useState67, 2),
+    ragLoading = _useState68[0],
+    setRagLoading = _useState68[1];
 
   // Resume Upload & Parse
   var handleResumeChange = /*#__PURE__*/function () {
@@ -1120,64 +1217,64 @@ function EmailAlertsView(_ref9) {
   var token = _ref9.token,
     user = _ref9.user,
     showToast = _ref9.showToast;
-  var _useState63 = useState(user.email || ""),
-    _useState64 = _slicedToArray(_useState63, 2),
-    email = _useState64[0],
-    setEmail = _useState64[1];
-  var _useState65 = useState("AI ML Intern"),
-    _useState66 = _slicedToArray(_useState65, 2),
-    role = _useState66[0],
-    setRole = _useState66[1];
-  var _useState67 = useState("Pune"),
-    _useState68 = _slicedToArray(_useState67, 2),
-    location = _useState68[0],
-    setLocation = _useState68[1];
-  var _useState69 = useState("any"),
+  var _useState69 = useState(user.email || ""),
     _useState70 = _slicedToArray(_useState69, 2),
-    workMode = _useState70[0],
-    setWorkMode = _useState70[1];
-  var _useState71 = useState("intern"),
+    email = _useState70[0],
+    setEmail = _useState70[1];
+  var _useState71 = useState("AI ML Intern"),
     _useState72 = _slicedToArray(_useState71, 2),
-    experienceLevel = _useState72[0],
-    setExperienceLevel = _useState72[1];
-  var _useState73 = useState(3),
+    role = _useState72[0],
+    setRole = _useState72[1];
+  var _useState73 = useState("Pune"),
     _useState74 = _slicedToArray(_useState73, 2),
-    maxAgeDays = _useState74[0],
-    setMaxAgeDays = _useState74[1];
-  var _useState75 = useState("09:00"),
+    location = _useState74[0],
+    setLocation = _useState74[1];
+  var _useState75 = useState("any"),
     _useState76 = _slicedToArray(_useState75, 2),
-    preferredTime = _useState76[0],
-    setPreferredTime = _useState76[1];
+    workMode = _useState76[0],
+    setWorkMode = _useState76[1];
+  var _useState77 = useState("intern"),
+    _useState78 = _slicedToArray(_useState77, 2),
+    experienceLevel = _useState78[0],
+    setExperienceLevel = _useState78[1];
+  var _useState79 = useState(3),
+    _useState80 = _slicedToArray(_useState79, 2),
+    maxAgeDays = _useState80[0],
+    setMaxAgeDays = _useState80[1];
+  var _useState81 = useState("09:00"),
+    _useState82 = _slicedToArray(_useState81, 2),
+    preferredTime = _useState82[0],
+    setPreferredTime = _useState82[1];
 
   // Optional Resume State
-  var _useState77 = useState(null),
-    _useState78 = _slicedToArray(_useState77, 2),
-    resumeFile = _useState78[0],
-    setResumeFile = _useState78[1];
-  var _useState79 = useState(null),
-    _useState80 = _slicedToArray(_useState79, 2),
-    resumeProfile = _useState80[0],
-    setResumeProfile = _useState80[1];
-  var _useState81 = useState(false),
-    _useState82 = _slicedToArray(_useState81, 2),
-    parsingResume = _useState82[0],
-    setParsingResume = _useState82[1];
-  var _useState83 = useState(false),
+  var _useState83 = useState(null),
     _useState84 = _slicedToArray(_useState83, 2),
-    saving = _useState84[0],
-    setSaving = _useState84[1];
-  var _useState85 = useState(false),
+    resumeFile = _useState84[0],
+    setResumeFile = _useState84[1];
+  var _useState85 = useState(null),
     _useState86 = _slicedToArray(_useState85, 2),
-    testing = _useState86[0],
-    setTesting = _useState86[1];
-  var _useState87 = useState([]),
+    resumeProfile = _useState86[0],
+    setResumeProfile = _useState86[1];
+  var _useState87 = useState(false),
     _useState88 = _slicedToArray(_useState87, 2),
-    activeAlerts = _useState88[0],
-    setActiveAlerts = _useState88[1];
-  var _useState89 = useState(true),
+    parsingResume = _useState88[0],
+    setParsingResume = _useState88[1];
+  var _useState89 = useState(false),
     _useState90 = _slicedToArray(_useState89, 2),
-    loadingAlerts = _useState90[0],
-    setLoadingAlerts = _useState90[1];
+    saving = _useState90[0],
+    setSaving = _useState90[1];
+  var _useState91 = useState(false),
+    _useState92 = _slicedToArray(_useState91, 2),
+    testing = _useState92[0],
+    setTesting = _useState92[1];
+  var _useState93 = useState([]),
+    _useState94 = _slicedToArray(_useState93, 2),
+    activeAlerts = _useState94[0],
+    setActiveAlerts = _useState94[1];
+  var _useState95 = useState(true),
+    _useState96 = _slicedToArray(_useState95, 2),
+    loadingAlerts = _useState96[0],
+    setLoadingAlerts = _useState96[1];
   var fetchAlerts = /*#__PURE__*/function () {
     var _ref10 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
       var res, data;
@@ -1635,32 +1732,32 @@ function AdminPortal(_ref15) {
   var token = _ref15.token,
     user = _ref15.user,
     showToast = _ref15.showToast;
-  var _useState91 = useState([]),
-    _useState92 = _slicedToArray(_useState91, 2),
-    users = _useState92[0],
-    setUsers = _useState92[1];
-  var _useState93 = useState(true),
-    _useState94 = _slicedToArray(_useState93, 2),
-    loading = _useState94[0],
-    setLoading = _useState94[1];
+  var _useState97 = useState([]),
+    _useState98 = _slicedToArray(_useState97, 2),
+    users = _useState98[0],
+    setUsers = _useState98[1];
+  var _useState99 = useState(true),
+    _useState100 = _slicedToArray(_useState99, 2),
+    loading = _useState100[0],
+    setLoading = _useState100[1];
 
   // New User Form
-  var _useState95 = useState(""),
-    _useState96 = _slicedToArray(_useState95, 2),
-    newEmail = _useState96[0],
-    setNewEmail = _useState96[1];
-  var _useState97 = useState(""),
-    _useState98 = _slicedToArray(_useState97, 2),
-    newPassword = _useState98[0],
-    setNewPassword = _useState98[1];
-  var _useState99 = useState("user"),
-    _useState100 = _slicedToArray(_useState99, 2),
-    newRole = _useState100[0],
-    setNewRole = _useState100[1];
-  var _useState101 = useState(false),
+  var _useState101 = useState(""),
     _useState102 = _slicedToArray(_useState101, 2),
-    creating = _useState102[0],
-    setCreating = _useState102[1];
+    newEmail = _useState102[0],
+    setNewEmail = _useState102[1];
+  var _useState103 = useState(""),
+    _useState104 = _slicedToArray(_useState103, 2),
+    newPassword = _useState104[0],
+    setNewPassword = _useState104[1];
+  var _useState105 = useState("user"),
+    _useState106 = _slicedToArray(_useState105, 2),
+    newRole = _useState106[0],
+    setNewRole = _useState106[1];
+  var _useState107 = useState(false),
+    _useState108 = _slicedToArray(_useState107, 2),
+    creating = _useState108[0],
+    setCreating = _useState108[1];
   var fetchUsers = /*#__PURE__*/function () {
     var _ref16 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10() {
       var res, data;
