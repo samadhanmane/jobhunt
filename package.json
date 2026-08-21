@@ -1,0 +1,14 @@
+{
+  "name": "jobhunt",
+  "version": "2.0.0",
+  "private": true,
+  "description": "JobAgent AI Fullstack Application",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "start": "npm --prefix frontend start",
+    "build": "npm --prefix frontend run build"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  }
+}

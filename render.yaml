@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: jobhunt-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: LLM_PROVIDER
+        value: groq
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LLM_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: http://localhost:3000,http://localhost:5173
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        value: jobhuntadmin@gmail.com
+      - key: ADMIN_PS
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true

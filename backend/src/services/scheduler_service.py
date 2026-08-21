@@ -1,0 +1,226 @@
+import os
+import asyncio
+import hashlib
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from sqlalchemy.orm import Session
+
+from src.models.database import SessionLocal
+from src.models.email_alert import EmailAlert
+from src.agents.orchestrator import OrchestratorAgent
+from src.agents.deduplication import DeduplicationAgent
+from src.agents.ranking import RankingAgent
+from src.services.email_service import email_service
+from src.utils.date_utils import format_posted_date_for_csv, is_within_days
+
+def generate_job_hash(job: Dict[str, Any]) -> str:
+    """Creates a deterministic hash for a job posting based on title and company."""
+    title = str(job.get("title", "")).lower().strip()
+    company = str(job.get("company", "")).lower().strip()
+    return hashlib.md5(f"{title}|{company}".encode("utf-8")).hexdigest()
+
+class SchedulerService:
+    def __init__(self):
+        self.orchestrator = OrchestratorAgent()
+        self.deduplicator = DeduplicationAgent()
+        self.ranking_agent = RankingAgent()
+
+    def cleanup_old_jobs(self, db: Session, days: int = 3) -> int:
+        """
+        Deletes stored jobs and search sessions older than `days` (default 3 days)
+        to keep the database lightweight and performant.
+        """
+        try:
+            from src.models.job import Job
+            from src.models.search_history import SearchHistory
+            cutoff = datetime.utcnow() - timedelta(days=days)
+            
+            old_searches = db.query(SearchHistory).filter(SearchHistory.created_at < cutoff).all()
+            old_search_ids = [s.search_id for s in old_searches]
+            
+            deleted_jobs_count = 0
+            if old_search_ids:
+                deleted_jobs_count = db.query(Job).filter(Job.search_id.in_(old_search_ids)).delete(synchronize_session=False)
+                db.query(SearchHistory).filter(SearchHistory.search_id.in_(old_search_ids)).delete(synchronize_session=False)
+            
+            standalone_del = db.query(Job).filter(Job.created_at < cutoff).delete(synchronize_session=False)
+            db.commit()
+            total_deleted = deleted_jobs_count + standalone_del
+            if total_deleted > 0:
+                print(f"[Scheduler] Cleaned up {total_deleted} jobs older than {days} days from database.")
+            return total_deleted
+        except Exception as e:
+            print(f"[Scheduler] Notice during job retention cleanup: {e}")
+            db.rollback()
+            return 0
+
+    async def execute_alert_run(self, alert_id: str, db: Optional[Session] = None) -> Dict[str, Any]:
+        """
+        Executes a complete scheduled run for an EmailAlert:
+        1. Queries all platforms.
+        2. Applies cross-day deduplication (excluding previously emailed jobs).
+        3. Ranks with Mistral AI.
+        4. Generates CSV attachment.
+        5. Sends HTML email digest with CSV.
+        6. Updates sent_job_hashes in DB so tomorrow gets fresh jobs.
+        """
+        close_db = False
+        if db is None:
+            db = SessionLocal()
+            close_db = True
+
+        try:
+            alert = db.query(EmailAlert).filter(EmailAlert.id == alert_id, EmailAlert.is_active == True).first()
+            if not alert:
+                return {"status": "error", "message": "Alert not found or inactive"}
+
+            print(f"[Scheduler] Running daily alert for '{alert.email}' | Role: '{alert.role}' | Loc: '{alert.location}'")
+
+            # Determine if location is specific or worldwide
+            raw_loc = (alert.location or "").strip()
+            is_worldwide = raw_loc.lower() in ["remote", "worldwide", "global", "any", "all", ""]
+            
+            max_days = alert.max_age_days if (alert.max_age_days is not None and alert.max_age_days > 0) else 7
+
+            preferences = {
+                "role": alert.role,
+                "location": "" if is_worldwide else raw_loc,
+                "remote_preference": alert.work_mode or "any",
+                "experience_years": alert.experience_years or 0.0,
+                "max_age_days": max_days
+            }
+
+            candidate_profile = {
+                "skills": alert.skills or [],
+                "core_domain": "AI / Machine Learning" if "ai" in alert.role.lower() or "ml" in alert.role.lower() else "Software Engineering",
+                "experience_years": alert.experience_years or 0.0,
+                "seniority": "Intern" if "intern" in alert.role.lower() else "Junior",
+                "target_roles": [alert.role]
+            }
+
+            # 1. Parallel Multi-Platform Scrape
+            raw_jobs = await self.orchestrator.orchestrate_search(candidate_profile, preferences)
+
+            # 2. Intra-Batch Deduplication
+            unique_batch = await self.deduplicator.deduplicate(raw_jobs)
+
+            # 3. Cross-Day Deduplication & Date Filtering (Filter out previously sent jobs & old jobs)
+            sent_hashes = set(alert.sent_job_hashes or [])
+            fresh_jobs = []
+            new_hashes = list(sent_hashes)
+
+            for job in unique_batch:
+                j_hash = generate_job_hash(job)
+                if j_hash not in sent_hashes:
+                    # Filter by posted date age if user selected a date window
+                    if is_within_days(job.get("posted_date"), max_days):
+                        fresh_jobs.append(job)
+                        new_hashes.append(j_hash)
+
+            print(f"[Scheduler] Found {len(raw_jobs)} raw jobs -> {len(unique_batch)} unique -> {len(fresh_jobs)} fresh matching date jobs.")
+
+            if not fresh_jobs:
+                # If all jobs were previously sent or filtered, use the top 5 highest matching unique jobs as fallback
+                fresh_jobs = unique_batch[:5]
+
+            # 4. Rank with LLM
+            ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences)
+
+            # 5. Generate BOTH CSV Reports:
+            # CSV 1: All Raw Fetched Jobs (Pre-Deduplication, fully structured)
+            # CSV 2: Curated & Filtered Matching Jobs (Post-Deduplication & AI-Ranked)
+            backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            export_dir = os.path.join(backend_root, "exports")
+            os.makedirs(export_dir, exist_ok=True)
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            
+            raw_csv_path = os.path.join(export_dir, f"all_fetched_raw_jobs_{alert.id}_{today_str}.csv")
+            curated_csv_path = os.path.join(export_dir, f"curated_jobs_{alert.id}_{today_str}.csv")
+
+            def build_csv_rows(job_list, is_raw=False):
+                rows = []
+                for j in job_list:
+                    loc = (j.get("location") or "").lower()
+                    work_type = "Remote" if "remote" in loc else ("Hybrid" if "hybrid" in loc else "Onsite")
+                    salary = ""
+                    if j.get("salary_range"):
+                        min_s = j["salary_range"].get("min")
+                        max_s = j["salary_range"].get("max")
+                        curr = j["salary_range"].get("currency", "$")
+                        if min_s and max_s:
+                            salary = f"{min_s:,.0f} - {max_s:,.0f} {curr}"
+                        elif min_s:
+                            salary = f"> {min_s:,.0f} {curr}"
+
+                    score_val = j.get("match_score")
+                    score_str = f"{round(score_val)}%" if score_val is not None else ("Raw Ingestion" if is_raw else "N/A")
+                    exp_fit = j.get("experience_fit") or ("Raw Harvested" if is_raw else "Good Fit")
+                    reason = j.get("match_reason") or ("Directly scraped job posting before deduplication." if is_raw else "")
+
+                    rows.append({
+                        "Company Name": j.get("company", "Unknown Company"),
+                        "Role / Title": j.get("title", "Unknown Title"),
+                        "Location": j.get("location", "N/A"),
+                        "Work Type": work_type,
+                        "Posted Date (YYYY-MM-DD)": format_posted_date_for_csv(j.get("posted_date")),
+                        "Salary": salary if salary else "N/A",
+                        "Match Score": score_str,
+                        "Experience Fit": exp_fit,
+                        "Matching Skills": ", ".join(j.get("matching_skills", [])) if j.get("matching_skills") else "N/A",
+                        "Missing Skills": ", ".join(j.get("missing_skills", [])) if j.get("missing_skills") else "N/A",
+                        "Match Reason": reason,
+                        "URL": j.get("url", ""),
+                        "Source": j.get("source", "job_board")
+                    })
+                return rows
+
+            # Export CSV 1: All raw jobs
+            raw_csv_rows = build_csv_rows(raw_jobs, is_raw=True)
+            pd.DataFrame(raw_csv_rows).to_csv(raw_csv_path, index=False, encoding="utf-8-sig")
+
+            # Export CSV 2: Curated matching jobs
+            curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
+            pd.DataFrame(curated_csv_rows).to_csv(curated_csv_path, index=False, encoding="utf-8-sig")
+
+            # 6. Send Email Digest with BOTH CSV Attachments
+            summary_note = f"Personalized daily report for {alert.role} ({alert.location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
+            sent_success = email_service.send_daily_job_digest(
+                to_email=alert.email,
+                role=alert.role,
+                location=alert.location,
+                jobs=ranked_jobs,
+                csv_paths=[raw_csv_path, curated_csv_path],
+                summary_note=summary_note,
+                raw_total_count=len(raw_jobs)
+            )
+
+            # 7. Update Database with sent hashes and last_sent_at (safely wrapped)
+            try:
+                db_alert = db.query(EmailAlert).filter(EmailAlert.id == alert.id).first()
+                if db_alert:
+                    db_alert.sent_job_hashes = new_hashes[-300:]  # Keep last 300 to prevent unbounded growth
+                    db_alert.last_sent_at = datetime.utcnow()
+                    db.commit()
+            except Exception as db_err:
+                print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
+            return {
+                "status": "success" if sent_success else "partial",
+                "email": alert.email,
+                "raw_jobs_count": len(raw_jobs),
+                "jobs_sent": len(ranked_jobs),
+                "csv_paths": [raw_csv_path, curated_csv_path]
+            }
+        except Exception as e:
+            print(f"[Scheduler] Error executing alert {alert_id}: {e}")
+            return {"status": "error", "message": str(e)}
+        finally:
+            if close_db:
+                db.close()
+
+scheduler_service = SchedulerService()

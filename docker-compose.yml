@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobhunt_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - FRONTEND_URL=http://localhost:3000,http://localhost:5173
+      - ALLOWED_ORIGINS=*
+      - LLM_PROVIDER=groq
+      - LLM_MODEL=llama-3.3-70b-versatile
+      - LLM_API_KEY=${LLM_API_KEY}
+      - DATABASE_URL=postgresql://postgres:password@db:5432/jobs
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+
+  db:
+    image: ankane/pgvector:latest
+    container_name: jobhunt_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: jobs
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

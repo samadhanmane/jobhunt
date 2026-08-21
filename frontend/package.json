@@ -1,0 +1,14 @@
+{
+  "name": "jobhunt-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "JobAgent AI Frontend Application",
+  "scripts": {
+    "dev": "serve -l 3000",
+    "start": "serve -l 3000",
+    "build": "echo Static build ready"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  }
+}
