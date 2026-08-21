@@ -15,18 +15,24 @@ SqliteSession = sessionmaker(autocommit=False, autoflush=False, bind=sqlite_engi
 def get_primary_engine():
     try:
         if settings.DATABASE_URL and not settings.DATABASE_URL.startswith("sqlite"):
+            try:
+                import psycopg2
+            except ImportError:
+                print("Notice: psycopg2 not installed in container. Defaulting to local SQLite.")
+                return sqlite_engine
+
             engine = create_engine(
                 settings.DATABASE_URL,
                 pool_pre_ping=True,
                 pool_recycle=60,
-                pool_timeout=4,
-                connect_args={"connect_timeout": 4}
+                pool_timeout=3,
+                connect_args={"connect_timeout": 3}
             )
-            with engine.connect():
+            with engine.connect() as conn:
                 pass
             return engine
     except Exception as e:
-        print(f"Notice: PostgreSQL connection error ({e}). Using local SQLite.")
+        print(f"Notice: PostgreSQL connection notice ({e}). Defaulting to local SQLite.")
     return sqlite_engine
 
 engine = get_primary_engine()
