@@ -96,11 +96,14 @@ class JobService:
             # 4. Rank with candidate profile, skill match, gap analysis, and reason
             ranked_jobs = await self.ranker.rank_jobs(unique_jobs, candidate_profile, preferences)
             
-            # 5. Generate embeddings and save to Database
+            # 5. Batch generate embeddings for top 40 best matched jobs (prevents event loop database locking)
+            top_ranked_jobs = ranked_jobs[:40]
+            texts = [f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"[:1000] for j in top_ranked_jobs]
+            embeddings = embedding_client.get_embeddings(texts)
+
             db_jobs = []
-            for j in ranked_jobs:
-                job_text = f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"
-                emb = embedding_client.get_embedding(job_text[:1000])
+            for idx, j in enumerate(top_ranked_jobs):
+                emb = embeddings[idx] if idx < len(embeddings) else [0.0] * 384
                 
                 # Format posted_date cleanly to YYYY-MM-DD or N/A
                 raw_date = j.get("posted_date")

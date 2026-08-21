@@ -7,9 +7,19 @@ class JobRepository:
         self.db = db
 
     def add_jobs(self, jobs: List[Job]) -> List[Job]:
-        for job in jobs:
-            self.db.merge(job)
-        self.db.commit()
+        if not jobs:
+            return []
+        try:
+            self.db.add_all(jobs)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            for job in jobs:
+                try:
+                    self.db.merge(job)
+                except Exception:
+                    pass
+            self.db.commit()
         return jobs
 
     def get_jobs_by_search_id(self, search_id: str) -> List[Job]:
