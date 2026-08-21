@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     FREEHIRE_TOKEN: Optional[str] = None
     RAPIDAPI_KEY: Optional[str] = None
 
-    # Email SMTP Settings (Gmail App Password)
+    # Email SMTP & HTTP API Settings
     EMAIL_FROM: Optional[str] = None
     EMAIL_PASSWORD: Optional[str] = None
+    RESEND_API_KEY: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
 
     # Server & Port Settings (Render dynamically sets PORT)
     PORT: int = 8000

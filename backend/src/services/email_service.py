@@ -168,19 +168,71 @@ class EmailService:
             print("Email notice: Missing email credentials or recipient.")
             return False
 
+    def _send_via_resend(self, to_email: str, subject: str, html_content: str, attachment_paths: List[str]) -> bool:
+        """
+        Sends email via Resend HTTP API (Port 443). Bypasses cloud host SMTP port blocks (Render/AWS).
+        """
+        api_key = getattr(settings, "RESEND_API_KEY", None) or os.getenv("RESEND_API_KEY")
+        if not api_key:
+            return False
+
+        try:
+            import httpx, base64
+            attachments = []
+            for path in set(attachment_paths):
+                if path and os.path.exists(path):
+                    with open(path, "rb") as f:
+                        content_b64 = base64.b64encode(f.read()).decode("utf-8")
+                        attachments.append({
+                            "filename": os.path.basename(path),
+                            "content": content_b64
+                        })
+
+            from_sender = getattr(settings, "EMAIL_FROM", None) or os.getenv("EMAIL_FROM") or "onboarding@resend.dev"
+            if "@" not in from_sender:
+                from_sender = "onboarding@resend.dev"
+
+            payload = {
+                "from": f"JobAgent AI <{from_sender}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+                "attachments": attachments
+            }
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+
+            resp = httpx.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=30.0)
+            if resp.status_code in [200, 201, 202]:
+                print(f"[EmailService] Successfully delivered email via Resend HTTP API (Port 443) to {to_email}")
+                return True
+            else:
+                print(f"[EmailService] Resend API Notice ({resp.status_code}): {resp.text}")
+                return False
+        except Exception as e:
+            print(f"[EmailService] Resend API exception: {e}")
+            return False
+
+    def send_daily_job_digest(
+        self,
+        to_email: str,
+        role: str,
+        location: str,
+        jobs: List[Dict[str, Any]],
+        csv_path: Optional[str] = None,
+        csv_paths: Optional[List[str]] = None,
+        summary_note: str = "",
+        raw_total_count: Optional[int] = None
+    ) -> bool:
+        from_email = self._get_from_email()
+
         try:
             today_str = datetime.now().strftime("%Y-%m-%d")
             subject = f"🎯 {len(jobs)} Curated {role} Jobs ({location or 'Remote'}) - {today_str}"
-
-            msg = MIMEMultipart("mixed")
-            msg["From"] = f"JobAgent AI <{from_email}>"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-
-            # Attach HTML Body
             html_content = self._generate_html_digest(role, location, jobs, summary_note, raw_total_count)
-            html_part = MIMEText(html_content, "html", "utf-8")
-            msg.attach(html_part)
 
             # Collect all CSV attachments to include
             all_attachments = []
@@ -188,6 +240,19 @@ class EmailService:
                 all_attachments.append(csv_path)
             if csv_paths:
                 all_attachments.extend(csv_paths)
+
+            # 1. First attempt: Resend HTTP API (Port 443 - Bypasses Render Firewall Block)
+            if self._send_via_resend(to_email, subject, html_content, all_attachments):
+                return True
+
+            # 2. Fallback attempt: SMTP connection (Port 465 / 587)
+            msg = MIMEMultipart("mixed")
+            msg["From"] = f"JobAgent AI <{from_email}>"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+
+            html_part = MIMEText(html_content, "html", "utf-8")
+            msg.attach(html_part)
 
             for path in set(all_attachments):
                 if path and os.path.exists(path):
@@ -202,7 +267,7 @@ class EmailService:
             server = self._get_smtp_connection()
             server.sendmail(from_email, [to_email], msg.as_string())
             server.quit()
-            print(f"Successfully sent email digest to {to_email} with {len(jobs)} jobs and {len(all_attachments)} CSV attachments.")
+            print(f"Successfully sent email digest via SMTP to {to_email} with {len(jobs)} jobs and {len(all_attachments)} CSV attachments.")
             return True
         except Exception as e:
             print(f"Failed to send email to {to_email}: {e}")
@@ -215,11 +280,6 @@ class EmailService:
         from_email = self._get_from_email()
         try:
             subject = f"⚡ Daily Job Alert Activated for {role}"
-            msg = MIMEMultipart("alternative")
-            msg["From"] = f"JobAgent AI <{from_email}>"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-
             html = f"""
             <div style="background: #0b0f19; color: #f8fafc; font-family: sans-serif; padding: 24px;">
                 <div style="max-width: 540px; margin: 0 auto; background: #0f172a; border-radius: 12px; padding: 24px; border: 1px solid rgba(255,255,255,0.1);">
@@ -230,10 +290,18 @@ class EmailService:
                         <li><strong>Location:</strong> {location or 'Remote / Worldwide'}</li>
                         <li><strong>Daily Delivery Time:</strong> {scheduled_time}</li>
                     </ul>
-                    <p style="color: #cbd5e1;">We will scrape LinkedIn, Indeed, Freehire, and Himalayas daily, deduplicate duplicate postings, score fit with Mistral AI, and send you a morning email with the top matches and CSV attachments.</p>
+                    <p style="color: #cbd5e1;">We will scrape LinkedIn, Indeed, Freehire, and Himalayas daily, deduplicate duplicate postings, score fit with Mistral AI, and send you a morning email with top matches and CSV attachments.</p>
                 </div>
             </div>
             """
+
+            if self._send_via_resend(to_email, subject, html, []):
+                return True
+
+            msg = MIMEMultipart("alternative")
+            msg["From"] = f"JobAgent AI <{from_email}>"
+            msg["To"] = to_email
+            msg["Subject"] = subject
             msg.attach(MIMEText(html, "html", "utf-8"))
 
             server = self._get_smtp_connection()
