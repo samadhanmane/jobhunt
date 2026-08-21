@@ -36,8 +36,13 @@ wheels/
 logs/
 *.log
 
+# Node modules & frontend builds
+node_modules/
+frontend/node_modules/
+.npm/
+
 # Data caching/processed uploads
 data/
-d:\Projects\jobhunt\backend\data/
 temp_resumes/
 exports/
+backend/exports/
