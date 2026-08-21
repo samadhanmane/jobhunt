@@ -400,93 +400,97 @@ function JobSearchDashboard(_ref4) {
     _useState24 = _slicedToArray(_useState23, 2),
     remotePreference = _useState24[0],
     setRemotePreference = _useState24[1];
+  var _useState25 = useState("all"),
+    _useState26 = _slicedToArray(_useState25, 2),
+    searchDatePosted = _useState26[0],
+    setSearchDatePosted = _useState26[1];
 
   // Resume Profile State
-  var _useState25 = useState(null),
-    _useState26 = _slicedToArray(_useState25, 2),
-    resumeFile = _useState26[0],
-    setResumeFile = _useState26[1];
   var _useState27 = useState(null),
     _useState28 = _slicedToArray(_useState27, 2),
-    resumeProfile = _useState28[0],
-    setResumeProfile = _useState28[1];
-  var _useState29 = useState(false),
+    resumeFile = _useState28[0],
+    setResumeFile = _useState28[1];
+  var _useState29 = useState(null),
     _useState30 = _slicedToArray(_useState29, 2),
-    parsingResume = _useState30[0],
-    setParsingResume = _useState30[1];
-
-  // Search Execution State
+    resumeProfile = _useState30[0],
+    setResumeProfile = _useState30[1];
   var _useState31 = useState(false),
     _useState32 = _slicedToArray(_useState31, 2),
-    searching = _useState32[0],
-    setSearching = _useState32[1];
-  var _useState33 = useState(""),
+    parsingResume = _useState32[0],
+    setParsingResume = _useState32[1];
+
+  // Search Execution State
+  var _useState33 = useState(false),
     _useState34 = _slicedToArray(_useState33, 2),
-    currentSearchId = _useState34[0],
-    setCurrentSearchId = _useState34[1];
-  var _useState35 = useState([]),
+    searching = _useState34[0],
+    setSearching = _useState34[1];
+  var _useState35 = useState(""),
     _useState36 = _slicedToArray(_useState35, 2),
-    allJobs = _useState36[0],
-    setAllJobs = _useState36[1];
-  var _useState37 = useState({
+    currentSearchId = _useState36[0],
+    setCurrentSearchId = _useState36[1];
+  var _useState37 = useState([]),
+    _useState38 = _slicedToArray(_useState37, 2),
+    allJobs = _useState38[0],
+    setAllJobs = _useState38[1];
+  var _useState39 = useState({
       total_found: 0,
       unique_count: 0
     }),
-    _useState38 = _slicedToArray(_useState37, 2),
-    searchStats = _useState38[0],
-    setSearchStats = _useState38[1];
+    _useState40 = _slicedToArray(_useState39, 2),
+    searchStats = _useState40[0],
+    setSearchStats = _useState40[1];
 
   // Filter Toolbar State
-  var _useState39 = useState(""),
-    _useState40 = _slicedToArray(_useState39, 2),
-    filterKeyword = _useState40[0],
-    setFilterKeyword = _useState40[1];
-  var _useState41 = useState("all"),
+  var _useState41 = useState(""),
     _useState42 = _slicedToArray(_useState41, 2),
-    filterLocation = _useState42[0],
-    setFilterLocation = _useState42[1];
+    filterKeyword = _useState42[0],
+    setFilterKeyword = _useState42[1];
   var _useState43 = useState("all"),
     _useState44 = _slicedToArray(_useState43, 2),
-    filterWorkMode = _useState44[0],
-    setFilterWorkMode = _useState44[1];
-  var _useState45 = useState(0),
+    filterLocation = _useState44[0],
+    setFilterLocation = _useState44[1];
+  var _useState45 = useState("all"),
     _useState46 = _slicedToArray(_useState45, 2),
-    minScore = _useState46[0],
-    setMinScore = _useState46[1];
-  var _useState47 = useState("all"),
+    filterWorkMode = _useState46[0],
+    setFilterWorkMode = _useState46[1];
+  var _useState47 = useState(0),
     _useState48 = _slicedToArray(_useState47, 2),
-    filterSeniority = _useState48[0],
-    setFilterSeniority = _useState48[1];
+    minScore = _useState48[0],
+    setMinScore = _useState48[1];
   var _useState49 = useState("all"),
     _useState50 = _slicedToArray(_useState49, 2),
-    filterDate = _useState50[0],
-    setFilterDate = _useState50[1];
+    filterSeniority = _useState50[0],
+    setFilterSeniority = _useState50[1];
   var _useState51 = useState("all"),
     _useState52 = _slicedToArray(_useState51, 2),
-    filterSource = _useState52[0],
-    setFilterSource = _useState52[1];
-  var _useState53 = useState("score"),
+    filterDate = _useState52[0],
+    setFilterDate = _useState52[1];
+  var _useState53 = useState("all"),
     _useState54 = _slicedToArray(_useState53, 2),
-    sortBy = _useState54[0],
-    setSortBy = _useState54[1];
+    filterSource = _useState54[0],
+    setFilterSource = _useState54[1];
+  var _useState55 = useState("score"),
+    _useState56 = _slicedToArray(_useState55, 2),
+    sortBy = _useState56[0],
+    setSortBy = _useState56[1];
 
   // RAG AI Query State
-  var _useState55 = useState(false),
-    _useState56 = _slicedToArray(_useState55, 2),
-    ragModalOpen = _useState56[0],
-    setRagModalOpen = _useState56[1];
-  var _useState57 = useState(""),
+  var _useState57 = useState(false),
     _useState58 = _slicedToArray(_useState57, 2),
-    ragQuery = _useState58[0],
-    setRagQuery = _useState58[1];
+    ragModalOpen = _useState58[0],
+    setRagModalOpen = _useState58[1];
   var _useState59 = useState(""),
     _useState60 = _slicedToArray(_useState59, 2),
-    ragAnswer = _useState60[0],
-    setRagAnswer = _useState60[1];
-  var _useState61 = useState(false),
+    ragQuery = _useState60[0],
+    setRagQuery = _useState60[1];
+  var _useState61 = useState(""),
     _useState62 = _slicedToArray(_useState61, 2),
-    ragLoading = _useState62[0],
-    setRagLoading = _useState62[1];
+    ragAnswer = _useState62[0],
+    setRagAnswer = _useState62[1];
+  var _useState63 = useState(false),
+    _useState64 = _slicedToArray(_useState63, 2),
+    ragLoading = _useState64[0],
+    setRagLoading = _useState64[1];
 
   // Resume Upload & Parse
   var handleResumeChange = /*#__PURE__*/function () {
@@ -589,6 +593,7 @@ function JobSearchDashboard(_ref4) {
                 unique_count: data.unique_count || 0
               });
               setAllJobs(data.jobs || []);
+              setFilterDate(searchDatePosted);
               showToast("Gathered ".concat(data.total_found, " raw postings -> ").concat(data.unique_count, " curated matching roles!"));
             } else {
               showToast(data.detail || "Search failed.", "error");
@@ -766,7 +771,7 @@ function JobSearchDashboard(_ref4) {
     placeholder: "e.g. Pune india, Bangalore, Remote",
     className: "w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-1 sm:grid-cols-2 gap-4"
+    className: "grid grid-cols-1 sm:grid-cols-3 gap-4"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2"
   }, "Work Mode"), /*#__PURE__*/React.createElement("select", {
@@ -799,7 +804,25 @@ function JobSearchDashboard(_ref4) {
     value: "senior"
   }, "\uD83D\uDCBC Senior Level (5 - 8 Yrs)"), /*#__PURE__*/React.createElement("option", {
     value: "lead"
-  }, "\uD83D\uDC51 Lead / Staff / Director (8+ Yrs)")))), /*#__PURE__*/React.createElement("button", {
+  }, "\uD83D\uDC51 Lead / Staff / Director (8+ Yrs)"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2"
+  }, "\uD83D\uDCC5 Date Posted Filter"), /*#__PURE__*/React.createElement("select", {
+    value: searchDatePosted,
+    onChange: function onChange(e) {
+      return setSearchDatePosted(e.target.value);
+    },
+    className: "w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "\uD83D\uDCC5 Anytime / All Dates"), /*#__PURE__*/React.createElement("option", {
+    value: "24h"
+  }, "\u26A1 Past 24 Hours"), /*#__PURE__*/React.createElement("option", {
+    value: "3d"
+  }, "\uD83D\uDD52 Past 3 Days"), /*#__PURE__*/React.createElement("option", {
+    value: "7d"
+  }, "\uD83D\uDCC5 Past 7 Days"), /*#__PURE__*/React.createElement("option", {
+    value: "30d"
+  }, "\uD83D\uDDD3\uFE0F Past 30 Days")))), /*#__PURE__*/React.createElement("button", {
     type: "submit",
     disabled: searching,
     className: "w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold shadow-lg shadow-indigo-500/25 transition-all transform active:scale-[0.99] disabled:opacity-50 text-sm flex items-center justify-center gap-2"
@@ -943,6 +966,24 @@ function JobSearchDashboard(_ref4) {
   }, "Junior / Entry"), /*#__PURE__*/React.createElement("option", {
     value: "senior"
   }, "Senior / Lead"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block text-[11px] font-semibold text-slate-400 uppercase mb-1"
+  }, "Date Posted"), /*#__PURE__*/React.createElement("select", {
+    value: filterDate,
+    onChange: function onChange(e) {
+      return setFilterDate(e.target.value);
+    },
+    className: "w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "\uD83D\uDCC5 All Dates"), /*#__PURE__*/React.createElement("option", {
+    value: "24h"
+  }, "\u26A1 Past 24h"), /*#__PURE__*/React.createElement("option", {
+    value: "3d"
+  }, "\uD83D\uDD52 Past 3 days"), /*#__PURE__*/React.createElement("option", {
+    value: "7d"
+  }, "\uD83D\uDCC5 Past 7 days"), /*#__PURE__*/React.createElement("option", {
+    value: "30d"
+  }, "\uD83D\uDDD3\uFE0F Past 30 days"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-[11px] font-semibold text-slate-400 uppercase mb-1"
   }, "Min Match: ", /*#__PURE__*/React.createElement("span", {
     className: "text-indigo-400 font-bold"
@@ -1113,64 +1154,64 @@ function EmailAlertsView(_ref9) {
   var token = _ref9.token,
     user = _ref9.user,
     showToast = _ref9.showToast;
-  var _useState63 = useState(user.email || ""),
-    _useState64 = _slicedToArray(_useState63, 2),
-    email = _useState64[0],
-    setEmail = _useState64[1];
-  var _useState65 = useState("AI ML Intern"),
+  var _useState65 = useState(user.email || ""),
     _useState66 = _slicedToArray(_useState65, 2),
-    role = _useState66[0],
-    setRole = _useState66[1];
-  var _useState67 = useState("Pune"),
+    email = _useState66[0],
+    setEmail = _useState66[1];
+  var _useState67 = useState("AI ML Intern"),
     _useState68 = _slicedToArray(_useState67, 2),
-    location = _useState68[0],
-    setLocation = _useState68[1];
-  var _useState69 = useState("any"),
+    role = _useState68[0],
+    setRole = _useState68[1];
+  var _useState69 = useState("Pune"),
     _useState70 = _slicedToArray(_useState69, 2),
-    workMode = _useState70[0],
-    setWorkMode = _useState70[1];
-  var _useState71 = useState("intern"),
+    location = _useState70[0],
+    setLocation = _useState70[1];
+  var _useState71 = useState("any"),
     _useState72 = _slicedToArray(_useState71, 2),
-    experienceLevel = _useState72[0],
-    setExperienceLevel = _useState72[1];
-  var _useState73 = useState(3),
+    workMode = _useState72[0],
+    setWorkMode = _useState72[1];
+  var _useState73 = useState("intern"),
     _useState74 = _slicedToArray(_useState73, 2),
-    maxAgeDays = _useState74[0],
-    setMaxAgeDays = _useState74[1];
-  var _useState75 = useState("09:00"),
+    experienceLevel = _useState74[0],
+    setExperienceLevel = _useState74[1];
+  var _useState75 = useState(3),
     _useState76 = _slicedToArray(_useState75, 2),
-    preferredTime = _useState76[0],
-    setPreferredTime = _useState76[1];
+    maxAgeDays = _useState76[0],
+    setMaxAgeDays = _useState76[1];
+  var _useState77 = useState("09:00"),
+    _useState78 = _slicedToArray(_useState77, 2),
+    preferredTime = _useState78[0],
+    setPreferredTime = _useState78[1];
 
   // Optional Resume State
-  var _useState77 = useState(null),
-    _useState78 = _slicedToArray(_useState77, 2),
-    resumeFile = _useState78[0],
-    setResumeFile = _useState78[1];
   var _useState79 = useState(null),
     _useState80 = _slicedToArray(_useState79, 2),
-    resumeProfile = _useState80[0],
-    setResumeProfile = _useState80[1];
-  var _useState81 = useState(false),
+    resumeFile = _useState80[0],
+    setResumeFile = _useState80[1];
+  var _useState81 = useState(null),
     _useState82 = _slicedToArray(_useState81, 2),
-    parsingResume = _useState82[0],
-    setParsingResume = _useState82[1];
+    resumeProfile = _useState82[0],
+    setResumeProfile = _useState82[1];
   var _useState83 = useState(false),
     _useState84 = _slicedToArray(_useState83, 2),
-    saving = _useState84[0],
-    setSaving = _useState84[1];
+    parsingResume = _useState84[0],
+    setParsingResume = _useState84[1];
   var _useState85 = useState(false),
     _useState86 = _slicedToArray(_useState85, 2),
-    testing = _useState86[0],
-    setTesting = _useState86[1];
-  var _useState87 = useState([]),
+    saving = _useState86[0],
+    setSaving = _useState86[1];
+  var _useState87 = useState(false),
     _useState88 = _slicedToArray(_useState87, 2),
-    activeAlerts = _useState88[0],
-    setActiveAlerts = _useState88[1];
-  var _useState89 = useState(true),
+    testing = _useState88[0],
+    setTesting = _useState88[1];
+  var _useState89 = useState([]),
     _useState90 = _slicedToArray(_useState89, 2),
-    loadingAlerts = _useState90[0],
-    setLoadingAlerts = _useState90[1];
+    activeAlerts = _useState90[0],
+    setActiveAlerts = _useState90[1];
+  var _useState91 = useState(true),
+    _useState92 = _slicedToArray(_useState91, 2),
+    loadingAlerts = _useState92[0],
+    setLoadingAlerts = _useState92[1];
   var fetchAlerts = /*#__PURE__*/function () {
     var _ref10 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
       var res, data;
@@ -1628,32 +1669,32 @@ function AdminPortal(_ref15) {
   var token = _ref15.token,
     user = _ref15.user,
     showToast = _ref15.showToast;
-  var _useState91 = useState([]),
-    _useState92 = _slicedToArray(_useState91, 2),
-    users = _useState92[0],
-    setUsers = _useState92[1];
-  var _useState93 = useState(true),
+  var _useState93 = useState([]),
     _useState94 = _slicedToArray(_useState93, 2),
-    loading = _useState94[0],
-    setLoading = _useState94[1];
+    users = _useState94[0],
+    setUsers = _useState94[1];
+  var _useState95 = useState(true),
+    _useState96 = _slicedToArray(_useState95, 2),
+    loading = _useState96[0],
+    setLoading = _useState96[1];
 
   // New User Form
-  var _useState95 = useState(""),
-    _useState96 = _slicedToArray(_useState95, 2),
-    newEmail = _useState96[0],
-    setNewEmail = _useState96[1];
   var _useState97 = useState(""),
     _useState98 = _slicedToArray(_useState97, 2),
-    newPassword = _useState98[0],
-    setNewPassword = _useState98[1];
-  var _useState99 = useState("user"),
+    newEmail = _useState98[0],
+    setNewEmail = _useState98[1];
+  var _useState99 = useState(""),
     _useState100 = _slicedToArray(_useState99, 2),
-    newRole = _useState100[0],
-    setNewRole = _useState100[1];
-  var _useState101 = useState(false),
+    newPassword = _useState100[0],
+    setNewPassword = _useState100[1];
+  var _useState101 = useState("user"),
     _useState102 = _slicedToArray(_useState101, 2),
-    creating = _useState102[0],
-    setCreating = _useState102[1];
+    newRole = _useState102[0],
+    setNewRole = _useState102[1];
+  var _useState103 = useState(false),
+    _useState104 = _slicedToArray(_useState103, 2),
+    creating = _useState104[0],
+    setCreating = _useState104[1];
   var fetchUsers = /*#__PURE__*/function () {
     var _ref16 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10() {
       var res, data;

@@ -362,6 +362,7 @@ function JobSearchDashboard({ token, user, showToast }) {
     const [location, setLocation] = useState("Pune");
     const [experienceLevel, setExperienceLevel] = useState("intern");
     const [remotePreference, setRemotePreference] = useState("any");
+    const [searchDatePosted, setSearchDatePosted] = useState("all");
 
     // Resume Profile State
     const [resumeFile, setResumeFile] = useState(null);
@@ -458,6 +459,7 @@ function JobSearchDashboard({ token, user, showToast }) {
                     unique_count: data.unique_count || 0
                 });
                 setAllJobs(data.jobs || []);
+                setFilterDate(searchDatePosted);
                 showToast(`Gathered ${data.total_found} raw postings -> ${data.unique_count} curated matching roles!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
@@ -594,7 +596,7 @@ function JobSearchDashboard({ token, user, showToast }) {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                                     Work Mode
@@ -624,6 +626,23 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     <option value="mid">⚡ Mid Level (2 - 5 Yrs)</option>
                                     <option value="senior">💼 Senior Level (5 - 8 Yrs)</option>
                                     <option value="lead">👑 Lead / Staff / Director (8+ Yrs)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                    📅 Date Posted Filter
+                                </label>
+                                <select 
+                                    value={searchDatePosted}
+                                    onChange={(e) => setSearchDatePosted(e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                >
+                                    <option value="all">📅 Anytime / All Dates</option>
+                                    <option value="24h">⚡ Past 24 Hours</option>
+                                    <option value="3d">🕒 Past 3 Days</option>
+                                    <option value="7d">📅 Past 7 Days</option>
+                                    <option value="30d">🗓️ Past 30 Days</option>
                                 </select>
                             </div>
                         </div>
@@ -798,6 +817,22 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     <option value="intern">Internship</option>
                                     <option value="junior">Junior / Entry</option>
                                     <option value="senior">Senior / Lead</option>
+                                </select>
+                            </div>
+
+                            {/* Date Posted */}
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
+                                <select 
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+                                >
+                                    <option value="all">📅 All Dates</option>
+                                    <option value="24h">⚡ Past 24h</option>
+                                    <option value="3d">🕒 Past 3 days</option>
+                                    <option value="7d">📅 Past 7 days</option>
+                                    <option value="30d">🗓️ Past 30 days</option>
                                 </select>
                             </div>
 
