@@ -1,10 +1,9 @@
 {
   "version": 2,
   "public": true,
-  "buildCommand": null,
   "outputDirectory": "frontend",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/frontend/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
