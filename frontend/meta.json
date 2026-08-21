@@ -1,9 +1,0 @@
-{
-  "name": "JobAgent AI",
-  "short_name": "JobAgent",
-  "version": "2.0.0",
-  "description": "Intelligent Multi-Platform Job Hunter & Automation",
-  "theme_color": "#0a0d14",
-  "background_color": "#0a0d14",
-  "display": "standalone"
-}
