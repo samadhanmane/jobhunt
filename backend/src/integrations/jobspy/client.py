@@ -44,10 +44,8 @@ class JobSpyClient(BaseJobIntegration):
         country_indeed = get_indeed_country(location)
         
         # Site names to scrape (Glassdoor only supports specific countries, not worldwide)
-        if country_indeed in ["worldwide", ""]:
-            site_names = ["linkedin", "indeed"]
-        else:
-            site_names = ["linkedin", "indeed", "glassdoor"]
+        # Site names to scrape (LinkedIn + Indeed are fast & reliable)
+        site_names = ["linkedin", "indeed"]
         
         # Format clean location string
         is_specific_loc = bool(location and location.lower().strip() not in ["remote", "worldwide", "global", "any", "all", ""])
@@ -56,8 +54,8 @@ class JobSpyClient(BaseJobIntegration):
         # When a specific city/country is given (e.g. Pune, India), target that geo specifically
         is_remote_param = False if is_specific_loc else remote
         
-        # Fetch more results for broader coverage
-        results_count = kwargs.get("results_wanted", 70)
+        # Fetch 20 results per scraper for fast 5-second live response
+        results_count = kwargs.get("results_wanted", 20)
             
         scrape_func = partial(
             scrape_jobs,

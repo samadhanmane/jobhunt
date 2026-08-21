@@ -114,7 +114,7 @@ Candidate Background:
                 if cleaned_q and len(cleaned_q) > 2 and cleaned_q.lower() not in [sq.lower() for sq in search_queries]:
                     search_queries.append(cleaned_q)
 
-        # Limit to top 4 high-intent titles
+        # Limit to top 2 high-intent titles for fast 5-8 second live web search response
         target_queries = search_queries[:4]
 
         print(f"[Orchestrator] ===========================================")

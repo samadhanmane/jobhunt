@@ -229,25 +229,35 @@ class RankingAgent(BaseJobAgent):
         loc_tokens = [w for w in pref_loc.replace(",", " ").split() if len(w) > 2 and w not in ["remote", "any", "worldwide", "all", "global"]]
         pref_work_mode = str(preferences.get("remote_preference", preferences.get("work_mode", "any"))).lower().strip()
 
-        # Step 1: Strict Preference Pre-Filter (Location keywords & Work Mode)
+        # Step 1: Preference Pre-Filter (Location keywords & Work Mode)
         valid_candidates = []
         for job in jobs:
             job_loc = str(job.get("location", "")).lower()
-            is_job_remote = "remote" in job_loc or "wfh" in job_loc or "work from home" in job_loc or job.get("source") == "himalayas" or "anywhere" in job_loc
+            is_job_remote = "remote" in job_loc or "wfh" in job_loc or "work from home" in job_loc or job.get("source") == "himalayas" or "anywhere" in job_loc or "worldwide" in job_loc
             
-            # 1. Work Mode Constraint
-            if pref_work_mode == "remote" and not is_job_remote:
-                continue
-            if pref_work_mode == "onsite" and is_job_remote:
-                continue
+            # Location token matching
+            is_loc_match = any(t in job_loc for t in loc_tokens) if loc_tokens else True
 
-            # 2. Strict Location Keyword Constraint (e.g. Pune, Pune division india, Bangalore, etc.)
-            if loc_tokens:
-                is_loc_match = any(t in job_loc for t in loc_tokens)
-                if not is_loc_match:
+            if pref_work_mode == "remote":
+                # Accept if job is remote OR matches requested city
+                if not (is_job_remote or is_loc_match):
+                    continue
+            elif pref_work_mode == "onsite":
+                if is_job_remote:
+                    continue
+                if loc_tokens and not is_loc_match:
+                    continue
+            else:
+                # Any work mode: accept if matches location OR is remote OR location is general
+                if loc_tokens and not (is_loc_match or is_job_remote or not job_loc or job_loc == "n/a"):
                     continue
 
             valid_candidates.append(job)
+
+        # Fallback: If pre-filter yielded 0 candidates, fallback to all scraped jobs so search never returns 0 results
+        if not valid_candidates and jobs:
+            print("[RankingAgent] Notice: Pre-filter matched 0 candidates. Preserving all scraped jobs.")
+            valid_candidates = jobs
 
         active_jobs = valid_candidates
             
