@@ -92,7 +92,7 @@ app.include_router(jobs.router, tags=["Jobs"])
 app.include_router(alerts.router, tags=["Email Alerts"])
 app.include_router(health.router, tags=["Health Check"])
 
-@app.get("/", tags=["Status"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Status"])
 def root():
     """
     Root status check for Render deployment & health monitoring.
