@@ -124,7 +124,7 @@ def delete_user(
     db: Session = Depends(get_db)
 ):
     """
-    Delete a user account from the system (Admin only).
+    Delete a user account and all associated email automations (Admin only).
     """
     user = db.query(UserAccount).filter(UserAccount.id == user_id).first()
     if not user:
@@ -133,10 +133,16 @@ def delete_user(
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own admin account.")
         
+    # Delete all associated email alerts and automations for this user
+    from src.models.email_alert import EmailAlert
+    db.query(EmailAlert).filter(
+        (EmailAlert.user_id == user.id) | (EmailAlert.email == user.email)
+    ).delete(synchronize_session=False)
+
     db.delete(user)
     db.commit()
     
     return {
         "status": "success",
-        "message": f"User '{user.email}' deleted successfully."
+        "message": f"User '{user.email}' and all associated automations deleted successfully."
     }
