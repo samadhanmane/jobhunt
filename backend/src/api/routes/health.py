@@ -6,7 +6,7 @@ from src.services.cache_service import cache_service
 
 router = APIRouter()
 
-@router.api_route("/health", methods=["GET", "HEAD"])
+@router.get("/health")
 def health_check(db: Session = Depends(get_db)):
     db_status = "healthy"
     try:

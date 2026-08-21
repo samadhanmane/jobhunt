@@ -26,7 +26,7 @@ def get_primary_engine():
                 pool_pre_ping=True,
                 pool_recycle=60,
                 pool_timeout=3,
-                connect_args={"connect_timeout": 3}
+                connect_args={"connect_timeout": 30}
             )
             with engine.connect() as conn:
                 pass
