@@ -21,10 +21,10 @@ class KeepAliveService:
         raw_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("BACKEND_URL") or ""
         if raw_url:
             clean_url = raw_url.rstrip("/")
-            ping_endpoint = f"{clean_url}/api/v1/health" if not clean_url.endswith("/health") else clean_url
+            ping_endpoint = f"{clean_url}/health"
         else:
             port = os.getenv("PORT", "8000")
-            ping_endpoint = f"http://127.0.0.1:{port}/api/v1/health"
+            ping_endpoint = f"http://127.0.0.1:{port}/health"
 
         print(f"[KeepAlive] Self-ping heartbeat active. Target: {ping_endpoint}")
 
