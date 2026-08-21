@@ -10,12 +10,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for compilation & PostgreSQL client
+# Install system dependencies including Node.js & npm for Nodemailer runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     gcc \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
@@ -27,6 +29,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY backend /app/backend
 
 WORKDIR /app/backend
+
+# Install Nodemailer npm dependencies
+RUN npm install --omit=dev
 
 # Expose standard port
 EXPOSE 8000

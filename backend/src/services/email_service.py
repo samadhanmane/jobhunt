@@ -1,49 +1,73 @@
 import os
-import socket
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+import json
+import uuid
+import subprocess
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from src.config import settings
 
 class EmailService:
     """
-    Service for sending rich HTML job digests with CSV attachments via SMTP.
+    Service for sending rich HTML job digests with CSV attachments strictly via Nodemailer.
     """
-    def __init__(self):
-        self.smtp_server = "smtp.gmail.com"
-        self.smtp_port = 465
-
     def _get_from_email(self) -> str:
         return settings.EMAIL_FROM or os.getenv("EMAIL_FROM") or "sm8199849@gmail.com"
 
     def _get_password(self) -> str:
         return settings.EMAIL_PASSWORD or os.getenv("EMAIL_PASSWORD") or "sqzbfaesgowgzrne"
 
-    def _get_smtp_connection(self):
+    def _send_via_nodemailer(self, to_email: str, subject: str, html_content: str, attachment_paths: List[str]) -> bool:
+        """
+        Dispatches email using Node.js Nodemailer engine.
+        """
         from_email = self._get_from_email()
         password = self._get_password()
         
-        # Explicitly resolve Gmail SMTP to IPv4 to prevent Render container IPv6 unreachable errors
-        try:
-            target_host = socket.gethostbyname(self.smtp_server)
-        except Exception:
-            target_host = self.smtp_server
+        attachments = []
+        for path in set(attachment_paths):
+            if path and os.path.exists(path):
+                attachments.append({
+                    "filename": os.path.basename(path),
+                    "path": os.path.abspath(path)
+                })
+
+        payload = {
+            "from_email": from_email,
+            "password": password,
+            "to_email": to_email,
+            "subject": subject,
+            "html_content": html_content,
+            "attachments": attachments
+        }
+
+        # Calculate backend root directory
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        scratch_dir = os.path.join(backend_dir, "scratch")
+        os.makedirs(scratch_dir, exist_ok=True)
+        payload_path = os.path.join(scratch_dir, f"mail_payload_{uuid.uuid4().hex}.json")
+        script_path = os.path.join(backend_dir, "scripts", "send_email.js")
 
         try:
-            server = smtplib.SMTP_SSL(target_host, 465, timeout=30)
-            server.login(from_email, password)
-            return server
-        except Exception as e:
-            print(f"[EmailService] SSL 465 notice, attempting 587 STARTTLS ({e})")
-            server = smtplib.SMTP(target_host, 587, timeout=30)
-            server.ehlo()
-            server.starttls()
-            server.login(from_email, password)
-            return server
+            with open(payload_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+
+            res = subprocess.run(["node", script_path, payload_path], capture_output=True, text=True, timeout=45)
+            
+            if res.returncode == 0:
+                print(f"[EmailService/Nodemailer] {res.stdout.strip()}")
+                return True
+            else:
+                print(f"[EmailService/Nodemailer Failed]: {res.stderr.strip() or res.stdout.strip()}")
+                return False
+        except Exception as err:
+            print(f"[EmailService/Nodemailer Exception]: {err}")
+            return False
+        finally:
+            if os.path.exists(payload_path):
+                try:
+                    os.remove(payload_path)
+                except Exception:
+                    pass
 
     def _generate_html_digest(self, role: str, location: str, jobs: List[Dict[str, Any]], summary_note: str = "", raw_total_count: Optional[int] = None) -> str:
         today_str = datetime.now().strftime("%B %d, %Y")
@@ -100,46 +124,38 @@ class EmailService:
         <head>
             <meta charset="utf-8">
             <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; margin: 0; padding: 20px; }}
-                .container {{ max-width: 620px; margin: 0 auto; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 24px; }}
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0b0f19; color: #f8fafc; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 20px auto; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.1); shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }}
+                .header {{ background: linear-gradient(135deg, #4f46e5, #7c3aed, #06b6d4); padding: 32px 24px; text-align: center; }}
+                .content {{ padding: 24px; }}
+                .footer {{ background-color: #070a12; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.05); }}
             </style>
         </head>
-        <body style="background-color: #0b0f19; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px;">
-            <div style="max-width: 620px; margin: 0 auto; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 28px;">
-                
-                <!-- Header -->
-                <div style="text-align: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 20px; margin-bottom: 24px;">
-                    <div style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 44px; height: 44px; line-height: 44px; border-radius: 12px; font-size: 22px; margin-bottom: 10px;">⚡</div>
-                    <h1 style="margin: 0; font-size: 22px; color: #ffffff; font-weight: 800;">JobAgent <span style="color: #8b5cf6;">AI</span> Daily Digest</h1>
-                    <p style="margin: 6px 0 0 0; color: #94a3b8; font-size: 14px;">Targeting: <strong style="color: #60a5fa;">{role}</strong> in <strong style="color: #a78bfa;">{location or 'Worldwide'}</strong></p>
-                    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 12px;">{today_str}</p>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">⚡ JobAgent AI Digest</h1>
+                    <p style="margin: 6px 0 0 0; color: #e0e7ff; font-size: 14px;">Curated Intelligence for <strong>{role}</strong> ({location or 'Remote'})</p>
                 </div>
-
-
-                <!-- Summary Banner -->
-                <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; padding: 14px 18px; margin-bottom: 24px;">
-                    <p style="margin: 0; font-size: 14px; color: #c7d2fe;">
-                        🎯 <strong>{len(jobs)} Curated Top Matches</strong> (from <strong>{total_raw} total gathered jobs</strong> across LinkedIn, Indeed, Freehire, Himalayas & Arbeitnow).
-                    </p>
-                    {f'<p style="margin: 6px 0 0 0; font-size: 12px; color: #94a3b8;">{summary_note}</p>' if summary_note else ''}
-                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; color: #38bdf8;">
-                        📎 <strong>2 CSV Spreadsheets Attached:</strong>
-                        <ul style="margin: 6px 0 0 16px; padding: 0; color: #cbd5e1; font-size: 12px; line-height: 1.6;">
-                            <li><strong>all_fetched_jobs.csv</strong>: Complete structured database of all {total_raw} jobs gathered before deduplication.</li>
-                            <li><strong>curated_matching_jobs.csv</strong>: Filtered, deduplicated & AI-ranked opportunities tailored to your preferences.</li>
-                        </ul>
+                
+                <div class="content">
+                    <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; padding: 14px; margin-bottom: 20px; font-size: 13px; color: #c7d2fe;">
+                        📊 <strong>Scan Results ({today_str}):</strong> Discovered <strong>{total_raw}</strong> total postings. AI filtered <strong>{len(jobs)}</strong> top matching roles for your alert criteria.
+                    </div>
+                    
+                    {f'<div style="background: #1e1b4b; border-left: 4px solid #818cf8; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; color: #e0e7ff;">💡 {summary_note}</div>' if summary_note else ''}
+                    
+                    <h2 style="font-size: 16px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Top Recommendations</h2>
+                    
+                    {jobs_html}
+                    
+                    <div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 12px;">📎 Complete list of all {len(jobs)} jobs is attached as CSV files to this email.</p>
                     </div>
                 </div>
-
-                <!-- Job Cards -->
-                <div>
-                    {jobs_html if jobs_html else '<p style="color: #94a3b8; text-align: center; padding: 20px;">No new matching jobs found today matching your exact filters.</p>'}
-                </div>
-
-                <!-- Footer -->
-                <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 24px; padding-top: 18px; text-align: center; color: #64748b; font-size: 11px;">
-                    <p style="margin: 0 0 4px 0;">This automated daily report was generated by JobAgent AI based on your saved career preferences.</p>
-                    <p style="margin: 0;">Powered by Mistral AI & Multi-Platform Parallel Aggregation.</p>
+                
+                <div class="footer">
+                    <p style="margin: 0;">Sent by JobAgent AI Engine • Real-time Automated Intelligence</p>
                 </div>
             </div>
         </body>
@@ -159,158 +175,40 @@ class EmailService:
         raw_total_count: Optional[int] = None
     ) -> bool:
         """
-        Sends HTML email digest with one or more CSV attachments to the user.
+        Sends HTML email digest with one or more CSV attachments strictly via Nodemailer.
         """
-        from_email = self._get_from_email()
-        password = self._get_password()
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        subject = f"🎯 {len(jobs)} Curated {role} Jobs ({location or 'Remote'}) - {today_str}"
+        html_content = self._generate_html_digest(role, location, jobs, summary_note, raw_total_count)
 
-        if not to_email or not from_email or not password:
-            print("Email notice: Missing email credentials or recipient.")
-            return False
+        all_attachments = []
+        if csv_path:
+            all_attachments.append(csv_path)
+        if csv_paths:
+            all_attachments.extend(csv_paths)
 
-    def _send_via_resend(self, to_email: str, subject: str, html_content: str, attachment_paths: List[str]) -> bool:
-        """
-        Sends email via Resend HTTP API (Port 443). Bypasses cloud host SMTP port blocks (Render/AWS).
-        """
-        api_key = getattr(settings, "RESEND_API_KEY", None) or os.getenv("RESEND_API_KEY")
-        if not api_key:
-            return False
-
-        try:
-            import httpx, base64
-            attachments = []
-            for path in set(attachment_paths):
-                if path and os.path.exists(path):
-                    with open(path, "rb") as f:
-                        content_b64 = base64.b64encode(f.read()).decode("utf-8")
-                        attachments.append({
-                            "filename": os.path.basename(path),
-                            "content": content_b64
-                        })
-
-            from_sender = getattr(settings, "EMAIL_FROM", None) or os.getenv("EMAIL_FROM") or "onboarding@resend.dev"
-            if "@" not in from_sender or any(d in from_sender.lower() for d in ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"]):
-                from_sender = "onboarding@resend.dev"
-
-            payload = {
-                "from": f"JobAgent AI <{from_sender}>",
-                "to": [to_email],
-                "subject": subject,
-                "html": html_content,
-                "attachments": attachments
-            }
-
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-
-            resp = httpx.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=30.0)
-            if resp.status_code in [200, 201, 202]:
-                print(f"[EmailService] Successfully delivered email via Resend HTTP API (Port 443) to {to_email}")
-                return True
-            else:
-                print(f"[EmailService] Resend API Notice ({resp.status_code}): {resp.text}")
-                return False
-        except Exception as e:
-            print(f"[EmailService] Resend API exception: {e}")
-            return False
-
-    def send_daily_job_digest(
-        self,
-        to_email: str,
-        role: str,
-        location: str,
-        jobs: List[Dict[str, Any]],
-        csv_path: Optional[str] = None,
-        csv_paths: Optional[List[str]] = None,
-        summary_note: str = "",
-        raw_total_count: Optional[int] = None
-    ) -> bool:
-        from_email = self._get_from_email()
-
-        try:
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            subject = f"🎯 {len(jobs)} Curated {role} Jobs ({location or 'Remote'}) - {today_str}"
-            html_content = self._generate_html_digest(role, location, jobs, summary_note, raw_total_count)
-
-            # Collect all CSV attachments to include
-            all_attachments = []
-            if csv_path:
-                all_attachments.append(csv_path)
-            if csv_paths:
-                all_attachments.extend(csv_paths)
-
-            # 1. First attempt: Resend HTTP API (Port 443 - Bypasses Render Firewall Block)
-            if self._send_via_resend(to_email, subject, html_content, all_attachments):
-                return True
-
-            # 2. Fallback attempt: SMTP connection (Port 465 / 587)
-            msg = MIMEMultipart("mixed")
-            msg["From"] = f"JobAgent AI <{from_email}>"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-
-            html_part = MIMEText(html_content, "html", "utf-8")
-            msg.attach(html_part)
-
-            for path in set(all_attachments):
-                if path and os.path.exists(path):
-                    with open(path, "rb") as f:
-                        csv_part = MIMEBase("application", "octet-stream")
-                        csv_part.set_payload(f.read())
-                        encoders.encode_base64(csv_part)
-                        filename = os.path.basename(path)
-                        csv_part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
-                        msg.attach(csv_part)
-
-            server = self._get_smtp_connection()
-            server.sendmail(from_email, [to_email], msg.as_string())
-            server.quit()
-            print(f"Successfully sent email digest via SMTP to {to_email} with {len(jobs)} jobs and {len(all_attachments)} CSV attachments.")
-            return True
-        except Exception as e:
-            print(f"Failed to send email to {to_email}: {e}")
-            return False
+        return self._send_via_nodemailer(to_email, subject, html_content, all_attachments)
 
     def send_welcome_confirmation(self, to_email: str, role: str, location: str, scheduled_time: str) -> bool:
         """
-        Sends a welcome confirmation email when user schedules a new automation.
+        Sends a welcome confirmation email when user schedules a new automation strictly via Nodemailer.
         """
-        from_email = self._get_from_email()
-        try:
-            subject = f"⚡ Daily Job Alert Activated for {role}"
-            html = f"""
-            <div style="background: #0b0f19; color: #f8fafc; font-family: sans-serif; padding: 24px;">
-                <div style="max-width: 540px; margin: 0 auto; background: #0f172a; border-radius: 12px; padding: 24px; border: 1px solid rgba(255,255,255,0.1);">
-                    <h2 style="color: #60a5fa; margin-top: 0;">⚡ Daily Job Alert Activated!</h2>
-                    <p style="color: #cbd5e1;">You have scheduled daily job discovery for:</p>
-                    <ul style="color: #94a3b8;">
-                        <li><strong>Target Role:</strong> {role}</li>
-                        <li><strong>Location:</strong> {location or 'Remote / Worldwide'}</li>
-                        <li><strong>Daily Delivery Time:</strong> {scheduled_time}</li>
-                    </ul>
-                    <p style="color: #cbd5e1;">We will scrape LinkedIn, Indeed, Freehire, and Himalayas daily, deduplicate duplicate postings, score fit with Mistral AI, and send you a morning email with top matches and CSV attachments.</p>
-                </div>
+        subject = f"⚡ Daily Job Alert Activated for {role}"
+        html = f"""
+        <div style="background: #0b0f19; color: #f8fafc; font-family: sans-serif; padding: 24px;">
+            <div style="max-width: 540px; margin: 0 auto; background: #0f172a; border-radius: 12px; padding: 24px; border: 1px solid rgba(255,255,255,0.1);">
+                <h2 style="color: #60a5fa; margin-top: 0;">⚡ Daily Job Alert Activated!</h2>
+                <p style="color: #cbd5e1;">You have scheduled daily job discovery for:</p>
+                <ul style="color: #94a3b8;">
+                    <li><strong>Target Role:</strong> {role}</li>
+                    <li><strong>Location:</strong> {location or 'Remote / Worldwide'}</li>
+                    <li><strong>Daily Delivery Time:</strong> {scheduled_time}</li>
+                </ul>
+                <p style="color: #cbd5e1;">We will scrape LinkedIn, Indeed, Freehire, and Himalayas daily, deduplicate duplicate postings, score fit with Mistral AI, and send you a morning email with top matches and CSV attachments.</p>
             </div>
-            """
+        </div>
+        """
 
-            if self._send_via_resend(to_email, subject, html, []):
-                return True
-
-            msg = MIMEMultipart("alternative")
-            msg["From"] = f"JobAgent AI <{from_email}>"
-            msg["To"] = to_email
-            msg["Subject"] = subject
-            msg.attach(MIMEText(html, "html", "utf-8"))
-
-            server = self._get_smtp_connection()
-            server.sendmail(from_email, [to_email], msg.as_string())
-            server.quit()
-            return True
-        except Exception as e:
-            print(f"Failed to send welcome email: {e}")
-            return False
+        return self._send_via_nodemailer(to_email, subject, html, [])
 
 email_service = EmailService()
-

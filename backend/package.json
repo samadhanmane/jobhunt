@@ -1,0 +1,10 @@
+{
+  "name": "jobhunt-backend-emailer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nodemailer engine for JobAgent AI backend email delivery",
+  "main": "scripts/send_email.js",
+  "dependencies": {
+    "nodemailer": "^6.9.13"
+  }
+}
