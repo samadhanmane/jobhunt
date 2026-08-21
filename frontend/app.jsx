@@ -160,38 +160,19 @@ function LoginScreen({ onLoginSuccess }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    // Backend URL State
-    const [currentBackendUrl, setCurrentBackendUrl] = useState(() => API_BASE_URL || localStorage.getItem('VITE_BACKEND_URL') || "");
-    const [showBackendConfig, setShowBackendConfig] = useState(!API_BASE_URL);
-    const [newBackendUrl, setNewBackendUrl] = useState(currentBackendUrl);
-
-    const handleSaveBackendUrl = (e) => {
-        e.preventDefault();
-        const clean = newBackendUrl.trim().replace(/\/+$/, '');
-        if (clean) {
-            localStorage.setItem('VITE_BACKEND_URL', clean);
-            API_BASE_URL = clean;
-            setCurrentBackendUrl(clean);
-            setShowBackendConfig(false);
-            setError("");
-        }
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
 
-        const activeUrl = currentBackendUrl || API_BASE_URL;
-        if (!activeUrl) {
-            setError("Please configure your Backend API URL below first (e.g. https://your-backend-app.onrender.com)");
-            setShowBackendConfig(true);
+        if (!API_BASE_URL) {
+            setError("Backend URL not configured in .env (VITE_BACKEND_URL is empty).");
             return;
         }
 
         setLoading(true);
 
         try {
-            const res = await fetch(`${activeUrl}/api/v1/auth/login`, {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
@@ -204,15 +185,14 @@ function LoginScreen({ onLoginSuccess }) {
 
             onLoginSuccess(data.access_token, data.user);
         } catch (err) {
-            setError(`${err.message} (Target Backend: ${activeUrl})`);
-            setShowBackendConfig(true);
+            setError(err.message);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="w-full max-w-md space-y-4">
+        <div className="w-full max-w-md">
             <div className="text-center mb-6">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 shadow-xl shadow-indigo-500/25 mb-4 animate-float">
                     <span className="text-3xl">⚡</span>
@@ -279,63 +259,6 @@ function LoginScreen({ onLoginSuccess }) {
                         )}
                     </button>
                 </form>
-
-                {/* Backend Connection Indicator & Editor */}
-                <div className="mt-6 pt-4 border-t border-white/5">
-                    <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400 flex items-center gap-1.5 truncate max-w-[240px]">
-                            <span className={`w-2 h-2 rounded-full ${currentBackendUrl ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                            <span className="text-slate-300 truncate" title={currentBackendUrl || 'Not Configured'}>
-                                API: {currentBackendUrl || 'No Backend Set'}
-                            </span>
-                        </span>
-                        <button 
-                            type="button" 
-                            onClick={() => setShowBackendConfig(!showBackendConfig)}
-                            className="text-indigo-400 hover:text-indigo-300 font-semibold underline text-[11px]"
-                        >
-                            {showBackendConfig ? 'Close' : '⚙️ Change URL'}
-                        </button>
-                    </div>
-
-                    {showBackendConfig && (
-                        <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-indigo-500/30 space-y-2 text-xs">
-                            <label className="block font-bold text-indigo-300 uppercase tracking-wider text-[10px]">
-                                Render Backend URL
-                            </label>
-                            <input 
-                                type="url" 
-                                value={newBackendUrl}
-                                onChange={(e) => setNewBackendUrl(e.target.value)}
-                                placeholder="https://your-backend-app.onrender.com"
-                                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
-                            />
-                            <div className="flex gap-2 pt-1">
-                                <button 
-                                    type="button"
-                                    onClick={handleSaveBackendUrl}
-                                    className="flex-1 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs"
-                                >
-                                    💾 Save Backend URL
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={() => {
-                                        setNewBackendUrl("http://localhost:8000");
-                                        localStorage.setItem('VITE_BACKEND_URL', "http://localhost:8000");
-                                        API_BASE_URL = "http://localhost:8000";
-                                        setCurrentBackendUrl("http://localhost:8000");
-                                        setShowBackendConfig(false);
-                                    }}
-                                    className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
-                                    title="Reset to localhost:8000"
-                                >
-                                    Localhost
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
             </div>
         </div>
     );

@@ -1,22 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-// 1. Read VITE_BACKEND_URL strictly from process.env (Vercel) or .env file (local)
-let backendUrl = process.env.VITE_BACKEND_URL || '';
+// Read VITE_BACKEND_URL strictly from process.env (.env or Vercel)
+const backendUrl = process.env.VITE_BACKEND_URL || '';
 
-if (!backendUrl) {
-    const envPath = path.join(__dirname, '.env');
-    if (fs.existsSync(envPath)) {
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        const match = envContent.match(/^\s*VITE_BACKEND_URL\s*=\s*(.*?)\s*$/m);
-        if (match && match[1]) {
-            backendUrl = match[1].replace(/['"]/g, '').trim();
-        }
-    }
-}
-
-// 2. Generate config.js with ONLY the .env variable
+// Write config.js with strictly the .env variable
 const configContent = `/**
  * Generated dynamically from .env / Vercel Environment Variables
  */
@@ -28,7 +18,7 @@ window.__APP_CONFIG__ = {
 fs.writeFileSync(path.join(__dirname, 'config.js'), configContent, 'utf8');
 console.log(`✅ [Build] Injected VITE_BACKEND_URL from .env: "${backendUrl}" into config.js`);
 
-// 3. Compile app.jsx to app.compiled.js
+// Compile app.jsx to app.compiled.js
 function fetchBabel(cb) {
     https.get('https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.4/babel.min.js', (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -45,10 +35,7 @@ function fetchBabel(cb) {
 }
 
 fetchBabel((babelCode) => {
-    if (!babelCode) {
-        console.log('⚡ Babel transform skipped.');
-        return;
-    }
+    if (!babelCode) return;
     try {
         const vm = require('vm');
         const ctx = { window: {}, document: {}, console: console };
@@ -64,6 +51,6 @@ fetchBabel((babelCode) => {
             console.log('✅ [Build] Compiled app.jsx -> app.compiled.js');
         }
     } catch (e) {
-        console.error('Build warning:', e.message);
+        console.error('Build error:', e.message);
     }
 });
