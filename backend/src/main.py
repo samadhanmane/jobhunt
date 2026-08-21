@@ -27,7 +27,14 @@ async def lifespan(app: FastAPI):
         db.close()
     except Exception as e:
         print(f"Notice: Startup cleanup notice: {e}")
+    
+    # Startup: Start background daily email scheduler
+    scheduler_task = asyncio.create_task(scheduler_service.start_background_scheduler())
+    
     yield
+    
+    # Shutdown: Cancel background scheduler
+    scheduler_task.cancel()
 
 app = FastAPI(
     title="AI-Powered Job Aggregator Backend",

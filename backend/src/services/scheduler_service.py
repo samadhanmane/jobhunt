@@ -223,4 +223,50 @@ class SchedulerService:
             if close_db:
                 db.close()
 
+    async def check_and_trigger_due_alerts(self):
+        """
+        Polls active email alerts and triggers execution if current time
+        matches preferred_time and alert hasn't been dispatched in the last 20 hours.
+        """
+        db = SessionLocal()
+        try:
+            active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
+            if not active_alerts:
+                return
+
+            now_utc = datetime.utcnow()
+            now_hhmm_utc = now_utc.strftime("%H:%M")
+            
+            # Also calculate common IST (UTC+5:30) offset for Indian Standard Time
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+            now_hhmm_ist = now_ist.strftime("%H:%M")
+
+            for alert in active_alerts:
+                # Skip if already sent today (within last 20 hours)
+                if alert.last_sent_at and (now_utc - alert.last_sent_at).total_seconds() < 20 * 3600:
+                    continue
+
+                pref_time = (alert.preferred_time or "09:00").strip()
+                
+                # Trigger if preferred time matches current local or UTC minute
+                if pref_time in [now_hhmm_utc, now_hhmm_ist]:
+                    print(f"[Scheduler] Time match ({pref_time}) for alert '{alert.email}' (Role: {alert.role}). Dispatching now...")
+                    asyncio.create_task(self.execute_alert_run(alert.id))
+        except Exception as e:
+            print(f"[Scheduler] Background polling notice: {e}")
+        finally:
+            db.close()
+
+    async def start_background_scheduler(self):
+        """
+        Runs continuous background scheduler loop checking every 60 seconds.
+        """
+        print("[Scheduler] Automated daily email background worker started.")
+        while True:
+            try:
+                await self.check_and_trigger_due_alerts()
+            except Exception as loop_err:
+                print(f"[Scheduler] Background loop error: {loop_err}")
+            await asyncio.sleep(60)
+
 scheduler_service = SchedulerService()
