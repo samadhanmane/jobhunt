@@ -189,7 +189,7 @@ class EmailService:
                         })
 
             from_sender = getattr(settings, "EMAIL_FROM", None) or os.getenv("EMAIL_FROM") or "onboarding@resend.dev"
-            if "@" not in from_sender:
+            if "@" not in from_sender or any(d in from_sender.lower() for d in ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"]):
                 from_sender = "onboarding@resend.dev"
 
             payload = {
