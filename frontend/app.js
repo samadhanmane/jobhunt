@@ -1,24 +1,8 @@
 const getApiBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-        if (window.VITE_BACKEND_URL && typeof window.VITE_BACKEND_URL === 'string' && window.VITE_BACKEND_URL.trim()) {
-            return window.VITE_BACKEND_URL.replace(/\/+$/, '');
-        }
-        if (window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL && window.__APP_CONFIG__.VITE_BACKEND_URL.trim()) {
-            return window.__APP_CONFIG__.VITE_BACKEND_URL.replace(/\/+$/, '');
-        }
-        if (window.__APP_CONFIG__ && window.__APP_CONFIG__.BACKEND_URL && window.__APP_CONFIG__.BACKEND_URL.trim()) {
-            return window.__APP_CONFIG__.BACKEND_URL.replace(/\/+$/, '');
-        }
-
-        try {
-            const savedUrl = localStorage.getItem('VITE_BACKEND_URL') || localStorage.getItem('BACKEND_URL');
-            if (savedUrl && savedUrl.trim()) {
-                return savedUrl.replace(/\/+$/, '');
-            }
-        } catch (e) {}
+    if (typeof window !== 'undefined' && window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL) {
+        return window.__APP_CONFIG__.VITE_BACKEND_URL.trim().replace(/\/+$/, '');
     }
-
-    return 'http://localhost:8000';
+    return '';
 };
 
 const API_BASE_URL = getApiBaseUrl();

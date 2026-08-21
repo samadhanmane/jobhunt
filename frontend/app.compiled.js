@@ -10,44 +10,17 @@ function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o =
 function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
+function _readOnlyError(name) { throw new TypeError("\"" + name + "\" is read-only"); }
 var _React = React,
   useState = _React.useState,
   useEffect = _React.useEffect,
   useRef = _React.useRef,
   useMemo = _React.useMemo;
 
-// Resolve Backend API URL from localStorage, config.js, or default
+// Fetch VITE_BACKEND_URL strictly from .env (injected from Vercel / local .env via window.__APP_CONFIG__)
 var getApiBaseUrl = function getApiBaseUrl() {
-  if (typeof window !== 'undefined') {
-    var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-    // 1. Saved URL in LocalStorage
-    try {
-      var savedUrl = localStorage.getItem('VITE_BACKEND_URL') || localStorage.getItem('JOBHUNT_BACKEND_URL') || localStorage.getItem('BACKEND_URL');
-      if (savedUrl && savedUrl.trim()) {
-        // If on Vercel/production, ignore leftover localhost
-        if (!isLocalhost && (savedUrl.includes('localhost') || savedUrl.includes('127.0.0.1'))) {
-          // ignore
-        } else {
-          return savedUrl.replace(/\/+$/, '');
-        }
-      }
-    } catch (e) {}
-
-    // 2. Global window configuration from config.js
-    if (window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL && window.__APP_CONFIG__.VITE_BACKEND_URL.trim()) {
-      var cfg = window.__APP_CONFIG__.VITE_BACKEND_URL.trim();
-      if (!isLocalhost && (cfg.includes('localhost') || cfg.includes('127.0.0.1'))) {
-        // ignore
-      } else {
-        return cfg.replace(/\/+$/, '');
-      }
-    }
-
-    // 3. Fallback for localhost
-    if (isLocalhost) {
-      return 'http://localhost:8000';
-    }
+  if (typeof window !== 'undefined' && window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL) {
+    return window.__APP_CONFIG__.VITE_BACKEND_URL.trim().replace(/\/+$/, '');
   }
   return '';
 };
@@ -237,7 +210,7 @@ function LoginScreen(_ref) {
     var clean = newBackendUrl.trim().replace(/\/+$/, '');
     if (clean) {
       localStorage.setItem('VITE_BACKEND_URL', clean);
-      API_BASE_URL = clean;
+      clean, _readOnlyError("API_BASE_URL");
       setCurrentBackendUrl(clean);
       setShowBackendConfig(false);
       setError("");
@@ -410,7 +383,7 @@ function LoginScreen(_ref) {
     onClick: function onClick() {
       setNewBackendUrl("http://localhost:8000");
       localStorage.setItem('VITE_BACKEND_URL', "http://localhost:8000");
-      API_BASE_URL = "http://localhost:8000";
+      "http://localhost:8000", _readOnlyError("API_BASE_URL");
       setCurrentBackendUrl("http://localhost:8000");
       setShowBackendConfig(false);
     },

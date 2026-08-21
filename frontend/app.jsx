@@ -1,43 +1,14 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
-// Resolve Backend API URL from localStorage, config.js, or default
+// Fetch VITE_BACKEND_URL strictly from .env (injected from Vercel / local .env via window.__APP_CONFIG__)
 const getApiBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        // 1. Saved URL in LocalStorage
-        try {
-            const savedUrl = localStorage.getItem('VITE_BACKEND_URL') || localStorage.getItem('JOBHUNT_BACKEND_URL') || localStorage.getItem('BACKEND_URL');
-            if (savedUrl && savedUrl.trim()) {
-                // If on Vercel/production, ignore leftover localhost
-                if (!isLocalhost && (savedUrl.includes('localhost') || savedUrl.includes('127.0.0.1'))) {
-                    // ignore
-                } else {
-                    return savedUrl.replace(/\/+$/, '');
-                }
-            }
-        } catch (e) {}
-
-        // 2. Global window configuration from config.js
-        if (window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL && window.__APP_CONFIG__.VITE_BACKEND_URL.trim()) {
-            const cfg = window.__APP_CONFIG__.VITE_BACKEND_URL.trim();
-            if (!isLocalhost && (cfg.includes('localhost') || cfg.includes('127.0.0.1'))) {
-                // ignore
-            } else {
-                return cfg.replace(/\/+$/, '');
-            }
-        }
-
-        // 3. Fallback for localhost
-        if (isLocalhost) {
-            return 'http://localhost:8000';
-        }
+    if (typeof window !== 'undefined' && window.__APP_CONFIG__ && window.__APP_CONFIG__.VITE_BACKEND_URL) {
+        return window.__APP_CONFIG__.VITE_BACKEND_URL.trim().replace(/\/+$/, '');
     }
-
     return '';
 };
 
-let API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = getApiBaseUrl();
 
 // ==========================================
 // Helper Functions

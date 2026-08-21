@@ -4,9 +4,9 @@
   "private": true,
   "description": "JobAgent AI Frontend Application",
   "scripts": {
-    "dev": "serve -l 3000",
+    "dev": "node build.js && serve -l 3000",
     "start": "serve -l 3000",
-    "build": "echo Static build ready"
+    "build": "node build.js"
   },
   "dependencies": {
     "serve": "^14.2.4"
