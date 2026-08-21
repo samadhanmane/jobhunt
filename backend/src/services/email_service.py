@@ -37,7 +37,8 @@ class EmailService:
             "to_email": to_email,
             "subject": subject,
             "html_content": html_content,
-            "attachments": attachments
+            "attachments": attachments,
+            "brevo_api_key": getattr(settings, "BREVO_API_KEY", None) or os.getenv("BREVO_API_KEY")
         }
 
         # Calculate backend root directory
@@ -51,10 +52,10 @@ class EmailService:
             with open(payload_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f)
 
-            res = subprocess.run(["node", script_path, payload_path], capture_output=True, text=True, timeout=45)
+            res = subprocess.run(["node", script_path, payload_path], capture_output=True, text=True, timeout=15)
             
             if res.returncode == 0:
-                print(f"[EmailService/Nodemailer] {res.stdout.strip()}")
+                print(f"[EmailService/Runner] {res.stdout.strip()}")
                 return True
             else:
                 print(f"[EmailService/Nodemailer Failed]: {res.stderr.strip() or res.stdout.strip()}")
