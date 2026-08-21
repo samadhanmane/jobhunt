@@ -30,7 +30,7 @@ class LocalEmbeddingClient:
         if not hf_token or not texts:
             return []
 
-        model_slug = "BAAI/bge-small-en-v1.5"
+        model_slug = self.model_name if (self.model_name and "/" in self.model_name) else "BAAI/bge-small-en-v1.5"
         endpoints = [
             f"https://router.huggingface.co/hf-inference/models/{model_slug}"
         ]
