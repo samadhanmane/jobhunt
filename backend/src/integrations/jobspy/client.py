@@ -37,6 +37,15 @@ def get_indeed_country(location_str: str) -> str:
             
     return "worldwide"
 
+import httpx
+from bs4 import BeautifulSoup
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 class JobSpyClient(BaseJobIntegration):
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
         loop = asyncio.get_event_loop()
@@ -44,7 +53,6 @@ class JobSpyClient(BaseJobIntegration):
         # Determine exact country for Indeed/Glassdoor scrapers
         country_indeed = get_indeed_country(location)
         
-        # Site names to scrape (Glassdoor only supports specific countries, not worldwide)
         # Site names to scrape (LinkedIn + Indeed are fast & reliable)
         site_names = ["linkedin", "indeed"]
         
@@ -74,17 +82,23 @@ class JobSpyClient(BaseJobIntegration):
             if df is None or df.empty:
                 return []
             
-            jobs = []
+            raw_jobs = []
             for _, row in df.iterrows():
                 min_sal = float(row["min_amount"]) if "min_amount" in row and pd.notna(row["min_amount"]) else None
                 max_sal = float(row["max_amount"]) if "max_amount" in row and pd.notna(row["max_amount"]) else None
                 currency = str(row.get("currency", "USD")) if "currency" in row and pd.notna(row["currency"]) else "USD"
                 
-                jobs.append({
+                raw_desc = str(row.get("description", "")) if pd.notna(row.get("description")) else ""
+                if raw_desc.strip().lower() in ["none", "nan", "null"]:
+                    raw_desc = ""
+                
+                clean_desc = clean_html_job_description(raw_desc)
+                
+                raw_jobs.append({
                     "title": str(row.get("title", "")),
                     "company": str(row.get("company", "")),
                     "location": str(row.get("location", "")),
-                    "description": clean_html_job_description(str(row.get("description", ""))),
+                    "description": clean_desc,
                     "url": str(row.get("job_url", "")),
                     "source": f"jobspy ({row.get('site', 'unknown')})",
                     "posted_date": str(row.get("date_posted", "")) if pd.notna(row.get("date_posted")) else None,
@@ -94,8 +108,38 @@ class JobSpyClient(BaseJobIntegration):
                         "currency": currency
                     } if (min_sal or max_sal) else None
                 })
-            print(f"[JobSpy] Fetched {len(jobs)} jobs for query='{query}' location='{loc_clean}' country='{country_indeed}'")
-            return jobs
+
+            # Asynchronously enrich full descriptions for any jobs that have empty/short descriptions (especially LinkedIn)
+            async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=8.0, follow_redirects=True) as http_client:
+                async def enrich_description(job_item):
+                    desc = job_item.get("description", "").strip()
+                    url = job_item.get("url", "").strip()
+                    if (not desc or len(desc) < 80 or desc.lower() in ["none", "nan", "null"]) and "linkedin.com" in url:
+                        try:
+                            match = re.search(r"(?:view/|currentJobId=|jobs/view/|jobs/)(\d{8,12})", url) or re.search(r"(\d{8,12})", url)
+                            if match:
+                                job_id = match.group(1)
+                                guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+                                resp = await http_client.get(guest_url)
+                                if resp.status_code == 200:
+                                    soup = BeautifulSoup(resp.text, "html.parser")
+                                    content_el = soup.select_one(
+                                        ".show-more-less-html__markup, .show-more-less-html__markup--clamp-after-5, "
+                                        ".description__text, #job-details, .jobs-description__content, "
+                                        ".jobs-box__html-content, .jobs-description-content__text, article, main"
+                                    )
+                                    if content_el:
+                                        fetched_desc = clean_html_job_description(str(content_el))
+                                        if len(fetched_desc) > 80:
+                                            job_item["description"] = fetched_desc
+                        except Exception:
+                            pass
+                    return job_item
+
+                enriched_jobs = await asyncio.gather(*[enrich_description(j) for j in raw_jobs])
+
+            print(f"[JobSpy] Fetched & enriched {len(enriched_jobs)} jobs for query='{query}' location='{loc_clean}' country='{country_indeed}'")
+            return enriched_jobs
         except Exception as e:
             print(f"Error scraping with JobSpy (Location: '{location}', Country: '{country_indeed}'): {e}")
             return []
