@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from functools import partial
 from jobspy import scrape_jobs
 from src.integrations.base import BaseJobIntegration
+from src.utils.text_cleaner import clean_html_job_description
 
 def get_indeed_country(location_str: str) -> str:
     """Map user-entered location or city to a valid JobSpy country code."""
@@ -83,7 +84,7 @@ class JobSpyClient(BaseJobIntegration):
                     "title": str(row.get("title", "")),
                     "company": str(row.get("company", "")),
                     "location": str(row.get("location", "")),
-                    "description": str(row.get("description", "")),
+                    "description": clean_html_job_description(str(row.get("description", ""))),
                     "url": str(row.get("job_url", "")),
                     "source": f"jobspy ({row.get('site', 'unknown')})",
                     "posted_date": str(row.get("date_posted", "")) if pd.notna(row.get("date_posted")) else None,

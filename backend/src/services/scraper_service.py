@@ -152,7 +152,7 @@ class ScraperService:
 
         # Remove noisy tags
         unwanted_tags = [
-            "script", "style", "noscript", "iframe", "svg", "header", "footer", 
+            "script", "style", "noscript", "iframe", "svg", "footer", 
             "nav", "aside", "form", "button", "input", "select", "option",
             "canvas", "audio", "video"
         ]
@@ -161,7 +161,7 @@ class ScraperService:
 
         # Remove noisy classes / ids (cookie banners, ads, footers, popups)
         noise_patterns = re.compile(
-            r"cookie|banner|consent|footer|nav|header|modal|popup|ad-container|advertisement|sidebar|newsletter|social-share",
+            r"(^|[\s_-])(cookie|banner|consent|footer|nav|site-header|modal|popup|ad-container|advertisement|sidebar|newsletter|social-share)($|[\s_-])",
             re.IGNORECASE
         )
         for el in soup.find_all(attrs={"class": noise_patterns}):
@@ -169,13 +169,18 @@ class ScraperService:
         for el in soup.find_all(attrs={"id": noise_patterns}):
             el.decompose()
 
-        # Try to find high-value content containers first
+        # Try to find high-value content containers first (prioritizing LinkedIn and ATS markup)
         content_selectors = [
+            ".show-more-less-html__markup",
+            ".show-more-less-html__markup--clamp-after-5",
+            ".description__text",
             "#job-details",
             ".job-details",
+            ".jobs-description__content",
+            ".jobs-box__html-content",
+            ".jobs-description-content__text",
+            ".decorated-job-posting__details",
             ".job-description",
-            ".description__text",
-            ".show-more-less-html__markup",
             ".posting-requirements",
             ".job-posting",
             "[data-automation-id='jobPostingDescription']",
@@ -188,39 +193,33 @@ class ScraperService:
         target_element = None
         for selector in content_selectors:
             found = soup.select_one(selector)
-            if found and len(found.get_text(strip=True)) > 150:
+            if found and len(found.get_text(strip=True)) > 80:
                 target_element = found
                 break
 
         if not target_element:
             target_element = soup.body or soup
 
-        # Convert block tags to clean newlines with bullet points
-        lines = []
-        for elem in target_element.descendants:
-            if isinstance(elem, Tag):
-                if elem.name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
-                    text = elem.get_text(strip=True)
-                    if text:
-                        lines.append(f"\n### {text}\n")
-                elif elem.name == "li":
-                    text = elem.get_text(strip=True)
-                    if text:
-                        lines.append(f"- {text}")
-                elif elem.name in ["p", "div", "section"]:
-                    # direct text in p
-                    direct_text = " ".join(elem.stripped_strings)
-                    if direct_text and len(direct_text) > 10:
-                        lines.append(direct_text)
+        # Extract cleanly structured text using clean_html_job_description
+        from src.utils.text_cleaner import clean_html_job_description
+        cleaned_text = clean_html_job_description(str(target_element))
 
-        # If descendants loop produced sparse lines, use fallback get_text
-        combined_text = "\n".join(lines).strip()
-        if len(combined_text) < 100:
-            combined_text = target_element.get_text(separator="\n", strip=True)
+        # Check for LinkedIn job criteria list (Seniority level, Employment type, Job function, Industries)
+        criteria_list = soup.select_one(".description__job-criteria-list")
+        if criteria_list:
+            criteria_items = []
+            for li in criteria_list.find_all("li"):
+                header = li.find(["h3", "h4", "span", "div"], class_=re.compile(r"subheader|header|title|label", re.I))
+                val = li.find(["span", "div", "p"], class_=re.compile(r"criteria-text|text|criteria|item|value", re.I))
+                h_text = header.get_text(strip=True) if header else ""
+                v_text = val.get_text(strip=True) if val else li.get_text(strip=True)
+                if h_text and v_text and h_text != v_text:
+                    criteria_items.append(f"• {h_text}: {v_text}")
+                elif v_text:
+                    criteria_items.append(f"• {v_text}")
 
-        # Normalize excessive whitespace
-        cleaned_text = re.sub(r"\n{3,}", "\n\n", combined_text)
-        cleaned_text = re.sub(r"[ \t]+", " ", cleaned_text).strip()
+            if criteria_items:
+                cleaned_text += "\n\n### Job Criteria\n" + "\n".join(criteria_items)
 
         # Limit to 5000 characters to optimize LLM tokens while retaining all critical data
         if len(cleaned_text) > 5000:
@@ -266,9 +265,9 @@ class ScraperService:
             try:
                 # Custom handling for certain URLs like LinkedIn public jobs
                 fetch_headers = dict(DEFAULT_HEADERS)
-                if "linkedin.com" in domain:
-                    # Clean LinkedIn URL to avoid session redirect
-                    match = re.search(r"view/(\d+)", url) or re.search(r"currentJobId=(\d+)", url)
+                is_linkedin = "linkedin.com" in domain
+                if is_linkedin:
+                    match = re.search(r"(?:view/|currentJobId=|jobs/view/|jobs/)(\d{8,12})", url) or re.search(r"(\d{8,12})", url)
                     if match:
                         clean_linkedin_id = match.group(1)
                         url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{clean_linkedin_id}"
@@ -282,21 +281,33 @@ class ScraperService:
                 html_content = resp.text
                 soup = BeautifulSoup(html_content, "html.parser")
 
+                # If LinkedIn Guest API response
+                if is_linkedin:
+                    top_title = soup.select_one(".topcard__title, .top-card-layout__title, h1, h2")
+                    top_company = soup.select_one(".topcard__org-name-link, .topcard__flavor, a[data-tracking-control-name*='topcard-org-name']")
+                    top_loc = soup.select_one(".topcard__flavor--bullet, .top-card-layout__first-subline")
+                    if top_title and top_title.get_text(strip=True):
+                        result["title"] = top_title.get_text(strip=True)
+                    if top_company and top_company.get_text(strip=True):
+                        result["company"] = top_company.get_text(strip=True)
+                    if top_loc and top_loc.get_text(strip=True):
+                        result["location"] = top_loc.get_text(strip=True)
+
                 # 1. Try extracting structured JSON-LD (Schema.org)
                 json_ld = self._extract_json_ld(soup)
                 if json_ld and json_ld.get("title") and len(json_ld.get("description", "")) > 80:
-                    result["title"] = json_ld.get("title", "")
-                    result["company"] = json_ld.get("company", "")
-                    result["location"] = json_ld.get("location", "")
+                    result["title"] = result["title"] or json_ld.get("title", "")
+                    result["company"] = result["company"] or json_ld.get("company", "")
+                    result["location"] = result["location"] or json_ld.get("location", "")
                     result["posted_date"] = json_ld.get("posted_date")
                     result["clean_text"] = json_ld.get("description", "")
                     return result
 
                 # 2. Fallback to DOM cleaning and extraction
                 dom_data = self._clean_dom_and_extract_text(soup)
-                result["title"] = json_ld.get("title") or dom_data.get("meta_title", "")
-                result["company"] = json_ld.get("company") or dom_data.get("meta_company", "")
-                result["location"] = json_ld.get("location", "")
+                result["title"] = result["title"] or json_ld.get("title") or dom_data.get("meta_title", "")
+                result["company"] = result["company"] or json_ld.get("company") or dom_data.get("meta_company", "")
+                result["location"] = result["location"] or json_ld.get("location", "")
                 result["posted_date"] = json_ld.get("posted_date")
                 result["clean_text"] = dom_data.get("clean_text", "")
 
