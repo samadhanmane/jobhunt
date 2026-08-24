@@ -772,6 +772,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Exporting Insights CSV State
     const [exportingInsights, setExportingInsights] = useState(false);
     const [isHarvestingLive, setIsHarvestingLive] = useState(false);
+    const [csvMenuOpen, setCsvMenuOpen] = useState(false);
 
     // Helper to persist search results in localStorage so they never disappear
     const persistSearchData = (sId, matched, unique, raw, stats) => {
@@ -981,6 +982,142 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const handleSearchSubmit = (e) => {
         e?.preventDefault();
         executeSearch();
+    };
+
+    // Comprehensive Client-Side & Live Streaming CSV Exporter for Raw, Unique, Curated, or Filtered Jobs
+    const exportJobsToCSV = (scope = "raw") => {
+        let jobsList = [];
+        let filenamePrefix = "jobhunt_jobs";
+        let scopeLabel = "All Harvested";
+
+        if (scope === "raw") {
+            jobsList = allRawJobs;
+            filenamePrefix = "raw_harvested_jobs";
+            scopeLabel = "Raw Harvested";
+        } else if (scope === "unique") {
+            jobsList = allUniqueJobs;
+            filenamePrefix = "unique_roles_jobs";
+            scopeLabel = "Unique Roles";
+        } else if (scope === "curated") {
+            jobsList = allMatchedJobs;
+            filenamePrefix = "curated_matched_jobs";
+            scopeLabel = "Curated Matches";
+        } else if (scope === "filtered") {
+            jobsList = filteredJobs;
+            filenamePrefix = "filtered_view_jobs";
+            scopeLabel = "Filtered View";
+        }
+
+        if (!jobsList || jobsList.length === 0) {
+            showToast(`No jobs available to export in ${scopeLabel}.`, "error");
+            return;
+        }
+
+        const headers = [
+            "Job ID",
+            "Scope",
+            "Job Title",
+            "Company Name",
+            "Location",
+            "Work Mode",
+            "Date Posted",
+            "Source Platform",
+            "Application URL",
+            "Match Score (%)",
+            "Experience Required",
+            "Min Experience Years",
+            "Seniority Level",
+            "Experience Fit",
+            "Matching Skills",
+            "Missing Skills",
+            "Salary Min",
+            "Salary Max",
+            "Salary Currency",
+            "Key Requirements",
+            "HR Contacts",
+            "HR Emails",
+            "Tech Contacts",
+            "Tech Emails",
+            "AI Cold Email Draft",
+            "AI LinkedIn Note Draft",
+            "Company Insights",
+            "Full Job Description"
+        ];
+
+        const escapeCSV = (val) => {
+            if (val === null || val === undefined) return '""';
+            let str = String(val);
+            str = str.replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        const rows = jobsList.map(j => {
+            const matchingSkillsStr = Array.isArray(j.matching_skills) ? j.matching_skills.join(", ") : "";
+            const missingSkillsStr = Array.isArray(j.missing_skills) ? j.missing_skills.join(", ") : "";
+
+            const locLower = (j.location || "").toLowerCase();
+            const workMode = locLower.includes("remote") ? "Remote" : (locLower.includes("hybrid") ? "Hybrid" : "Onsite");
+
+            // Format HR Contacts
+            const hrContacts = (j.hr_contacts || []).map(c => `${c.full_name || c.name || 'HR'} (${c.title || c.headline || 'Recruiter'}) [${c.email || 'N/A'}]`).join("; ");
+            const hrEmails = (j.hr_contacts || []).map(c => c.email).filter(Boolean).join(", ");
+
+            // Format Tech Contacts
+            const techContacts = (j.tech_contacts || []).map(c => `${c.full_name || c.name || 'Lead'} (${c.title || c.headline || 'Tech Lead'}) [${c.email || 'N/A'}]`).join("; ");
+            const techEmails = (j.tech_contacts || []).map(c => c.email).filter(Boolean).join(", ");
+
+            // AI Outreach drafts
+            const coldEmail = (j.hr_contacts && j.hr_contacts[0]?.outreach_draft?.email_body) || (j.tech_contacts && j.tech_contacts[0]?.outreach_draft?.email_body) || "";
+            const linkedinNote = (j.hr_contacts && j.hr_contacts[0]?.outreach_draft?.linkedin_note) || (j.tech_contacts && j.tech_contacts[0]?.outreach_draft?.linkedin_note) || "";
+
+            // Company insights
+            const insights = j.company_insights ? JSON.stringify(j.company_insights) : "";
+
+            return [
+                escapeCSV(j.id || ""),
+                escapeCSV(scopeLabel),
+                escapeCSV(j.title || ""),
+                escapeCSV(j.company || ""),
+                escapeCSV(j.location || "Remote"),
+                escapeCSV(workMode),
+                escapeCSV(j.posted_date || ""),
+                escapeCSV(j.source || ""),
+                escapeCSV(j.url || ""),
+                escapeCSV(j.match_score != null ? `${Math.round(j.match_score)}%` : "50%"),
+                escapeCSV(j.experience_required || "Standard Fit"),
+                escapeCSV(j.min_experience_years ?? ""),
+                escapeCSV(j.seniority_level || ""),
+                escapeCSV(j.experience_fit || ""),
+                escapeCSV(matchingSkillsStr),
+                escapeCSV(missingSkillsStr),
+                escapeCSV(j.salary_range?.min ?? ""),
+                escapeCSV(j.salary_range?.max ?? ""),
+                escapeCSV(j.salary_range?.currency || "USD"),
+                escapeCSV(j.key_requirements || ""),
+                escapeCSV(hrContacts),
+                escapeCSV(hrEmails),
+                escapeCSV(techContacts),
+                escapeCSV(techEmails),
+                escapeCSV(coldEmail),
+                escapeCSV(linkedinNote),
+                escapeCSV(insights),
+                escapeCSV(j.description || "")
+            ].join(",");
+        });
+
+        const csvContent = "\uFEFF" + [headers.map(h => `"${h}"`).join(","), ...rows].join("\r\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const timestamp = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `${filenamePrefix}_${timestamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast(`Downloaded ${jobsList.length} ${scopeLabel} jobs to CSV with full data!`);
+        setCsvMenuOpen(false);
     };
 
     // Export Company Insights CSV
@@ -1370,7 +1507,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto relative">
                             <button 
                                 onClick={() => setRagModalOpen(true)}
                                 className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
@@ -1379,23 +1516,113 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <span>Ask AI</span>
                             </button>
 
-                            <button 
-                                onClick={handleExportInsightsCSV}
-                                disabled={exportingInsights}
-                                className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
-                            >
-                                <span>📊</span>
-                                <span>{exportingInsights ? "Generating..." : "Export Insights & Contacts CSV"}</span>
-                            </button>
+                            {/* CSV Export Dropdown Menu */}
+                            <div className="relative flex-1 sm:flex-none">
+                                <button 
+                                    onClick={() => setCsvMenuOpen(!csvMenuOpen)}
+                                    className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                                >
+                                    <span>📥</span>
+                                    <span>Download CSV</span>
+                                    <span className="text-[10px] opacity-75">▼</span>
+                                </button>
 
-                            <a 
-                                href={`${API_BASE_URL}/api/v1/jobs/${currentSearchId}/export`}
-                                download
-                                className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <span>📥</span>
-                                <span>Standard CSV</span>
-                            </a>
+                                {csvMenuOpen && (
+                                    <>
+                                        <div 
+                                            className="fixed inset-0 z-20" 
+                                            onClick={() => setCsvMenuOpen(false)}
+                                        ></div>
+                                        <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl p-1.5 z-30 space-y-1 text-xs backdrop-blur-md">
+                                            <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                Download Datasets
+                                            </div>
+
+                                            <button 
+                                                onClick={() => exportJobsToCSV("raw")}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm">🌐</span>
+                                                    <div>
+                                                        <div className="font-semibold text-white group-hover:text-indigo-300">Raw Harvested CSV</div>
+                                                        <div className="text-[10px] text-slate-400">All live multi-board listings</div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                                    {allRawJobs.length}
+                                                </span>
+                                            </button>
+
+                                            <button 
+                                                onClick={() => exportJobsToCSV("unique")}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm">🧬</span>
+                                                    <div>
+                                                        <div className="font-semibold text-indigo-300">Unique Roles CSV</div>
+                                                        <div className="text-[10px] text-slate-400">Deduplicated unique postings</div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                                                    {allUniqueJobs.length}
+                                                </span>
+                                            </button>
+
+                                            <button 
+                                                onClick={() => exportJobsToCSV("curated")}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm">🎯</span>
+                                                    <div>
+                                                        <div className="font-semibold text-emerald-300">Curated Matches CSV</div>
+                                                        <div className="text-[10px] text-slate-400">Top candidate match scores</div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                                                    {allMatchedJobs.length}
+                                                </span>
+                                            </button>
+
+                                            <button 
+                                                onClick={() => exportJobsToCSV("filtered")}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm">🔍</span>
+                                                    <div>
+                                                        <div className="font-semibold text-cyan-300">Filtered View CSV</div>
+                                                        <div className="text-[10px] text-slate-400">Matches active filters</div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                                                    {filteredJobs.length}
+                                                </span>
+                                            </button>
+
+                                            <div className="h-px bg-white/[0.08] my-1"></div>
+
+                                            <button 
+                                                onClick={handleExportInsightsCSV}
+                                                disabled={exportingInsights}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all disabled:opacity-50"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm">📊</span>
+                                                    <div>
+                                                        <div className="font-semibold text-purple-300">
+                                                            {exportingInsights ? "Generating Insights..." : "Verified Contacts & Insights CSV"}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400">Includes verified emails & AI outreach</div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
 
