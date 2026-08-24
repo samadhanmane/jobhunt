@@ -368,6 +368,22 @@ class JobService:
                     "tech_contacts": []
                 })
 
+            # Trigger automatic parallel background contact enrichment for all discovered jobs
+            cand_name = candidate_profile.get("current_or_recent_role") or "Candidate"
+            cand_skills = candidate_profile.get("skills", [])
+            custom_cookie = preferences.get("linkedin_cookie")
+            try:
+                asyncio.create_task(
+                    self.background_enrich_all_jobs_contacts(
+                        search_id=search_id,
+                        candidate_name=cand_name,
+                        candidate_skills=cand_skills,
+                        custom_cookie=custom_cookie
+                    )
+                )
+            except Exception as task_err:
+                print(f"Notice: Background enrichment task initialization: {task_err}")
+
             return {
                 "search_id": search_id,
                 "total_found": total_found,
@@ -530,6 +546,121 @@ Recruiter Details:
             "tech_contacts": enriched_tech
         }
 
+    async def background_enrich_all_jobs_contacts(
+        self,
+        search_id: str,
+        candidate_name: str = "Candidate",
+        candidate_skills: Optional[List[str]] = None,
+        custom_cookie: Optional[str] = None
+    ):
+        """
+        Runs automatically in the background after search completion.
+        Discovers HR & Tech contacts in parallel with a concurrency semaphore
+        and drafts personalized outreach messages for every single job.
+        """
+        import asyncio
+        from src.models.database import SessionLocal
+        from src.services.linkedin_service import linkedin_service
+        from src.llm.prompts.outreach import COLD_OUTREACH_SYSTEM_PROMPT
+        import json
+
+        await asyncio.sleep(0.5)
+
+        db = SessionLocal()
+        try:
+            jobs = db.query(Job).filter(Job.search_id == search_id).all()
+            if not jobs:
+                return
+
+            company_cache = {}
+            sem = asyncio.Semaphore(6)
+
+            async def _enrich_job(job_id: str):
+                async with sem:
+                    try:
+                        inner_db = SessionLocal()
+                        try:
+                            job_rec = inner_db.query(Job).filter(Job.id == job_id).first()
+                            if not job_rec:
+                                return
+                            if job_rec.hr_contacts and job_rec.tech_contacts:
+                                return
+
+                            comp_name = (job_rec.company or "").strip()
+                            if not comp_name or comp_name.lower() in ("unknown", "various", "confidential"):
+                                return
+
+                            if comp_name in company_cache:
+                                hr_profiles, tech_profiles = company_cache[comp_name]
+                            else:
+                                all_contacts = await linkedin_service.search_company_all_contacts(
+                                    comp_name, hr_limit=3, tech_limit=3, custom_cookie=custom_cookie
+                                )
+                                hr_profiles = all_contacts.get("hr_contacts", [])
+                                tech_profiles = all_contacts.get("tech_contacts", [])
+                                company_cache[comp_name] = (hr_profiles, tech_profiles)
+
+                            cand_skills = candidate_skills or job_rec.matching_skills or []
+                            skills_str = ", ".join(cand_skills[:5]) if cand_skills else "Software Engineering"
+
+                            async def _draft(contacts_list: List[Dict]) -> List[Dict]:
+                                enriched = []
+                                for r in contacts_list:
+                                    item = r.copy()
+                                    rec_name = r.get('full_name', '').split()[0] if r.get('full_name') else 'there'
+                                    prompt = f"""
+Candidate Name: {candidate_name}
+Target Role: {job_rec.title}
+Candidate Core Skills: {skills_str}
+
+Recruiter Details:
+- Name: {r.get('full_name', 'Recruiter')}
+- Title: {r.get('headline', 'Talent Acquisition')}
+- Company: {job_rec.company}
+"""
+                                    try:
+                                        resp = await self.llm.ainvoke([
+                                            {"role": "system", "content": COLD_OUTREACH_SYSTEM_PROMPT},
+                                            {"role": "user", "content": prompt}
+                                        ])
+                                        raw_content = resp.content.strip()
+                                        if "```json" in raw_content:
+                                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+                                        elif "```" in raw_content:
+                                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
+                                        outreach_data = json.loads(raw_content)
+                                        item["outreach_draft"] = {
+                                            "email_subject": outreach_data.get("email_subject", f"Application for {job_rec.title} - {candidate_name}"),
+                                            "email_body": outreach_data.get("email_body", ""),
+                                            "linkedin_note": outreach_data.get("linkedin_connection_note", "")
+                                        }
+                                    except Exception:
+                                        item["outreach_draft"] = {
+                                            "email_subject": f"Application for {job_rec.title} - {candidate_name}",
+                                            "email_body": f"Hi {rec_name},\n\nI noticed {job_rec.company} is hiring for a {job_rec.title} and wanted to reach out directly given my background in {skills_str}.\n\nBest regards,\n{candidate_name}",
+                                            "linkedin_note": f"Hi {rec_name}, I'd love to connect regarding {job_rec.title} opportunities at {job_rec.company}!"
+                                        }
+                                    enriched.append(item)
+                                return enriched
+
+                            enriched_hr = await _draft(hr_profiles)
+                            enriched_tech = await _draft(tech_profiles)
+
+                            job_rec.hr_contacts = enriched_hr
+                            job_rec.tech_contacts = enriched_tech
+                            inner_db.commit()
+                        finally:
+                            inner_db.close()
+                    except Exception as err:
+                        print(f"Notice: Background job contact enrichment error for {job_id}: {err}")
+
+            job_ids = [j.id for j in jobs]
+            await asyncio.gather(*[_enrich_job(jid) for jid in job_ids], return_exceptions=True)
+
+        except Exception as e:
+            print(f"Background contact enrichment notice: {e}")
+        finally:
+            db.close()
 
     async def query_jobs_rag(self, search_id: str, query_text: str) -> str:
         """

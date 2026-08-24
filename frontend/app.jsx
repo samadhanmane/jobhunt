@@ -835,6 +835,63 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         }
     };
 
+    // Automatic Parallel Background Sync for Enriched Contacts
+    useEffect(() => {
+        if (!currentSearchId) return;
+
+        let pollCount = 0;
+        const maxPolls = 15; // 15 polls * 3s = 45s of active background sync
+
+        const pollInterval = setInterval(async () => {
+            pollCount++;
+            if (pollCount > maxPolls) {
+                clearInterval(pollInterval);
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentSearchId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.jobs && data.jobs.length > 0) {
+                        const hasContacts = data.jobs.some(j => (j.hr_contacts && j.hr_contacts.length > 0) || (j.tech_contacts && j.tech_contacts.length > 0));
+                        if (hasContacts) {
+                            setAllMatchedJobs(data.jobs);
+                            
+                            const contactsByCompany = {};
+                            data.jobs.forEach(j => {
+                                if (j.company && (j.hr_contacts?.length || j.tech_contacts?.length)) {
+                                    contactsByCompany[j.company] = {
+                                        hr_contacts: j.hr_contacts || [],
+                                        tech_contacts: j.tech_contacts || []
+                                    };
+                                }
+                            });
+
+                            setAllUniqueJobs(prev => prev.map(uj => {
+                                const found = contactsByCompany[uj.company];
+                                return found ? { ...uj, ...found } : uj;
+                            }));
+
+                            setAllRawJobs(prev => prev.map(rj => {
+                                const found = contactsByCompany[rj.company];
+                                return found ? { ...rj, ...found } : rj;
+                            }));
+
+                            setSelectedJob(prev => {
+                                if (!prev) return null;
+                                const updated = data.jobs.find(j => j.id === prev.id) || (contactsByCompany[prev.company] ? { ...prev, ...contactsByCompany[prev.company] } : prev);
+                                return updated;
+                            });
+                        }
+                    }
+                }
+            } catch (err) {}
+        }, 3000);
+
+        return () => clearInterval(pollInterval);
+    }, [currentSearchId]);
+
     // Resume Upload & Parse (Auto triggers search on upload)
     const handleResumeChange = async (e) => {
         const file = e.target.files[0];
@@ -1714,10 +1771,8 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                     tech_contacts: data.tech_contacts || []
                 };
                 onUpdateJob(updated);
-                showToast(`Discovered ${data.hr_contacts?.length || 0} HR + ${data.tech_contacts?.length || 0} Tech contacts!`);
-                setActiveTab("contacts");
+                showToast(`Enriched ${data.hr_contacts?.length || 0} HR + ${data.tech_contacts?.length || 0} Tech contacts!`);
 
-                // If backend noticed cookie is expired
                 if (data.cookie_expired) {
                     showToast("⚠️ LinkedIn cookie expired. Fallback dorking was used. Click top badge to refresh.", "error");
                 }
@@ -1730,6 +1785,13 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
             setFetchingContacts(false);
         }
     };
+
+    // Auto-fetch contacts if not already loaded
+    useEffect(() => {
+        if (allContacts.length === 0 && !fetchingContacts) {
+            handleFetchContacts();
+        }
+    }, [job.id]);
 
     const copyToClipboard = (text, label = "Copied!") => {
         navigator.clipboard.writeText(text);
@@ -1929,20 +1991,30 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                     {activeTab === "contacts" && (
                         <div className="space-y-4">
                             {allContacts.length === 0 ? (
-                                <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-3">
-                                    <div className="text-2xl">👥</div>
-                                    <div className="text-white font-bold text-xs">No recruiter or tech contacts loaded yet</div>
-                                    <p className="text-slate-400 text-xs">
-                                        Trigger live Scout multi-factor discovery to find HR managers, tech leads, verified emails, phone numbers, and LinkedIn profile URLs.
-                                    </p>
-                                    <button 
-                                        onClick={handleFetchContacts}
-                                        disabled={fetchingContacts}
-                                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50"
-                                    >
-                                        {fetchingContacts ? "Discovering Contacts..." : "⚡ Discover HR & Tech Contacts Now"}
-                                    </button>
-                                </div>
+                                fetchingContacts ? (
+                                    <div className="p-8 rounded-xl bg-slate-900/80 border border-indigo-500/20 text-center space-y-3">
+                                        <div className="inline-block w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                                        <div className="text-white font-bold text-xs">Discovering Recruiter & Tech Contacts in Parallel...</div>
+                                        <p className="text-slate-400 text-xs max-w-md mx-auto">
+                                            Auto-scraping corporate team directory, verifying SMTP email deliverability, and generating tailored AI outreach drafts for <strong className="text-slate-200">{job.company}</strong>.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-3">
+                                        <div className="text-2xl">👥</div>
+                                        <div className="text-white font-bold text-xs">No recruiter or tech contacts loaded yet</div>
+                                        <p className="text-slate-400 text-xs">
+                                            Trigger live Scout multi-factor discovery to find HR managers, tech leads, verified emails, phone numbers, and LinkedIn profile URLs.
+                                        </p>
+                                        <button 
+                                            onClick={handleFetchContacts}
+                                            disabled={fetchingContacts}
+                                            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50"
+                                        >
+                                            {fetchingContacts ? "Discovering Contacts..." : "⚡ Discover HR & Tech Contacts Now"}
+                                        </button>
+                                    </div>
+                                )
                             ) : (
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
@@ -1990,18 +2062,28 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                     {activeTab === "outreach" && (
                         <div className="space-y-4">
                             {allContacts.length === 0 ? (
-                                <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-2">
-                                    <div className="text-slate-400 text-xs">
-                                        Discover team contacts first to generate tailored cold outreach drafts!
+                                fetchingContacts ? (
+                                    <div className="p-8 rounded-xl bg-slate-900/80 border border-indigo-500/20 text-center space-y-3">
+                                        <div className="inline-block w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                                        <div className="text-white font-bold text-xs">Generating Tailored Outreach Drafts...</div>
+                                        <p className="text-slate-400 text-xs max-w-md mx-auto">
+                                            Synthesizing recruiter profiles, corporate tone, and your matching skills for <strong className="text-slate-200">{job.company}</strong>.
+                                        </p>
                                     </div>
-                                    <button 
-                                        onClick={handleFetchContacts}
-                                        disabled={fetchingContacts}
-                                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
-                                    >
-                                        {fetchingContacts ? "Loading..." : "⚡ Find Contacts & Generate Drafts"}
-                                    </button>
-                                </div>
+                                ) : (
+                                    <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-2">
+                                        <div className="text-slate-400 text-xs">
+                                            Discover team contacts first to generate tailored cold outreach drafts!
+                                        </div>
+                                        <button 
+                                            onClick={handleFetchContacts}
+                                            disabled={fetchingContacts}
+                                            className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
+                                        >
+                                            {fetchingContacts ? "Loading..." : "⚡ Find Contacts & Generate Drafts"}
+                                        </button>
+                                    </div>
+                                )
                             ) : (
                                 <div className="space-y-3">
                                     {allContacts.map((c, i) => {
