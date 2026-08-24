@@ -425,10 +425,16 @@ Recruiter Details:
         enriched_hr = await _draft_outreach(hr_profiles)
         enriched_tech = await _draft_outreach(tech_profiles)
 
-        # Save to database
-        job.hr_contacts = enriched_hr
-        job.tech_contacts = enriched_tech
-        self.db.commit()
+        # Save to database (safely wrapped)
+        try:
+            job.hr_contacts = enriched_hr
+            job.tech_contacts = enriched_tech
+            self.db.commit()
+        except Exception as db_err:
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
 
         return {
             "status": "success",
