@@ -754,12 +754,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         } catch (e) {}
     }, []);
 
-    // Search Execution State & Dual Results View ('matched' vs 'all')
-    const [activeResultsTab, setActiveResultsTab] = useState("matched"); // 'matched' | 'all'
+    // Search Execution State & Result Lists
     const [searching, setSearching] = useState(false);
     const [currentSearchId, setCurrentSearchId] = useState("");
     const [allMatchedJobs, setAllMatchedJobs] = useState([]);
-    const [allHarvestedJobs, setAllHarvestedJobs] = useState([]);
+    const [allUniqueJobs, setAllUniqueJobs] = useState([]);
+    const [allRawJobs, setAllRawJobs] = useState([]);
     const [searchStats, setSearchStats] = useState({ total_found: 0, unique_count: 0 });
 
     // Selected Job for Detailed Modal
@@ -774,7 +774,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [filterSeniority, setFilterSeniority] = useState("all");
     const [filterDate, setFilterDate] = useState("all");
     const [filterSource, setFilterSource] = useState("all");
-    const [sortBy, setSortBy] = useState("score");
+    const [sortBy, setSortBy] = useState("score"); // 'score' | 'date' | 'unique' | 'raw'
 
     // RAG AI Query State
     const [ragModalOpen, setRagModalOpen] = useState(false);
@@ -789,7 +789,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const executeSearch = async (overrideFile = null, overrideRole = null) => {
         setSearching(true);
         setAllMatchedJobs([]);
-        setAllHarvestedJobs([]);
+        setAllUniqueJobs([]);
+        setAllRawJobs([]);
 
         const activeRole = (overrideRole || role || "Software Engineer").trim();
 
@@ -818,10 +819,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     unique_count: data.unique_count || 0
                 });
                 const matched = data.jobs || [];
-                const harvested = data.all_jobs && data.all_jobs.length > 0 ? data.all_jobs : matched;
+                const unique = data.unique_jobs || data.all_jobs || matched;
+                const raw = data.raw_jobs || unique;
                 setAllMatchedJobs(matched);
-                setAllHarvestedJobs(harvested);
-                showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} deduplicated jobs!`);
+                setAllUniqueJobs(unique);
+                setAllRawJobs(raw);
+                showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} unique roles!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
             }
@@ -875,7 +878,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         setResumeFile(null);
         setResumeProfile(null);
         setAllMatchedJobs([]);
-        setAllHarvestedJobs([]);
+        setAllUniqueJobs([]);
+        setAllRawJobs([]);
         setCurrentSearchId("");
         try {
             localStorage.removeItem("jobhunt_resume_profile");
@@ -931,13 +935,21 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Update job in list after contacts are fetched in modal
     const handleUpdateJobContacts = (updatedJob) => {
         setAllMatchedJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
-        setAllHarvestedJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setAllUniqueJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setAllRawJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
         setSelectedJob(updatedJob);
     };
 
-    // Filter & Sort Logic for Matched and All Harvested sections
+    // Filter & Sort Logic for Selected View (Matched, Unique, or All Raw)
     const filteredJobs = useMemo(() => {
-        const sourceList = activeResultsTab === 'matched' ? allMatchedJobs : allHarvestedJobs;
+        let sourceList = allMatchedJobs;
+        if (sortBy === 'raw') {
+            sourceList = allRawJobs;
+        } else if (sortBy === 'unique') {
+            sourceList = allUniqueJobs;
+        } else if (sourceList.length === 0 && allUniqueJobs.length > 0) {
+            sourceList = allUniqueJobs;
+        }
 
         return sourceList.filter(job => {
             const title = (job.title || "").toLowerCase();
@@ -981,8 +993,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'onsite' && isRemote) return false;
 
-            // 4. Min Score (only applies strictly when on matched tab or when slider > 0)
-            if ((activeResultsTab === 'matched' || minScore > 0) && (job.match_score || 0) < minScore) {
+            // 4. Min Score (applies when slider > 0)
+            if (minScore > 0 && (job.match_score || 0) < minScore) {
                 return false;
             }
 
@@ -1019,7 +1031,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
             return 0;
         });
-    }, [activeResultsTab, allMatchedJobs, allHarvestedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+    }, [allMatchedJobs, allUniqueJobs, allRawJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // RAG AI Query Handler
     const handleAskAI = async (e) => {
@@ -1205,7 +1217,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             </div>
 
             {/* Filter Toolbar & Search Results Header */}
-            {(allMatchedJobs.length > 0 || allHarvestedJobs.length > 0) && (
+            {(allMatchedJobs.length > 0 || allUniqueJobs.length > 0 || allRawJobs.length > 0) && (
                 <div className="space-y-5">
                     {/* Summary Stat Banner & Export Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1252,45 +1264,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <span>📥</span>
                                 <span>Standard CSV</span>
                             </a>
-                        </div>
-                    </div>
-
-                    {/* DUAL SECTION VIEW TOGGLE TABS */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-1.5 bg-slate-950/60 rounded-2xl border border-white/[0.08]">
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => setActiveResultsTab("matched")}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                                    activeResultsTab === "matched"
-                                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400/30"
-                                        : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-white/[0.04]"
-                                }`}
-                            >
-                                <span>🎯 Top Matched Jobs</span>
-                                <span className="px-2 py-0.5 rounded-full bg-black/40 text-[11px] font-extrabold text-indigo-200">
-                                    {allMatchedJobs.length}
-                                </span>
-                            </button>
-
-                            <button 
-                                onClick={() => setActiveResultsTab("all")}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                                    activeResultsTab === "all"
-                                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400/30"
-                                        : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-white/[0.04]"
-                                }`}
-                            >
-                                <span>🌐 All Harvested Jobs</span>
-                                <span className="px-2 py-0.5 rounded-full bg-black/40 text-[11px] font-extrabold text-emerald-200">
-                                    {allHarvestedJobs.length}
-                                </span>
-                            </button>
-                        </div>
-
-                        <div className="text-[11px] text-slate-400 px-3 flex items-center gap-1.5 self-center sm:self-auto">
-                            <span>Showing</span>
-                            <strong className="text-white">{filteredJobs.length}</strong>
-                            <span>{activeResultsTab === 'matched' ? 'curated matches' : 'harvested postings'}</span>
                         </div>
                     </div>
 
@@ -1355,16 +1328,18 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 </select>
                             </div>
 
-                            {/* Sort Mode */}
+                            {/* Sort & View Mode */}
                             <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort & View Mode</label>
                                 <select 
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-indigo-300"
                                 >
-                                    <option value="score">⭐ Highest Match</option>
+                                    <option value="score">⭐ Highest Match (Curated)</option>
                                     <option value="date">📅 Most Recent</option>
+                                    <option value="unique">🧬 Unique Jobs ({allUniqueJobs.length || searchStats.unique_count})</option>
+                                    <option value="raw">🌐 All Jobs ({allRawJobs.length || searchStats.total_found})</option>
                                 </select>
                             </div>
                         </div>

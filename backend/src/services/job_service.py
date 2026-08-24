@@ -332,12 +332,50 @@ class JobService:
                     "tech_contacts": []
                 })
 
+            # Format all raw harvested jobs (without deduplication)
+            all_raw_payload = []
+            for raw_j in raw_jobs:
+                raw_title = raw_j.get("title", "Unknown Role")
+                raw_desc = raw_j.get("description", "")
+                raw_exp = extract_job_experience_metadata(raw_title, raw_desc, raw_j.get("experience_fit", ""))
+                
+                raw_date = raw_j.get("posted_date")
+                formatted_date = format_posted_date_for_csv(raw_date)
+                if formatted_date == "N/A":
+                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+                    
+                all_raw_payload.append({
+                    "id": str(uuid.uuid4()),
+                    "title": raw_title,
+                    "company": raw_j.get("company", "Unknown Company"),
+                    "location": raw_j.get("location", "Remote"),
+                    "description": raw_desc,
+                    "url": raw_j.get("url", ""),
+                    "source": raw_j.get("source", "unknown"),
+                    "posted_date": formatted_date,
+                    "salary_range": raw_j.get("salary_range"),
+                    "match_score": float(raw_j.get("match_score", 50.0)),
+                    "match_reason": raw_j.get("match_reason", "Raw job board listing."),
+                    "matching_skills": raw_j.get("matching_skills", []),
+                    "missing_skills": raw_j.get("missing_skills", []),
+                    "experience_fit": raw_j.get("experience_fit", "Standard Fit"),
+                    "experience_required": raw_exp["experience_required"],
+                    "min_experience_years": raw_exp["min_experience_years"],
+                    "seniority_level": raw_exp["seniority_level"],
+                    "key_requirements": raw_j.get("key_requirements", ""),
+                    "company_insights": raw_j.get("company_insights") or {},
+                    "hr_contacts": [],
+                    "tech_contacts": []
+                })
+
             return {
                 "search_id": search_id,
                 "total_found": total_found,
                 "unique_count": unique_count,
                 "status": "completed",
                 "jobs": self.get_results(search_id),
+                "unique_jobs": all_unique_payload,
+                "raw_jobs": all_raw_payload,
                 "all_jobs": all_unique_payload
             }
             
