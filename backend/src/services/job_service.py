@@ -661,8 +661,8 @@ User Query:
         if not jobs:
             return None
 
-        # Auto-fetch contacts for jobs that don't have them
-        for job in jobs:
+        # Auto-fetch contacts for top matched jobs that don't have them yet (limit to top 5 for fast response)
+        for job in jobs[:5]:
             if not job.hr_contacts or not job.tech_contacts:
                 try:
                     await self.fetch_job_hr_contacts(
