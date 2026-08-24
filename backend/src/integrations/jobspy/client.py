@@ -35,7 +35,7 @@ def get_indeed_country(location_str: str) -> str:
         if key in loc:
             return country_code
             
-    return "worldwide"
+    return "usa"
 
 import httpx
 from bs4 import BeautifulSoup

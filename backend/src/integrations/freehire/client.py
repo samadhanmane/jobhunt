@@ -142,8 +142,7 @@ class FreehireClient(BaseJobIntegration):
             async with httpx.AsyncClient(base_url=self.base_url, headers=self._get_headers(), timeout=self.timeout, follow_redirects=True) as client:
                 resp = await client.get("/api/v1/jobs/search", params=param_list)
                 return self._handle_response(resp)
-        except Exception as e:
-            print(f"Freehire search_jobs error: {e}")
+        except Exception:
             return {"data": [], "meta": {"total": 0, "limit": limit, "offset": offset}}
 
     async def get_job(self, slug: str) -> Dict[str, Any]:
