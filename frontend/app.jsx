@@ -740,20 +740,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [parsingResume, setParsingResume] = useState(false);
     const resumeInputRef = useRef(null);
 
-    // Load persisted resume on component mount
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem("jobhunt_resume_profile");
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                setResumeProfile(parsed);
-                if (parsed.target_roles && parsed.target_roles[0]) {
-                    setRole(parsed.target_roles[0]);
-                }
-            }
-        } catch (e) {}
-    }, []);
-
     // Search Execution State & Result Lists
     const [searching, setSearching] = useState(false);
     const [currentSearchId, setCurrentSearchId] = useState("");
@@ -785,16 +771,49 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
     // Exporting Insights CSV State
     const [exportingInsights, setExportingInsights] = useState(false);
-
     const [isHarvestingLive, setIsHarvestingLive] = useState(false);
 
-    // Execute Search across 9 platforms directly Worldwide
+    // Helper to persist search results in localStorage so they never disappear
+    const persistSearchData = (sId, matched, unique, raw, stats) => {
+        try {
+            localStorage.setItem("jobhunt_cached_search", JSON.stringify({
+                search_id: sId || "",
+                matched: (matched || []).slice(0, 100),
+                unique: (unique || []).slice(0, 400),
+                raw: (raw || []).slice(0, 800),
+                stats: stats || { total_found: 0, unique_count: 0 }
+            }));
+        } catch (e) {}
+    };
+
+    // Load persisted resume and saved search results on component mount
+    useEffect(() => {
+        try {
+            const savedResume = localStorage.getItem("jobhunt_resume_profile");
+            if (savedResume) {
+                const parsed = JSON.parse(savedResume);
+                setResumeProfile(parsed);
+                if (parsed.target_roles && parsed.target_roles[0]) {
+                    setRole(parsed.target_roles[0]);
+                }
+            }
+
+            const savedSearch = localStorage.getItem("jobhunt_cached_search");
+            if (savedSearch) {
+                const parsedSearch = JSON.parse(savedSearch);
+                if (parsedSearch.search_id) setCurrentSearchId(parsedSearch.search_id);
+                if (parsedSearch.matched?.length) setAllMatchedJobs(parsedSearch.matched);
+                if (parsedSearch.unique?.length) setAllUniqueJobs(parsedSearch.unique);
+                if (parsedSearch.raw?.length) setAllRawJobs(parsedSearch.raw);
+                if (parsedSearch.stats) setSearchStats(parsedSearch.stats);
+            }
+        } catch (e) {}
+    }, []);
+
+    // Execute Search across 9 platforms directly Worldwide (retains previous results until fresh ones arrive)
     const executeSearch = async (overrideFile = null, overrideRole = null) => {
         setSearching(true);
         setIsHarvestingLive(false);
-        setAllMatchedJobs([]);
-        setAllUniqueJobs([]);
-        setAllRawJobs([]);
 
         const activeRole = (overrideRole || role || "Software Engineer").trim();
 
@@ -818,18 +837,24 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             const data = await res.json();
             if (res.ok && data.status === 'success') {
                 setCurrentSearchId(data.search_id);
-                setSearchStats({
+                const newStats = {
                     total_found: data.total_found || 0,
                     unique_count: data.unique_count || 0
-                });
+                };
+                setSearchStats(newStats);
                 const matched = data.jobs || [];
                 const unique = data.unique_jobs || data.all_jobs || matched;
                 const raw = data.raw_jobs || unique;
+                
+                // Overwrite with fresh search results
                 setAllMatchedJobs(matched);
                 setAllUniqueJobs(unique);
                 setAllRawJobs(raw);
 
-                // If backend started continuous background harvesting
+                // Save to localStorage
+                persistSearchData(data.search_id, matched, unique, raw, newStats);
+
+                // Start continuous background harvesting
                 setIsHarvestingLive(true);
                 showToast(`Harvested initial ${data.total_found} postings -> streaming more in background!`);
             } else {
@@ -862,13 +887,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 if (res.ok) {
                     const data = await res.json();
                     if (data.raw_jobs && data.raw_jobs.length > 0) {
-                        setSearchStats({
+                        const updatedStats = {
                             total_found: data.total_found || data.raw_jobs.length,
                             unique_count: data.unique_count || data.unique_jobs.length
-                        });
+                        };
+                        setSearchStats(updatedStats);
                         setAllRawJobs(data.raw_jobs);
                         setAllUniqueJobs(data.unique_jobs || []);
                         setAllMatchedJobs(data.jobs || []);
+
+                        // Persist live streaming updates
+                        persistSearchData(currentSearchId, data.jobs, data.unique_jobs, data.raw_jobs, updatedStats);
 
                         // Keep modal contacts synced
                         if (data.jobs && data.jobs.length > 0) {
@@ -937,8 +966,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         setAllUniqueJobs([]);
         setAllRawJobs([]);
         setCurrentSearchId("");
+        setSearchStats({ total_found: 0, unique_count: 0 });
         try {
             localStorage.removeItem("jobhunt_resume_profile");
+            localStorage.removeItem("jobhunt_cached_search");
         } catch (err) {}
         if (resumeInputRef.current) {
             resumeInputRef.current.value = "";
@@ -1553,6 +1584,20 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             </div>
                         </div>
                     </div>
+
+                    {/* Active Re-Harvesting Background Progress Banner */}
+                    {searching && (
+                        <div className="flex items-center justify-between p-3.5 rounded-xl bg-indigo-950/80 border border-indigo-500/40 text-indigo-200 text-xs font-semibold animate-pulse shadow-md">
+                            <div className="flex items-center gap-2.5">
+                                <span className="relative flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                                </span>
+                                <span>Discovering fresh jobs across 9 platforms for <strong>"{role}"</strong>... keeping previous results active on screen until fresh harvest arrives.</span>
+                            </div>
+                            <div className="text-[11px] font-mono text-indigo-300/80 hidden sm:block">Live Re-Harvesting...</div>
+                        </div>
+                    )}
 
                     {/* Job Cards Grid */}
                     {filteredJobs.length === 0 ? (
