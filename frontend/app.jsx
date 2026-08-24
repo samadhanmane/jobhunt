@@ -884,11 +884,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             // 4. Min Score
             if ((job.match_score || 0) < minScore) return false;
 
-            // 5. Seniority
+            // 5. Seniority Filter
             const fit = (job.experience_fit || "").toLowerCase();
-            if (filterSeniority === 'intern' && !title.includes('intern') && !title.includes('trainee') && !fit.includes('intern') && !title.includes('graduate')) return false;
-            if (filterSeniority === 'junior' && !title.includes('junior') && !title.includes('entry') && !title.includes('associate') && !fit.includes('junior')) return false;
-            if (filterSeniority === 'senior' && !title.includes('senior') && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
+            const desc = (job.description || "").toLowerCase();
+            
+            const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year');
+            const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee');
+            const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || isInternRole) && !isSeniorRole;
+
+            if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
+            if (filterSeniority === 'junior' && (!isJuniorRole || isSeniorRole)) return false;
+            if (filterSeniority === 'senior' && !isSeniorRole) return false;
 
             // 6. Freshness Date
             if (filterDate === '24h' && !isWithinDays(job.posted_date, 1)) return false;

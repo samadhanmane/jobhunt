@@ -79,96 +79,118 @@ class RankingAgent(BaseJobAgent):
         pref_loc = str(preferences.get("location", "")).lower().strip()
         pref_work_mode = str(preferences.get("remote_preference", preferences.get("work_mode", "any"))).lower().strip()
         
-        # Determine Experience Category
-        raw_exp = str(preferences.get("experience_level", preferences.get("experience_years", "0"))).lower().strip()
-        if "intern" in raw_exp or raw_exp in ["0", "0.0", "fresher", "internship"] or "intern" in pref_role_str:
+        # Determine Candidate Experience Category from profile & preferences
+        cand_years = float(resume_profile.get("experience_years", preferences.get("experience_years", 0)) or 0)
+        cand_seniority = str(resume_profile.get("seniority", preferences.get("experience_level", "Mid"))).lower().strip()
+        raw_exp = str(preferences.get("experience_level", preferences.get("experience_years", str(cand_years)))).lower().strip()
+
+        if "intern" in cand_seniority or "intern" in raw_exp or cand_years == 0 or raw_exp in ["0", "0.0", "fresher", "internship"] or "intern" in pref_role_str:
             exp_category = "intern"
-        elif "entry" in raw_exp or raw_exp in ["1", "1.0", "2", "2.0", "junior"]:
+        elif "junior" in cand_seniority or "entry" in cand_seniority or "entry" in raw_exp or cand_years <= 2.0 or raw_exp in ["1", "1.0", "2", "2.0", "junior"]:
             exp_category = "entry"
-        elif "mid" in raw_exp or raw_exp in ["3", "3.0", "4", "4.0", "5", "5.0"]:
-            exp_category = "mid"
-        elif "senior" in raw_exp or raw_exp in ["6", "7", "8"]:
-            exp_category = "senior"
-        elif "lead" in raw_exp or "director" in raw_exp or "staff" in raw_exp:
+        elif "lead" in cand_seniority or "lead" in raw_exp or "director" in raw_exp or "staff" in raw_exp or cand_years >= 8.0:
             exp_category = "lead"
+        elif "senior" in cand_seniority or "senior" in raw_exp or cand_years >= 5.0 or raw_exp in ["5", "6", "7", "8"]:
+            exp_category = "senior"
         else:
-            try:
-                val = float(raw_exp)
-                if val <= 0.5: exp_category = "intern"
-                elif val <= 2.0: exp_category = "entry"
-                elif val <= 5.0: exp_category = "mid"
-                elif val <= 8.0: exp_category = "senior"
-                else: exp_category = "lead"
-            except Exception:
-                exp_category = "mid"
+            exp_category = "mid"
+
+        # Extract required experience years from Job Description & Title
+        exp_years_found = []
+        plus_matches = re.findall(r'(\d+)\s*\+\s*(?:years?|yrs?)\b', desc)
+        for m in plus_matches:
+            val = int(m)
+            if 1 <= val <= 25:
+                exp_years_found.append(val)
+
+        min_matches = re.findall(r'(?:minimum|min\.?|at\s+least|requires?|require|with)\s*(\d+)\s*\+?\s*(?:years?|yrs?)\b', desc)
+        for m in min_matches:
+            val = int(m)
+            if 1 <= val <= 25:
+                exp_years_found.append(val)
+
+        range_matches = re.findall(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:years?|yrs?)\b', desc)
+        for m in range_matches:
+            val = int(m[0])
+            if 1 <= val <= 25:
+                exp_years_found.append(val)
+
+        req_years = max(exp_years_found) if exp_years_found else 0
+
+        is_job_intern = any(w in title for w in ["intern", "internship", "trainee", "apprentice", "fresher", "student", "co-op", "graduate intern"])
+        is_job_entry = any(w in title for w in ["entry level", "junior", "associate", "graduate", "0-1 year", "0 to 1 year", "0-2 year"]) or is_job_intern or (req_years in [0, 1] and not any(w in title for w in ["senior", "lead", "staff", "principal", "head", "architect"]))
+        is_job_senior = any(w in title for w in ["senior", "sr.", "sr ", "lead", "principal", "staff", "director", "manager", "head of", "architect", "vp"]) or (req_years >= 4)
+        is_job_lead = any(w in title for w in ["lead", "principal", "staff", "director", "head of", "chief", "vp"]) or (req_years >= 8)
 
         score = 0.0
+        score_cap = 100.0
 
         # --- 1. EXPERIENCE LEVEL & SENIORITY FIT (35%) ---
-        is_job_intern = any(w in title for w in ["intern", "internship", "trainee", "apprentice", "fresher", "student", "co-op"])
-        is_job_entry = any(w in title for w in ["entry level", "junior", "associate", "graduate", "0-", "0 to "]) or is_job_intern
-        is_job_senior = any(w in title for w in ["senior", "sr.", "sr ", "lead", "principal", "staff", "director", "manager", "head of", "architect"])
-        is_job_lead = any(w in title for w in ["lead", "principal", "staff", "director", "head of", "chief", "vp"])
-
         if exp_category == "intern":
-            if is_job_intern:
+            if is_job_senior:
+                exp_score = -25.0
+                exp_fit = f"Senior Role (Requires {req_years}+ Years)" if req_years >= 4 else "Senior Role (Requires Experience)"
+                score_cap = 30.0
+            elif is_job_intern:
                 exp_score = 35.0
                 exp_fit = "Internship (Exact Fit)"
-            elif is_job_entry and not is_job_senior:
+            elif is_job_entry:
                 exp_score = 25.0
-                exp_fit = "Entry Level / Graduate"
-            elif is_job_senior:
-                exp_score = 2.0
-                exp_fit = "Senior Role (Requires Experience)"
+                exp_fit = "Entry Level / Early Career"
             else:
-                exp_score = 18.0
-                exp_fit = "General Level"
+                exp_score = 0.0
+                exp_fit = "Mid Level Role"
+                score_cap = 45.0
         elif exp_category == "entry":
-            if is_job_entry and not is_job_senior:
+            if is_job_senior:
+                exp_score = -20.0
+                exp_fit = f"Senior Role (Requires {req_years}+ Years)" if req_years >= 4 else "Senior Role (Requires Experience)"
+                score_cap = 40.0
+            elif is_job_entry and not is_job_senior:
                 exp_score = 35.0
                 exp_fit = "Entry Level (Exact Fit)"
             elif is_job_intern:
                 exp_score = 28.0
                 exp_fit = "Internship / Early Career"
-            elif is_job_senior:
-                exp_score = 2.0
-                exp_fit = "Senior Role (Requires Experience)"
             else:
-                exp_score = 22.0
-                exp_fit = "Standard Fit"
+                exp_score = 15.0
+                exp_fit = "Mid Level Fit"
         elif exp_category == "senior":
-            if is_job_senior:
+            if is_job_intern:
+                exp_score = -25.0
+                exp_fit = "Internship (Underqualified Role)"
+                score_cap = 25.0
+            elif is_job_senior:
                 exp_score = 35.0
                 exp_fit = "Senior Level (Exact Fit)"
-            elif is_job_intern:
-                exp_score = 0.0
-                exp_fit = "Internship (Underqualified Role)"
             else:
                 exp_score = 20.0
                 exp_fit = "Mid / Senior Level"
         elif exp_category == "lead":
-            if is_job_lead:
+            if is_job_intern:
+                exp_score = -30.0
+                exp_fit = "Internship (Underqualified Role)"
+                score_cap = 20.0
+            elif is_job_lead:
                 exp_score = 35.0
                 exp_fit = "Lead / Principal (Exact Fit)"
             elif is_job_senior:
                 exp_score = 28.0
                 exp_fit = "Senior Level Fit"
-            elif is_job_intern:
-                exp_score = 0.0
-                exp_fit = "Internship (Underqualified Role)"
             else:
                 exp_score = 15.0
                 exp_fit = "Mid Level"
         else:  # "mid"
-            if not is_job_intern and not is_job_lead:
+            if is_job_intern:
+                exp_score = 5.0
+                exp_fit = "Internship Position"
+            elif is_job_lead:
+                exp_score = 15.0
+                exp_fit = "Lead Position"
+            else:
                 exp_score = 35.0
                 exp_fit = "Mid Level (Exact Fit)"
-            elif is_job_intern:
-                exp_score = 10.0
-                exp_fit = "Internship Position"
-            else:
-                exp_score = 25.0
-                exp_fit = "Senior Level"
+
         score += exp_score
 
         # --- 2. TARGET ROLE & RELATED TITLES FIT (35%) ---
@@ -178,7 +200,6 @@ class RankingAgent(BaseJobAgent):
         if pref_role_str and pref_role_str in title:
             score += 35.0
         elif any(r in title for r in target_roles if len(r) > 3):
-            # Matches any LLM-expanded equivalent title
             score += 33.0
         elif role_tokens and matched_title_tokens == len(role_tokens):
             score += 30.0
@@ -199,14 +220,21 @@ class RankingAgent(BaseJobAgent):
         if is_mismatched:
             score = max(score - 50.0, 5.0)
             exp_fit = "Mismatched Field"
+            score_cap = min(score_cap, 20.0)
 
-        final_score = min(100.0, round(score, 1))
+        # Apply score cap based on strict seniority disqualification
+        raw_final = max(score, 5.0)
+        final_score = min(score_cap, min(100.0, round(raw_final, 1)))
 
         # Dynamic match reason
         if final_score >= 80:
             match_reason = f"Excellent match for your {exp_fit.lower()} preference in '{pref_role_str}'."
         elif final_score >= 60:
             match_reason = f"Good alignment with {exp_fit.lower()} requirements and skills."
+        elif final_score <= 35 and "Senior" in exp_fit:
+            match_reason = f"Underqualified: {exp_fit}."
+        elif final_score <= 35 and "Underqualified" in exp_fit:
+            match_reason = f"Overqualified: {exp_fit}."
         else:
             match_reason = f"Partial fit ({exp_fit})."
 
