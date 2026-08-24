@@ -31,6 +31,54 @@ function isWithinDays(dateStr, days) {
     }
 }
 
+function cleanHtmlJobDescription(rawHtml) {
+    if (!rawHtml) return "No full description available.";
+    if (typeof rawHtml !== 'string') return String(rawHtml);
+    
+    // If no HTML tags present, return clean plain text
+    if (!rawHtml.includes("<") && !rawHtml.includes(">")) {
+        return rawHtml.trim();
+    }
+    
+    try {
+        let text = rawHtml;
+        // Strip dangerous / irrelevant tags
+        text = text.replace(/<(script|style|svg|iframe|head|meta|noscript)[^>]*>.*?<\/\1>/gi, '');
+        // Preserve line breaks for block elements
+        text = text.replace(/<br\s*[\/]?>/gi, '\n');
+        text = text.replace(/<li[^>]*>/gi, '\n• ');
+        text = text.replace(/<\/li>/gi, '');
+        text = text.replace(/<(h[1-6])[^>]*>/gi, '\n\n');
+        text = text.replace(/<\/(h[1-6])>/gi, '\n');
+        text = text.replace(/<\/(p|div|ul|ol|table|tr|section|article)>/gi, '\n\n');
+        text = text.replace(/<(p|div|ul|ol|table|tr|section|article)[^>]*>/gi, '\n');
+        
+        // Strip remaining HTML tags
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = text;
+        let cleaned = tempDiv.textContent || tempDiv.innerText || '';
+        
+        // Clean multiple blank lines
+        const lines = cleaned.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim());
+        const result = [];
+        let prevBlank = false;
+        for (const line of lines) {
+            if (!line) {
+                if (!prevBlank) {
+                    result.push('');
+                    prevBlank = true;
+                }
+            } else {
+                result.push(line);
+                prevBlank = false;
+            }
+        }
+        return result.join('\n').trim();
+    } catch {
+        return rawHtml.replace(/<[^>]*>/g, ' ').trim();
+    }
+}
+
 // ==========================================
 // Main App Component
 // ==========================================
@@ -1651,8 +1699,8 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                 <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                                     📄 Full Job Description
                                 </div>
-                                <div className="text-slate-300 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap bg-slate-950/40 p-2.5 rounded-lg">
-                                    {job.description || "No full description available."}
+                                <div className="text-slate-300 text-xs leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap bg-slate-950/40 p-3 rounded-lg border border-white/[0.04]">
+                                    {cleanHtmlJobDescription(job.description)}
                                 </div>
                             </div>
                         </div>

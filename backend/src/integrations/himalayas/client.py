@@ -1,6 +1,7 @@
 import aiohttp
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.text_cleaner import clean_html_job_description
 
 class HimalayasClient(BaseJobIntegration):
     BASE_URL = "https://himalayas.app/jobs/api/search"
@@ -38,11 +39,14 @@ class HimalayasClient(BaseJobIntegration):
                         locations_list = job.get("locations", [])
                         loc_str = ", ".join(locations_list) if isinstance(locations_list, list) else str(job.get("location", "Remote"))
                         
+                        raw_desc = job.get("description", "")
+                        clean_desc = clean_html_job_description(raw_desc)
+
                         jobs.append({
                             "title": job.get("title", ""),
                             "company": job.get("companyName", "") or job.get("company", {}).get("name", ""),
                             "location": loc_str,
-                            "description": job.get("description", ""),
+                            "description": clean_desc,
                             "url": job.get("applicationLink", "") or job.get("url", ""),
                             "source": "himalayas",
                             "posted_date": job.get("pubDate") or job.get("createdAt"),

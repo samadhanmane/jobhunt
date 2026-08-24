@@ -2,6 +2,7 @@ import httpx
 import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.text_cleaner import clean_html_job_description
 
 class ArbeitnowClient(BaseJobIntegration):
     BASE_URL = "https://www.arbeitnow.com/api/job-board-api"
@@ -53,7 +54,7 @@ class ArbeitnowClient(BaseJobIntegration):
                     for job in jobs_data:
                         title = str(job.get("title", ""))
                         company = str(job.get("company_name", ""))
-                        desc = str(job.get("description", ""))
+                        desc = clean_html_job_description(str(job.get("description", "")))
                         tags = [str(t).lower() for t in job.get("tags", [])]
                         
                         text_to_check = f"{title.lower()} {' '.join(tags)} {desc[:400].lower()}"

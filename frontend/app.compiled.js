@@ -15,10 +15,11 @@ function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) { try
 function _asyncToGenerator(fn) { return function () { var self = this, args = arguments; return new Promise(function (resolve, reject) { var gen = fn.apply(self, args); function _next(value) { asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value); } function _throw(err) { asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err); } _next(undefined); }); }; }
 function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
-function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
+function _createForOfIteratorHelper(o, allowArrayLike) { var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"]; if (!it) { if (Array.isArray(o) || (it = _unsupportedIterableToArray(o)) || allowArrayLike && o && typeof o.length === "number") { if (it) o = it; var i = 0; var F = function F() {}; return { s: F, n: function n() { if (i >= o.length) return { done: true }; return { done: false, value: o[i++] }; }, e: function e(_e) { throw _e; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var normalCompletion = true, didErr = false, err; return { s: function s() { it = it.call(o); }, n: function n() { var step = it.next(); normalCompletion = step.done; return step; }, e: function e(_e2) { didErr = true; err = _e2; }, f: function f() { try { if (!normalCompletion && it["return"] != null) it["return"](); } finally { if (didErr) throw err; } } }; }
+function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
+function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
 var _React = React,
   useState = _React.useState,
   useEffect = _React.useEffect,
@@ -54,6 +55,63 @@ function isWithinDays(dateStr, days) {
     return true;
   }
 }
+function cleanHtmlJobDescription(rawHtml) {
+  if (!rawHtml) return "No full description available.";
+  if (typeof rawHtml !== 'string') return String(rawHtml);
+
+  // If no HTML tags present, return clean plain text
+  if (!rawHtml.includes("<") && !rawHtml.includes(">")) {
+    return rawHtml.trim();
+  }
+  try {
+    var text = rawHtml;
+    // Strip dangerous / irrelevant tags
+    text = text.replace(/<(script|style|svg|iframe|head|meta|noscript)[^>]*>.*?<\/\1>/gi, '');
+    // Preserve line breaks for block elements
+    text = text.replace(/<br\s*[\/]?>/gi, '\n');
+    text = text.replace(/<li[^>]*>/gi, '\n• ');
+    text = text.replace(/<\/li>/gi, '');
+    text = text.replace(/<(h[1-6])[^>]*>/gi, '\n\n');
+    text = text.replace(/<\/(h[1-6])>/gi, '\n');
+    text = text.replace(/<\/(p|div|ul|ol|table|tr|section|article)>/gi, '\n\n');
+    text = text.replace(/<(p|div|ul|ol|table|tr|section|article)[^>]*>/gi, '\n');
+
+    // Strip remaining HTML tags
+    var tempDiv = document.createElement('div');
+    tempDiv.innerHTML = text;
+    var cleaned = tempDiv.textContent || tempDiv.innerText || '';
+
+    // Clean multiple blank lines
+    var lines = cleaned.split('\n').map(function (l) {
+      return l.replace(/[ \t]+/g, ' ').trim();
+    });
+    var result = [];
+    var prevBlank = false;
+    var _iterator = _createForOfIteratorHelper(lines),
+      _step;
+    try {
+      for (_iterator.s(); !(_step = _iterator.n()).done;) {
+        var line = _step.value;
+        if (!line) {
+          if (!prevBlank) {
+            result.push('');
+            prevBlank = true;
+          }
+        } else {
+          result.push(line);
+          prevBlank = false;
+        }
+      }
+    } catch (err) {
+      _iterator.e(err);
+    } finally {
+      _iterator.f();
+    }
+    return result.join('\n').trim();
+  } catch (_unused2) {
+    return rawHtml.replace(/<[^>]*>/g, ' ').trim();
+  }
+}
 
 // ==========================================
 // Main App Component
@@ -68,7 +126,7 @@ function App() {
   var _useState3 = useState(function () {
       try {
         return JSON.parse(localStorage.getItem("jobagent_user") || "null");
-      } catch (_unused2) {
+      } catch (_unused3) {
         return null;
       }
     }),
@@ -1823,8 +1881,8 @@ function JobDetailModal(_ref14) {
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] font-bold text-slate-300 uppercase tracking-wider"
   }, "\uD83D\uDCC4 Full Job Description"), /*#__PURE__*/React.createElement("div", {
-    className: "text-slate-300 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap bg-slate-950/40 p-2.5 rounded-lg"
-  }, job.description || "No full description available."))), activeTab === "contacts" && /*#__PURE__*/React.createElement("div", {
+    className: "text-slate-300 text-xs leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap bg-slate-950/40 p-3 rounded-lg border border-white/[0.04]"
+  }, cleanHtmlJobDescription(job.description)))), activeTab === "contacts" && /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, allContacts.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-3"

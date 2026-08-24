@@ -2,6 +2,7 @@ import httpx
 import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.text_cleaner import clean_html_job_description
 
 class RemoteOKClient(BaseJobIntegration):
     """
@@ -31,7 +32,7 @@ class RemoteOKClient(BaseJobIntegration):
                     for j in jobs_list:
                         title = str(j.get("position", ""))
                         company = str(j.get("company", ""))
-                        desc = str(j.get("description", ""))
+                        desc = clean_html_job_description(str(j.get("description", "")))
                         tags = [str(t).lower() for t in j.get("tags", [])]
                         job_url = j.get("url") or f"https://remoteok.com/l/{j.get('id', '')}"
                         location_val = j.get("location") or "Remote / Worldwide"

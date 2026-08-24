@@ -2,6 +2,7 @@ import httpx
 import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.text_cleaner import clean_html_job_description
 
 class JobicyClient(BaseJobIntegration):
     """
@@ -34,7 +35,7 @@ class JobicyClient(BaseJobIntegration):
                     for j in jobs_list:
                         title = str(j.get("jobTitle", ""))
                         company = str(j.get("companyName", ""))
-                        desc = str(j.get("jobDescription", ""))
+                        desc = clean_html_job_description(str(j.get("jobDescription", "")))
                         job_url = str(j.get("url", ""))
                         job_geo = str(j.get("jobGeo", "Remote"))
                         
