@@ -416,6 +416,9 @@ class JobService:
             except Exception as task_err:
                 print(f"Notice: Background enrichment task initialization: {task_err}")
 
+            import gc
+            gc.collect()
+
             return {
                 "search_id": search_id,
                 "total_found": total_found,

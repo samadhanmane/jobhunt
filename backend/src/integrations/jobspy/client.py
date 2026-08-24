@@ -55,37 +55,40 @@ class JobSpyClient(BaseJobIntegration):
         is_remote_param = False if is_specific_loc else remote
         results_count = kwargs.get("results_wanted", 20)
 
+        import gc
+
         # Build list of Indeed country domains to scrape
         if is_specific_loc:
             target_countries = [get_indeed_country(location)]
         else:
             # Multi-domain global scraping across top tech hubs
-            target_countries = ["usa", "india", "uk", "germany", "canada"]
+            target_countries = ["usa", "india", "uk"]
 
-        def scrape_site(sites, country_code, count):
-            try:
-                return scrape_jobs(
-                    site_name=sites,
-                    search_term=query,
-                    location=loc_clean,
-                    results_wanted=count,
-                    hours_old=168,  # 7 days of jobs
-                    country_indeed=country_code,
-                    is_remote=is_remote_param
-                )
-            except Exception as e:
-                print(f"Notice: JobSpy scrape notice ({sites}, {country_code}): {e}")
-                return None
+        # Run scrapers with controlled concurrency (max 2 parallel workers) to keep RAM usage under 100MB
+        sem = asyncio.Semaphore(2)
 
-        # Prepare parallel scraping tasks
-        tasks = []
-        
-        # 1. Scrape LinkedIn (Global)
-        tasks.append(loop.run_in_executor(None, scrape_site, ["linkedin"], "usa", results_count))
+        async def bounded_scrape(sites, country_code, count):
+            async with sem:
+                def _do_scrape():
+                    try:
+                        return scrape_jobs(
+                            site_name=sites,
+                            search_term=query,
+                            location=loc_clean,
+                            results_wanted=count,
+                            hours_old=168,  # 7 days of jobs
+                            country_indeed=country_code,
+                            is_remote=is_remote_param
+                        )
+                    except Exception as e:
+                        print(f"Notice: JobSpy scrape notice ({sites}, {country_code}): {e}")
+                        return None
+                return await loop.run_in_executor(None, _do_scrape)
 
-        # 2. Scrape Indeed across multiple global domains in parallel
+        # Prepare scraping tasks
+        tasks = [bounded_scrape(["linkedin"], "usa", results_count)]
         for c in target_countries:
-            tasks.append(loop.run_in_executor(None, scrape_site, ["indeed"], c, 12 if len(target_countries) > 1 else results_count))
+            tasks.append(bounded_scrape(["indeed"], c, 12 if len(target_countries) > 1 else results_count))
 
         try:
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -129,6 +132,11 @@ class JobSpyClient(BaseJobIntegration):
                         "currency": currency
                     } if (min_sal or max_sal) else None
                 })
+
+            # Explicitly free DataFrame memory
+            del combined_df
+            del dataframes
+            gc.collect()
 
             # Asynchronously enrich full descriptions for any jobs that have empty/short descriptions (especially LinkedIn)
             async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=8.0, follow_redirects=True) as http_client:

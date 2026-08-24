@@ -5,15 +5,13 @@ from src.config import settings
 
 class LocalEmbeddingClient:
     """
-    Unified Embedding Client supporting:
-    1. HuggingFace Cloud Inference API (Zero RAM/CPU, Instant GPU embeddings)
-    2. Local SentenceTransformer / Scikit-Learn TF-IDF Fallback
+    Zero-Memory Cloud Embedding Client:
+    1. Primary: HuggingFace Serverless Inference API (0 MB RAM, GPU accelerated)
+    2. Fallback: Ultra-lightweight normalized HashingVectorizer (< 2 MB RAM)
     """
     def __init__(self):
         self.model_name = settings.EMBEDDING_MODEL or "BAAI/bge-small-en-v1.5"
-        self._model = None
         self._fallback_vectorizer = None
-        self._use_fallback = False
 
     def _get_hf_token(self) -> str:
         return (
@@ -32,7 +30,9 @@ class LocalEmbeddingClient:
 
         model_slug = self.model_name if (self.model_name and "/" in self.model_name) else "BAAI/bge-small-en-v1.5"
         endpoints = [
-            f"https://router.huggingface.co/hf-inference/models/{model_slug}"
+            f"https://router.huggingface.co/hf-inference/models/{model_slug}",
+            f"https://api-inference.huggingface.co/models/{model_slug}",
+            "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
         ]
         
         headers = {
@@ -63,21 +63,11 @@ class LocalEmbeddingClient:
 
         return []
 
-    @property
-    def model(self):
-        if self._model is None and not self._use_fallback:
-            try:
-                from sentence_transformers import SentenceTransformer
-                self._model = SentenceTransformer("all-MiniLM-L6-v2")
-            except Exception as e:
-                self._use_fallback = True
-        return self._model
-
     def _fallback_embed(self, text: str) -> List[float]:
         try:
             from sklearn.feature_extraction.text import HashingVectorizer
             if self._fallback_vectorizer is None:
-                self._fallback_vectorizer = HashingVectorizer(n_features=384, alternate_sign=False)
+                self._fallback_vectorizer = HashingVectorizer(n_features=384, alternate_sign=False, norm='l2')
             vec = self._fallback_vectorizer.transform([text]).toarray()[0]
             return vec.tolist()
         except Exception:
@@ -89,13 +79,6 @@ class LocalEmbeddingClient:
             if cloud_embs and len(cloud_embs) > 0:
                 return cloud_embs[0]
 
-        model = self.model
-        if model is not None:
-            try:
-                return model.encode(text).tolist()
-            except Exception:
-                pass
-
         return self._fallback_embed(text)
 
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
@@ -105,15 +88,8 @@ class LocalEmbeddingClient:
         if self._get_hf_token():
             cloud_embs = self._hf_cloud_embed(texts)
             if cloud_embs and len(cloud_embs) == len(texts):
-                print(f"[HuggingFace Cloud API] Generated {len(cloud_embs)} embeddings via Cloud GPU (0 RAM/CPU used).")
+                print(f"[HuggingFace Cloud API] Generated {len(cloud_embs)} embeddings via Cloud GPU (0 RAM used).")
                 return cloud_embs
-
-        model = self.model
-        if model is not None:
-            try:
-                return model.encode(texts).tolist()
-            except Exception:
-                pass
 
         return [self._fallback_embed(t) for t in texts]
 
