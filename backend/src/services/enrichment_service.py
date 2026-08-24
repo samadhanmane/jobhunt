@@ -1,11 +1,14 @@
 import re
 import asyncio
 import hashlib
-import dns.resolver
 import smtplib
 import socket
 import logging
 import threading
+try:
+    import dns.resolver
+except ImportError:
+    dns = None
 from typing import Optional, Dict, List, Any
 from urllib.parse import urlparse, urljoin
 from collections import Counter
