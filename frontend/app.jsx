@@ -730,21 +730,30 @@ function LoginScreen({ onLoginSuccess }) {
     );
 }
 
-// ==========================================
-// Component: Job Search & Discovery Dashboard
-// ==========================================
 function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
     // Form Inputs
-    const [role, setRole] = useState("AI ML Intern");
+    const [role, setRole] = useState("AI ML Engineer");
     const [location, setLocation] = useState("Pune");
-    const [experienceLevel, setExperienceLevel] = useState("intern");
-    const [remotePreference, setRemotePreference] = useState("any");
-    const [searchDatePosted, setSearchDatePosted] = useState("all");
 
-    // Resume Profile State
+    // Resume Profile State & Persistence
     const [resumeFile, setResumeFile] = useState(null);
     const [resumeProfile, setResumeProfile] = useState(null);
     const [parsingResume, setParsingResume] = useState(false);
+    const resumeInputRef = useRef(null);
+
+    // Load persisted resume on component mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem("jobhunt_resume_profile");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                setResumeProfile(parsed);
+                if (parsed.target_roles && parsed.target_roles[0]) {
+                    setRole(parsed.target_roles[0]);
+                }
+            }
+        } catch (e) {}
+    }, []);
 
     // Search Execution State & Dual Results View ('matched' vs 'all')
     const [activeResultsTab, setActiveResultsTab] = useState("matched"); // 'matched' | 'all'
@@ -777,60 +786,25 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Exporting Insights CSV State
     const [exportingInsights, setExportingInsights] = useState(false);
 
-    // Resume Upload & Parse
-    const handleResumeChange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        setResumeFile(file);
-        setParsingResume(true);
-
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/search/parse-resume`, {
-                method: "POST",
-                body: formData
-            });
-            const data = await res.json();
-            if (res.ok && data.status === 'success') {
-                setResumeProfile(data.profile);
-                if (data.profile.target_roles && data.profile.target_roles[0]) {
-                    setRole(data.profile.target_roles[0]);
-                }
-                if (data.profile.seniority) {
-                    const s = data.profile.seniority.toLowerCase();
-                    if (s.includes("intern")) setExperienceLevel("intern");
-                    else if (s.includes("junior") || s.includes("entry")) setExperienceLevel("entry");
-                    else if (s.includes("senior")) setExperienceLevel("senior");
-                    else if (s.includes("lead") || s.includes("staff")) setExperienceLevel("lead");
-                    else setExperienceLevel("mid");
-                }
-                showToast(`Resume parsed! Found ${data.profile.skills?.length || 0} skills.`);
-            } else {
-                showToast(data.detail || "Failed to parse resume.", "error");
-            }
-        } catch (err) {
-            showToast(err.message, "error");
-        } finally {
-            setParsingResume(false);
-        }
-    };
-
-    // Execute Job Search
-    const handleSearchSubmit = async (e) => {
-        e.preventDefault();
+    // Execute Search across 9 platforms (Worldwide fallback when location is blank)
+    const executeSearch = async (overrideFile = null, overrideRole = null, overrideLoc = null) => {
         setSearching(true);
         setAllMatchedJobs([]);
         setAllHarvestedJobs([]);
 
+        const activeRole = (overrideRole || role || "Software Engineer").trim();
+        const rawLoc = overrideLoc !== null ? overrideLoc : location;
+        const activeLoc = rawLoc.trim() ? rawLoc.trim() : "Worldwide";
+
         const formData = new FormData();
-        formData.append("role", role);
-        formData.append("location", location);
-        formData.append("experience_level", experienceLevel);
-        formData.append("remote_preference", remotePreference);
-        if (resumeFile) {
-            formData.append("resume", resumeFile);
+        formData.append("role", activeRole);
+        formData.append("location", activeLoc);
+        formData.append("experience_level", resumeProfile?.seniority?.toLowerCase() || "intern");
+        formData.append("remote_preference", "any");
+        
+        const fileToUpload = overrideFile || resumeFile;
+        if (fileToUpload) {
+            formData.append("resume", fileToUpload);
         }
 
         try {
@@ -850,7 +824,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 const harvested = data.all_jobs && data.all_jobs.length > 0 ? data.all_jobs : matched;
                 setAllMatchedJobs(matched);
                 setAllHarvestedJobs(harvested);
-                setFilterDate(searchDatePosted);
                 showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} deduplicated jobs!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
@@ -860,6 +833,66 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         } finally {
             setSearching(false);
         }
+    };
+
+    // Resume Upload & Parse (Auto triggers search on upload)
+    const handleResumeChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setResumeFile(file);
+        setParsingResume(true);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/search/parse-resume`, {
+                method: "POST",
+                body: formData
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                setResumeProfile(data.profile);
+                try {
+                    localStorage.setItem("jobhunt_resume_profile", JSON.stringify(data.profile));
+                } catch (err) {}
+
+                const newRole = (data.profile.target_roles && data.profile.target_roles[0]) ? data.profile.target_roles[0] : role;
+                setRole(newRole);
+                showToast(`Resume parsed! Found ${data.profile.skills?.length || 0} skills. Fetching jobs...`);
+                
+                // Live fetch jobs matching the newly uploaded resume
+                executeSearch(file, newRole, location);
+            } else {
+                showToast(data.detail || "Failed to parse resume.", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setParsingResume(false);
+        }
+    };
+
+    // Remove Resume and Clear Associated Search State
+    const handleRemoveResume = () => {
+        setResumeFile(null);
+        setResumeProfile(null);
+        setAllMatchedJobs([]);
+        setAllHarvestedJobs([]);
+        setCurrentSearchId("");
+        try {
+            localStorage.removeItem("jobhunt_resume_profile");
+        } catch (err) {}
+        if (resumeInputRef.current) {
+            resumeInputRef.current.value = "";
+        }
+        showToast("Resume and active results cleared. Upload a new resume to search.");
+    };
+
+    // Execute Job Search Form Submit
+    const handleSearchSubmit = (e) => {
+        e?.preventDefault();
+        executeSearch();
     };
 
     // Export Company Insights CSV
@@ -1021,167 +1054,165 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         <div className="space-y-6">
             {/* Search Input & Resume Header */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                {/* Search Form */}
-                <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08]">
-                    <div className="flex items-center justify-between mb-5 pb-3 border-b border-white/[0.06]">
-                        <div>
-                            <h2 className="text-base font-bold text-white flex items-center gap-2">
-                                <span>🎯</span> Search & Match Preferences
-                            </h2>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                                Parallel discovery across Greenhouse, Lever, Ashby, LinkedIn, Indeed, Himalayas, Arbeitnow, Jobicy & RemoteOK
-                            </p>
+                {/* Simplified Search Form */}
+                <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.06]">
+                            <div>
+                                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                                    <span>🎯</span> Search & Live Job Discovery
+                                </h2>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                    Parallel scraping across Greenhouse, Lever, Ashby, LinkedIn, Indeed, Himalayas, Arbeitnow, Jobicy & RemoteOK
+                                </p>
+                            </div>
                         </div>
+
+                        <form onSubmit={handleSearchSubmit} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                        Target Role / Title <span className="text-indigo-400">*</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={role}
+                                        onChange={(e) => setRole(e.target.value)}
+                                        placeholder="e.g. AI ML Engineer, Backend Developer"
+                                        className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                        Preferred Location <span className="text-slate-500 font-normal lowercase">(leave blank for worldwide)</span>
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={location}
+                                        onChange={(e) => setLocation(e.target.value)}
+                                        placeholder="e.g. Pune, Bangalore, Remote, Worldwide..."
+                                        className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                disabled={searching}
+                                className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                            >
+                                {searching ? (
+                                    <>
+                                        <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                        <span>Harvesting & Analyzing Across 9 Platforms...</span>
+                                    </>
+                                ) : (
+                                    <span>⚡ Harvest & Analyze Jobs Now</span>
+                                )}
+                            </button>
+                        </form>
                     </div>
 
-                    <form onSubmit={handleSearchSubmit} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                    Target Role / Title <span className="text-indigo-400">*</span>
-                                </label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={role}
-                                    onChange={(e) => setRole(e.target.value)}
-                                    placeholder="e.g. AI ML Intern, Backend Engineer"
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                    Preferred Location
-                                </label>
-                                <input 
-                                    type="text" 
-                                    value={location}
-                                    onChange={(e) => setLocation(e.target.value)}
-                                    placeholder="e.g. Pune, Bangalore, Remote, US"
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                    Work Mode
-                                </label>
-                                <select 
-                                    value={remotePreference}
-                                    onChange={(e) => setRemotePreference(e.target.value)}
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="any">🌐 Any (Remote + Onsite)</option>
-                                    <option value="remote">🏠 Remote Only</option>
-                                    <option value="onsite">🏢 Onsite / Hybrid</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                    Experience Level
-                                </label>
-                                <select 
-                                    value={experienceLevel}
-                                    onChange={(e) => setExperienceLevel(e.target.value)}
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="intern">🎓 Internship / Fresher (0 Yrs)</option>
-                                    <option value="entry">🌱 Entry Level (0 - 2 Yrs)</option>
-                                    <option value="mid">⚡ Mid Level (2 - 5 Yrs)</option>
-                                    <option value="senior">💼 Senior Level (5 - 8 Yrs)</option>
-                                    <option value="lead">👑 Lead / Staff (8+ Yrs)</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                    Date Posted
-                                </label>
-                                <select 
-                                    value={searchDatePosted}
-                                    onChange={(e) => setSearchDatePosted(e.target.value)}
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="all">📅 Anytime / All Dates</option>
-                                    <option value="24h">⚡ Past 24 Hours</option>
-                                    <option value="3d">🕒 Past 3 Days</option>
-                                    <option value="7d">📅 Past 7 Days</option>
-                                    <option value="30d">🗓️ Past 30 Days</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <button 
-                            type="submit" 
-                            disabled={searching}
-                            className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                            {searching ? (
-                                <>
-                                    <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                    <span>Harvesting & Categorizing Across 9 Platforms...</span>
-                                </>
-                            ) : (
-                                <span>⚡ Harvest & Analyze Jobs Now</span>
-                            )}
-                        </button>
-                    </form>
+                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Multi-platform deduplication & AI scoring</span>
+                        <span className="text-emerald-400 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            Live Active
+                        </span>
+                    </div>
                 </div>
 
-                {/* Resume Upload & Profile Card */}
+                {/* Resume Upload, Profile & Management Card */}
                 <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] flex flex-col justify-between">
                     <div>
                         <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-white/[0.06]">
                             <h3 className="font-bold text-white text-xs flex items-center gap-1.5">
-                                <span>📄</span> Resume AI Matcher
+                                <span>📄</span> Active Resume Profile
                             </h3>
                             {parsingResume && (
                                 <span className="text-[11px] text-indigo-400 animate-pulse font-medium">Parsing...</span>
                             )}
                         </div>
 
-                        <div className="mb-3">
-                            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                                Upload Resume (PDF / DOCX)
-                            </label>
-                            <input 
-                                type="file" 
-                                accept=".pdf,.docx,.txt"
-                                onChange={handleResumeChange}
-                                className="block w-full text-xs text-slate-400 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-300 hover:file:bg-slate-700 cursor-pointer"
-                            />
-                        </div>
-
                         {resumeProfile ? (
-                            <div className="space-y-2 text-xs">
-                                <div className="text-slate-400 text-[11px]">
-                                    <strong className="text-slate-200">Seniority:</strong> {resumeProfile.seniority || 'Entry'} | <strong className="text-slate-200">Domain:</strong> {resumeProfile.core_domain || 'Engineering'}
+                            <div className="space-y-3 text-xs">
+                                <div className="p-2.5 rounded-lg bg-slate-900/90 border border-indigo-500/20 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-slate-200">
+                                            {resumeProfile.current_or_recent_role || role || "Software Professional"}
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold">
+                                            {resumeProfile.seniority || "Junior"}
+                                        </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-400">
+                                        {resumeProfile.experience_years ? `${resumeProfile.experience_years} Years Experience` : '0-1 Years Experience'} • {resumeProfile.core_domain || 'AI & Tech'}
+                                    </div>
                                 </div>
+
                                 <div>
-                                    <div className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Indexed Skills ({resumeProfile.skills?.length || 0}):</div>
-                                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
+                                    <div className="text-[10px] font-semibold text-slate-400 uppercase mb-1.5 flex items-center justify-between">
+                                        <span>Indexed Skills ({resumeProfile.skills?.length || 0}):</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
                                         {(resumeProfile.skills || []).map((skill, idx) => (
-                                            <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 border border-white/5 text-slate-300 text-[11px]">
+                                            <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 border border-white/5 text-slate-300 text-[10px]">
                                                 {skill}
                                             </span>
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* Action Buttons: Replace or Remove Resume */}
+                                <div className="pt-2 flex items-center gap-2">
+                                    <label className="flex-1 text-center py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium border border-white/10 cursor-pointer transition-all">
+                                        <span>🔄 Replace Resume</span>
+                                        <input 
+                                            ref={resumeInputRef}
+                                            type="file" 
+                                            accept=".pdf,.docx,.txt"
+                                            onChange={handleResumeChange}
+                                            className="hidden"
+                                        />
+                                    </label>
+
+                                    <button 
+                                        type="button"
+                                        onClick={handleRemoveResume}
+                                        className="py-1.5 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/30 text-[11px] font-medium transition-all flex items-center gap-1"
+                                    >
+                                        <span>🗑️</span>
+                                        <span>Remove</span>
+                                    </button>
+                                </div>
                             </div>
                         ) : (
-                            <div className="p-3 rounded-lg bg-slate-900/60 border border-dashed border-slate-700/60 text-center text-xs text-slate-400">
-                                Upload your resume for automated skill-gap analysis and personalized match scoring.
+                            <div className="space-y-3">
+                                <div className="p-4 rounded-xl bg-slate-900/60 border border-dashed border-slate-700/80 text-center space-y-2">
+                                    <div className="text-2xl">📤</div>
+                                    <div className="text-xs font-semibold text-slate-200">Upload Your Resume</div>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                                        Upload PDF or DOCX to auto-extract 30+ skills, auto-fill target role, and calculate live compatibility scores.
+                                    </p>
+                                    <input 
+                                        ref={resumeInputRef}
+                                        type="file" 
+                                        accept=".pdf,.docx,.txt"
+                                        onChange={handleResumeChange}
+                                        className="block w-full text-xs text-slate-400 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer pt-2"
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
 
                     <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Multi-source deduplication</span>
-                        <span className="text-emerald-400 font-medium">Active</span>
+                        <span>Skills Saved Locally</span>
+                        <span className={resumeProfile ? "text-emerald-400 font-medium" : "text-slate-500"}>
+                            {resumeProfile ? "Saved" : "Not Loaded"}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -2411,16 +2442,18 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Level</label>
+                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Level</label>
                             <select 
                                 value={experienceLevel}
                                 onChange={(e) => setExperienceLevel(e.target.value)}
                                 className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             >
-                                <option value="intern">🎓 Intern</option>
-                                <option value="entry">🌱 Entry</option>
-                                <option value="mid">⚡ Mid</option>
-                                <option value="senior">💼 Senior</option>
+                                <option value="intern">🌱 Internship / Fresher (0 Yrs)</option>
+                                <option value="entry">🚀 0–1 Yr (Entry Level)</option>
+                                <option value="junior">⚡ 1–2 Yrs (Junior)</option>
+                                <option value="mid">💼 3–5 Yrs (Mid-Level)</option>
+                                <option value="senior">👑 5+ Yrs (Senior)</option>
+                                <option value="lead">🏆 8+ Yrs (Lead / Staff)</option>
                             </select>
                         </div>
 
