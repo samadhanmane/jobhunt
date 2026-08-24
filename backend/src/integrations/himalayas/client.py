@@ -1,4 +1,6 @@
 import httpx
+import time
+import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
 from src.utils.text_cleaner import clean_html_job_description
@@ -9,8 +11,13 @@ DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9"
 }
 
+_HIMALAYAS_CACHE: Dict[str, Any] = {
+    "timestamp": 0,
+    "jobs": []
+}
+
 class HimalayasClient(BaseJobIntegration):
-    BASE_URL = "https://himalayas.app/jobs/api/search"
+    BASE_URL = "https://himalayas.app/jobs/api"
     
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
         limit = kwargs.get("limit", 50)
@@ -22,47 +29,53 @@ class HimalayasClient(BaseJobIntegration):
         try:
             async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=12.0, follow_redirects=True) as client:
                 response = await client.get(self.BASE_URL, params=params)
-                if response.status_code != 200:
-                    print(f"[Himalayas] Non-200 response: {response.status_code}")
-                    return []
-                data = response.json()
-                
-                # Handle both list and dict formats
-                if isinstance(data, dict):
-                    jobs_list = data.get("jobs", [])
-                elif isinstance(data, list):
-                    jobs_list = data
+                if response.status_code == 200:
+                    data = response.json()
+                    jobs_list = data.get("jobs", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                    if jobs_list:
+                        _HIMALAYAS_CACHE["jobs"] = jobs_list
+                        _HIMALAYAS_CACHE["timestamp"] = time.time()
                 else:
-                    jobs_list = []
-                    
-                jobs = []
-                for job in jobs_list:
-                    min_sal = job.get("minSalary")
-                    max_sal = job.get("maxSalary")
-                    currency = job.get("currencyCode", "USD")
-                    
-                    locations_list = job.get("locations", [])
-                    loc_str = ", ".join(locations_list) if isinstance(locations_list, list) else str(job.get("location", "Remote"))
-                    
-                    raw_desc = job.get("description", "")
-                    clean_desc = clean_html_job_description(raw_desc)
+                    jobs_list = _HIMALAYAS_CACHE.get("jobs", [])
+        except Exception:
+            jobs_list = _HIMALAYAS_CACHE.get("jobs", [])
 
-                    jobs.append({
-                        "title": job.get("title", ""),
-                        "company": job.get("companyName", "") or job.get("company", {}).get("name", ""),
-                        "location": loc_str,
-                        "description": clean_desc,
-                        "url": job.get("applicationLink", "") or job.get("url", ""),
-                        "source": "himalayas",
-                        "posted_date": job.get("pubDate") or job.get("createdAt"),
-                        "salary_range": {
-                            "min": float(min_sal) if min_sal else None,
-                            "max": float(max_sal) if max_sal else None,
-                            "currency": currency
-                        } if (min_sal or max_sal) else None
-                    })
-                print(f"[Himalayas] Fetched {len(jobs)} jobs for query='{query}'")
-                return jobs
-        except Exception as e:
-            print(f"Error querying Himalayas: {e}")
-            return []
+        query_clean = re.sub(r'[^\w\s]', '', query.lower())
+        tokens = [t.strip() for t in query_clean.split() if len(t.strip()) > 2]
+        
+        jobs = []
+        for job in jobs_list:
+            title = job.get("title", "")
+            raw_desc = job.get("description", "") or job.get("excerpt", "")
+            text_check = f"{title.lower()} {raw_desc[:300].lower()}"
+            
+            if tokens and not any(t in text_check for t in tokens) and len(jobs) >= 15:
+                continue
+
+            min_sal = job.get("minSalary")
+            max_sal = job.get("maxSalary")
+            currency = job.get("currency", "USD") or job.get("currencyCode", "USD")
+            
+            locations_list = job.get("locationRestrictions", []) or job.get("locations", [])
+            loc_str = ", ".join(locations_list) if isinstance(locations_list, list) and locations_list else str(job.get("location", "Remote"))
+            clean_desc = clean_html_job_description(raw_desc)
+
+            jobs.append({
+                "title": title,
+                "company": job.get("companyName", "") or job.get("company", {}).get("name", "") or "Tech Company",
+                "location": loc_str,
+                "description": clean_desc,
+                "url": job.get("applicationLink", "") or f"https://himalayas.app/jobs/{job.get('guid', '')}",
+                "source": "himalayas",
+                "posted_date": job.get("pubDate") or job.get("createdAt"),
+                "salary_range": {
+                    "min": float(min_sal) if min_sal else None,
+                    "max": float(max_sal) if max_sal else None,
+                    "currency": currency
+                } if (min_sal or max_sal) else None
+            })
+            if len(jobs) >= 25:
+                break
+
+        print(f"[Himalayas] Fetched {len(jobs)} jobs for query='{query}'")
+        return jobs
