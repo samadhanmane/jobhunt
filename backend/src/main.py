@@ -56,7 +56,16 @@ app = FastAPI(
 )
 
 # Configure Dynamic CORS to connect Render Backend with Vercel Frontend
-cors_origins = set()
+cors_origins = {
+    "https://jobhunt-sigma-three.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000"
+}
+
 if getattr(settings, "ALLOWED_ORIGINS", None):
     for origin in settings.ALLOWED_ORIGINS.split(","):
         o = origin.strip()
@@ -69,19 +78,7 @@ if getattr(settings, "FRONTEND_URL", None):
         if o:
             cors_origins.add(o)
 
-if "*" in cors_origins or not cors_origins:
-    allow_origins_list = ["*"]
-else:
-    # Always include common dev origins
-    cors_origins.update([
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000"
-    ])
-    allow_origins_list = list(cors_origins)
+allow_origins_list = list(cors_origins)
 
 from src.middleware.security import (
     SecurityHeadersMiddleware,
@@ -98,10 +95,11 @@ app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=15 * 1024 * 1024)
 # 3. Add Sliding-Window Rate Limiter
 app.add_middleware(RateLimitMiddleware)
 
-# 4. Configure CORS
+# 4. Configure CORS with both explicit origin list and Vercel regex matching
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins_list,
+    allow_origin_regex=r"^https?://(.*\.)?(vercel\.app|onrender\.com|localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

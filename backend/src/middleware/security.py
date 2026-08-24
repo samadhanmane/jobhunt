@@ -4,12 +4,26 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+def _attach_cors_headers(response: Response, request: Request) -> Response:
+    """Ensures error responses generated within middleware have valid CORS headers."""
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Injects essential production security headers on all HTTP responses
     to defend against clickjacking, MIME sniffing, XSS, and downgrade attacks.
     """
     async def dispatch(self, request: Request, call_next):
+        # Do not modify preflight responses
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         response: Response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -33,18 +47,22 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         self.max_size_bytes = max_size_bytes
 
     async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         content_length = request.headers.get("content-length")
         if content_length:
             try:
                 length = int(content_length)
                 if length > self.max_size_bytes:
-                    return JSONResponse(
+                    res = JSONResponse(
                         status_code=413,
                         content={
                             "error": "Payload Too Large",
                             "detail": f"Request size ({length / (1024*1024):.1f}MB) exceeds the maximum limit of {self.max_size_bytes / (1024*1024):.0f}MB."
                         }
                     )
+                    return _attach_cors_headers(res, request)
             except ValueError:
                 pass
 
@@ -63,9 +81,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Limits (Requests per 60-second window)
         self.LIMITS = {
-            "login": 10,        # Anti-credential stuffing
-            "heavy": 25,        # Heavy AI search & recruiter discovery
-            "general": 120      # Standard read / UI polling
+            "login": 15,        # Anti-credential stuffing
+            "heavy": 30,        # Heavy AI search & recruiter discovery
+            "general": 150      # Standard read / UI polling
         }
 
     def _get_client_ip(self, request: Request) -> str:
@@ -103,10 +121,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             del self._ip_history[ip]
 
     async def dispatch(self, request: Request, call_next):
+        # Always allow CORS preflights without rate limiting
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         path = request.url.path
         
         # Skip health check & docs from rate limiting
-        if path in ["/", "/docs", "/openapi.json", "/api/v1/health"]:
+        if path in ["/", "/docs", "/openapi.json", "/api/v1/health", "/health"]:
             return await call_next(request)
 
         now = time.time()
@@ -114,7 +136,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client_ip = self._get_client_ip(request)
         category = self._classify_route(path)
-        limit = self.LIMITS.get(category, 120)
+        limit = self.LIMITS.get(category, 150)
 
         # Get existing timestamps within the last 60 seconds
         cutoff = now - 60.0
@@ -130,7 +152,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if matching_count >= limit:
             retry_after = int(60 - (now - history[0][0])) if history else 30
             retry_after = max(1, retry_after)
-            return JSONResponse(
+            res = JSONResponse(
                 status_code=429,
                 headers={"Retry-After": str(retry_after)},
                 content={
@@ -139,8 +161,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "retry_after_seconds": retry_after
                 }
             )
+            return _attach_cors_headers(res, request)
 
         # Record this request
         self._ip_history[client_ip].append((now, category))
 
-        return await call_next(request)
+        try:
+            return await call_next(request)
+        except Exception as e:
+            res = JSONResponse(
+                status_code=500,
+                content={"error": "Internal Server Error", "detail": str(e)}
+            )
+            return _attach_cors_headers(res, request)
