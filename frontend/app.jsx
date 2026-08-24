@@ -886,7 +886,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
             // 5. Seniority Filter
             const fit = (job.experience_fit || "").toLowerCase();
-            const desc = (job.description || "").toLowerCase();
             
             const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year');
             const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee');
