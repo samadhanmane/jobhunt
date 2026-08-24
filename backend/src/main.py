@@ -17,36 +17,50 @@ from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
 from src.services.keepalive_service import keepalive_service
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize and auto-migrate database schema + seed superadmin
+async def async_startup_tasks():
+    # Yield control immediately to allow Uvicorn port binding without delay
+    await asyncio.sleep(0.05)
+    
+    # 1. Initialize and auto-migrate database schema in worker thread pool
     try:
-        init_and_migrate_db()
+        await asyncio.to_thread(init_and_migrate_db)
     except Exception as e:
         print(f"Notice: Database init notice: {e}")
 
-    # Startup: Run 3-day data retention cleanup
+    # 2. Run 3-day data retention cleanup in worker thread pool
     try:
-        db = SessionLocal()
-        scheduler_service.cleanup_old_jobs(db, days=3)
-        db.close()
+        def cleanup():
+            db = SessionLocal()
+            scheduler_service.cleanup_old_jobs(db, days=3)
+            db.close()
+        await asyncio.to_thread(cleanup)
     except Exception as e:
         print(f"Notice: Startup cleanup notice: {e}")
-    
-    # Startup: Start background daily email scheduler
-    scheduler_task = asyncio.create_task(scheduler_service.start_background_scheduler())
 
-    # Startup: Start 60-second KeepAlive self-ping heartbeat
+    # 3. Start background daily email scheduler
+    try:
+        asyncio.create_task(scheduler_service.start_background_scheduler())
+    except Exception as e:
+        print(f"Notice: Scheduler start notice: {e}")
+
+    # 4. Start 60-second KeepAlive self-ping heartbeat
     try:
         keepalive_service.start()
     except Exception as e:
         print(f"Notice: KeepAlive start notice: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    startup_task = asyncio.create_task(async_startup_tasks())
     
     yield
     
     # Shutdown: Cancel tasks & stop keepalive
-    scheduler_task.cancel()
-    keepalive_service.stop()
+    try:
+        startup_task.cancel()
+        keepalive_service.stop()
+    except Exception:
+        pass
 
 app = FastAPI(
     title="AI-Powered Job Aggregator Backend",

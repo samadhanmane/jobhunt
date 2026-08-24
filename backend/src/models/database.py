@@ -21,16 +21,13 @@ def get_primary_engine():
                 print("Notice: psycopg2 not installed in container. Defaulting to local SQLite.")
                 return sqlite_engine
 
-            engine = create_engine(
+            return create_engine(
                 settings.DATABASE_URL,
                 pool_pre_ping=True,
                 pool_recycle=60,
-                pool_timeout=3,
-                connect_args={"connect_timeout": 30}
+                pool_timeout=5,
+                connect_args={"connect_timeout": 5}
             )
-            with engine.connect() as conn:
-                pass
-            return engine
     except Exception as e:
         print(f"Notice: PostgreSQL connection notice ({e}). Defaulting to local SQLite.")
     return sqlite_engine
