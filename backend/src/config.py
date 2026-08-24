@@ -40,9 +40,10 @@ class Settings(BaseSettings):
     PINECONE_API_KEY: Optional[str] = None
     PINECONE_INDEX_NAME: Optional[str] = "jobhunt"
 
-    # Job Board Tokens
+    # Job Board Tokens & Outreach
     FREEHIRE_TOKEN: Optional[str] = None
     RAPIDAPI_KEY: Optional[str] = None
+    LINKEDIN_COOKIE: Optional[str] = None
 
     # Nodemailer Credentials (Gmail)
     EMAIL_FROM: Optional[str] = None

@@ -7,6 +7,11 @@ from src.integrations.jobspy.client import JobSpyClient
 from src.integrations.arbeitnow.client import ArbeitnowClient
 from src.integrations.himalayas.client import HimalayasClient
 from src.integrations.freehire.client import FreehireClient
+from src.integrations.jobicy.client import JobicyClient
+from src.integrations.remoteok.client import RemoteOKClient
+from src.integrations.greenhouse.client import GreenhouseClient
+from src.integrations.lever.client import LeverClient
+from src.integrations.ashby.client import AshbyClient
 from src.llm.prompts.search import QUERY_PLANNER_SYSTEM_PROMPT
 
 class OrchestratorAgent(BaseJobAgent):
@@ -16,6 +21,11 @@ class OrchestratorAgent(BaseJobAgent):
         self.arbeitnow = ArbeitnowClient()
         self.himalayas = HimalayasClient()
         self.freehire = FreehireClient()
+        self.jobicy = JobicyClient()
+        self.remoteok = RemoteOKClient()
+        self.greenhouse = GreenhouseClient()
+        self.lever = LeverClient()
+        self.ashby = AshbyClient()
 
     def _extract_json(self, raw_content: str) -> Dict[str, Any]:
         """Safely extract JSON object from LLM response."""
@@ -65,15 +75,13 @@ Candidate Background:
             ])
             plan = self._extract_json(response.content)
             
-            # Ensure primary query is grounded in the user's requested role
             if raw_user_role and len(raw_user_role) > 2:
                 if "intern" in raw_user_role.lower() and "intern" not in plan.get("primary_query", "").lower():
                     plan["primary_query"] = f"{plan.get('primary_query', anchor_role)} Intern"
             
-            # If no location given by user, ensure plan reflects worldwide
             if not user_loc or user_loc.lower() in ["remote", "worldwide", "global", "any", "all", ""]:
                 plan["location"] = ""
-                plan["remote_only"] = False  # Don't restrict to remote-only, fetch everything
+                plan["remote_only"] = False
             
             return plan
         except Exception as e:
@@ -92,9 +100,16 @@ Candidate Background:
 
     async def orchestrate_search(self, candidate_profile: Dict[str, Any], preferences: dict) -> List[Dict[str, Any]]:
         """
-        Drives parallel search across ALL platforms using optimized parameters.
-        Each platform is queried independently and in parallel.
-        Secondary queries are also run on ALL platforms for maximum coverage.
+        Drives parallel multi-platform search across ALL platforms:
+        - JobSpy (LinkedIn, Indeed)
+        - Himalayas (Remote tech roles)
+        - Arbeitnow (Global & European tech board)
+        - Freehire (Specialized skill-matched roles)
+        - Jobicy (Remote API jobs)
+        - RemoteOK (Live remote developer feed)
+        - Greenhouse (Direct corporate ATS boards)
+        - Lever (Direct corporate ATS postings)
+        - Ashby (High-growth tech ATS postings)
         """
         plan = await self.get_search_plan(candidate_profile, preferences)
         primary_query = plan.get("primary_query", preferences.get("role", "Software Engineer"))
@@ -106,7 +121,6 @@ Candidate Background:
         secondary_queries = plan.get("secondary_queries", [])
         raw_user_role = preferences.get("role", "").strip()
 
-        # Build distinct list of all relevant job titles (LLM planned + candidate profile)
         search_queries = []
         for q in [primary_query] + secondary_queries + [raw_user_role] + candidate_profile.get("target_roles", []):
             if q and isinstance(q, str):
@@ -114,25 +128,28 @@ Candidate Background:
                 if cleaned_q and len(cleaned_q) > 2 and cleaned_q.lower() not in [sq.lower() for sq in search_queries]:
                     search_queries.append(cleaned_q)
 
-        # Limit to top 2 high-intent titles for fast 5-8 second live web search response
-        target_queries = search_queries[:4]
+        target_queries = search_queries[:3]
 
         print(f"[Orchestrator] ===========================================")
         print(f"[Orchestrator] Active Search Titles ({len(target_queries)}): {target_queries}")
         print(f"[Orchestrator] Target Location: '{location or 'Worldwide'}'")
         print(f"[Orchestrator] Remote Only: {remote}")
         print(f"[Orchestrator] Domain Keywords: {domain_keywords[:6]}")
+        print(f"[Orchestrator] Platforms: JobSpy, Himalayas, Arbeitnow, Freehire, Jobicy, RemoteOK, Greenhouse, Lever, Ashby")
         print(f"[Orchestrator] ===========================================")
 
         tasks = []
         for idx, q_title in enumerate(target_queries):
-            # Query JobSpy (LinkedIn & Indeed) for the primary & top secondary title
             if idx < 2:
                 tasks.append(self.jobspy.search(query=q_title, location=location, remote=remote))
-            # Query Himalayas, Arbeitnow, and Freehire for all expanded titles
             tasks.append(self.himalayas.search(query=q_title, location=location, remote=remote))
             tasks.append(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords))
             tasks.append(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority))
+            tasks.append(self.jobicy.search(query=q_title, location=location, remote=remote))
+            tasks.append(self.remoteok.search(query=q_title, location=location, remote=remote))
+            tasks.append(self.greenhouse.search(query=q_title, location=location, remote=remote))
+            tasks.append(self.lever.search(query=q_title, location=location, remote=remote))
+            tasks.append(self.ashby.search(query=q_title, location=location, remote=remote))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -145,7 +162,7 @@ Candidate Background:
                     platform_counts[source] = platform_counts.get(source, 0) + 1
                 all_jobs.extend(res)
             else:
-                print(f"[Orchestrator] Task {idx} failed gracefully: {res}")
+                print(f"[Orchestrator] Task {idx} notice: {res}")
 
         print(f"[Orchestrator] ===========================================")
         print(f"[Orchestrator] Total raw jobs gathered: {len(all_jobs)}")

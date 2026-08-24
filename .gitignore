@@ -46,3 +46,7 @@ data/
 temp_resumes/
 exports/
 backend/exports/
+scratch/
+backend/scratch/
+*.pdf
+

@@ -36,6 +36,7 @@ PyJWT>=2.8.0
 
 # Job Scraping & Scraping Clients
 python-jobspy==1.1.61
+beautifulsoup4>=4.12.0
 aiohttp>=3.9.0
 httpx>=0.27.0
 pandas>=2.0.0

@@ -10,6 +10,8 @@ from src.config import settings
 from src.agents.orchestrator import OrchestratorAgent
 from src.agents.deduplication import DeduplicationAgent
 from src.agents.ranking import RankingAgent
+from src.agents.enrichment import EnrichmentAgent
+from src.services.scraper_service import scraper_service
 from src.repositories.job_repository import JobRepository
 from src.repositories.search_repository import SearchRepository
 from src.repositories.user_repository import UserRepository
@@ -31,6 +33,8 @@ class JobService:
         self.orchestrator = OrchestratorAgent()
         self.deduplicator = DeduplicationAgent()
         self.ranker = RankingAgent()
+        self.enricher = EnrichmentAgent()
+        self.scraper = scraper_service
         self._llm = None
 
     @property
@@ -38,6 +42,143 @@ class JobService:
         if self._llm is None:
             self._llm = get_llm()
         return self._llm
+
+    async def scrape_and_enrich_links(
+        self,
+        urls: List[str],
+        resume_id: Optional[str] = None,
+        preferences: Optional[dict] = None,
+        search_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Scrapes content from provided URLs using BeautifulSoup / JSON-LD,
+        cleans and passes text to LLM for rich taxonomy categorization and match scoring,
+        and saves results to the database and vector index.
+        """
+        if not search_id:
+            search_id = str(uuid.uuid4())
+        
+        pref_dict = preferences or {}
+        user_profile = self.user_repo.get_profile(resume_id) if resume_id else None
+        
+        if user_profile and user_profile.resume_skills:
+            candidate_profile = {
+                "core_domain": user_profile.resume_experience.get("core_domain", "") if user_profile.resume_experience else "",
+                "skills": user_profile.resume_skills or [],
+                "top_technologies": (user_profile.resume_skills or [])[:8],
+                "experience_years": user_profile.resume_experience.get("experience_years", pref_dict.get("experience_years", 0)) if user_profile.resume_experience else pref_dict.get("experience_years", 0),
+                "seniority": user_profile.resume_experience.get("seniority", "Mid") if user_profile.resume_experience else "Mid",
+                "current_or_recent_role": user_profile.resume_experience.get("current_role", "") if user_profile.resume_experience else "",
+                "target_roles": user_profile.resume_roles or [pref_dict.get("role", "Software Engineer")],
+                "keywords": user_profile.resume_experience.get("keywords", []) if user_profile.resume_experience else [],
+                "summary": user_profile.resume_experience.get("summary", "") if user_profile.resume_experience else ""
+            }
+        else:
+            pref_role = pref_dict.get("role", "Software Engineer")
+            candidate_profile = {
+                "skills": [s.strip() for s in pref_role.split() if len(s.strip()) > 2],
+                "top_technologies": [],
+                "experience_years": float(pref_dict.get("experience_years", 0) or 0),
+                "seniority": "Senior" if float(pref_dict.get("experience_years", 0) or 0) >= 5 else "Mid",
+                "current_or_recent_role": pref_role,
+                "target_roles": [pref_role],
+                "summary": f"Professional with {pref_dict.get('experience_years', 0)} years of experience in {pref_role}."
+            }
+
+        # Create SearchHistory tracking record
+        search_history = SearchHistory(
+            search_id=search_id,
+            role=pref_dict.get("role", "Custom Job Links"),
+            location=pref_dict.get("location", "Various"),
+            preferences={"urls": urls, **pref_dict},
+            status="processing"
+        )
+        self.search_repo.create_search(search_history)
+
+        try:
+            # 1. Scrape and clean raw HTML / JSON-LD
+            scraped_items = await self.scraper.scrape_multiple_urls(urls)
+            
+            # 2. Enrich and categorize with LLM
+            enriched_jobs = await self.enricher.enrich_batch(
+                scraped_items=scraped_items,
+                candidate_profile=candidate_profile,
+                preferences=pref_dict
+            )
+
+            # Sort enriched jobs by match score descending
+            enriched_jobs.sort(key=lambda x: float(x.get("match_score", 0.0)), reverse=True)
+
+            # 3. Generate embeddings
+            texts = [f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"[:1000] for j in enriched_jobs]
+            embeddings = embedding_client.get_embeddings(texts) if texts else []
+
+            # 4. Save to Database
+            db_jobs = []
+            for idx, j in enumerate(enriched_jobs):
+                emb = embeddings[idx] if idx < len(embeddings) else [0.0] * 384
+                raw_date = j.get("posted_date")
+                formatted_date = format_posted_date_for_csv(raw_date)
+                if formatted_date == "N/A":
+                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+                db_job = Job(
+                    id=str(uuid.uuid4()),
+                    title=j.get("title", "Unknown Role"),
+                    company=j.get("company", "Unknown Company"),
+                    location=j.get("location", "Remote"),
+                    description=j.get("description", ""),
+                    url=j.get("url", ""),
+                    source=j.get("source", "web_link"),
+                    posted_date=formatted_date,
+                    salary_range=j.get("salary_range"),
+                    match_score=float(j.get("match_score", 0.0)),
+                    match_reason=j.get("match_reason", ""),
+                    matching_skills=j.get("matching_skills", []),
+                    missing_skills=j.get("missing_skills", []),
+                    experience_fit=j.get("experience_fit", "Good Fit"),
+                    company_insights=j.get("company_insights"),
+                    key_requirements=j.get("key_requirements", ""),
+                    search_id=search_id,
+                    embedding=emb
+                )
+                db_jobs.append(db_job)
+
+            if db_jobs:
+                self.job_repo.add_jobs(db_jobs)
+
+            # 5. Upsert to Pinecone
+            try:
+                pinecone_payload = [{
+                    "id": db_j.id,
+                    "title": db_j.title,
+                    "company": db_j.company,
+                    "location": db_j.location,
+                    "match_score": db_j.match_score,
+                    "posted_date": db_j.posted_date,
+                    "url": db_j.url,
+                    "embedding": db_j.embedding
+                } for db_j in db_jobs]
+                vector_service.upsert_job_vectors(search_id, pinecone_payload)
+            except Exception as e:
+                print(f"Pinecone vector indexing note: {e}")
+
+            # Update search record
+            self.search_repo.update_search_status(search_id, "completed", len(urls), len(db_jobs))
+
+            return {
+                "search_id": search_id,
+                "total_found": len(urls),
+                "unique_count": len(db_jobs),
+                "status": "completed",
+                "jobs": self.get_results(search_id)
+            }
+
+        except Exception as e:
+            print(f"Error scraping & enriching links: {e}")
+            self.search_repo.update_search_status(search_id, "failed")
+            raise e
+
 
     async def search_jobs(self, resume_id: Optional[str], preferences: dict, search_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -126,6 +267,8 @@ class JobService:
                     matching_skills=j.get("matching_skills", []),
                     missing_skills=j.get("missing_skills", []),
                     experience_fit=j.get("experience_fit", "Good Fit"),
+                    company_insights=j.get("company_insights"),
+                    key_requirements=j.get("key_requirements", ""),
                     search_id=search_id,
                     embedding=emb
                 )
@@ -181,8 +324,122 @@ class JobService:
             "match_reason": j.match_reason,
             "matching_skills": j.matching_skills or [],
             "missing_skills": j.missing_skills or [],
-            "experience_fit": j.experience_fit or "Good Fit"
+            "experience_fit": j.experience_fit or "Good Fit",
+            "key_requirements": j.key_requirements or "",
+            "company_insights": j.company_insights or {},
+            "hr_contacts": j.hr_contacts or [],
+            "tech_contacts": j.tech_contacts or []
         } for j in jobs]
+
+    async def fetch_job_hr_contacts(
+        self,
+        job_id: str,
+        candidate_name: Optional[str] = "Candidate",
+        candidate_skills: Optional[List[str]] = None,
+        include_tech: bool = True,
+        custom_cookie: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Discovers HR recruiters and tech leadership for the job's company,
+        verifies their corporate emails via SMTP/DNS website scraping,
+        drafts tailored cold outreach messages, and saves contacts to the job record.
+        """
+        from src.services.linkedin_service import linkedin_service
+        from src.llm.prompts.outreach import COLD_OUTREACH_SYSTEM_PROMPT
+        import json
+
+        job = self.db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            return {"status": "error", "message": f"Job ID {job_id} not found."}
+
+        # Check if already cached
+        if job.hr_contacts and (not include_tech or job.tech_contacts):
+            return {
+                "status": "success",
+                "job_id": job_id,
+                "company": job.company,
+                "cached": True,
+                "cookie_expired": False,
+                "hr_contacts": job.hr_contacts or [],
+                "tech_contacts": job.tech_contacts or []
+            }
+
+        # Discover & verify all contacts
+        cookie_expired = False
+        if include_tech:
+            all_contacts = await linkedin_service.search_company_all_contacts(
+                job.company, hr_limit=4, tech_limit=4, custom_cookie=custom_cookie
+            )
+            hr_profiles = all_contacts["hr_contacts"]
+            tech_profiles = all_contacts["tech_contacts"]
+            cookie_expired = all_contacts.get("cookie_expired", False)
+        else:
+            hr_profiles = await linkedin_service.find_company_hr(job.company, limit=4, custom_cookie=custom_cookie)
+            tech_profiles = []
+
+        cand_skills = candidate_skills or job.matching_skills or []
+        skills_str = ", ".join(cand_skills) if cand_skills else "Software Engineering"
+
+        # Generate outreach drafts for all contacts
+        async def _draft_outreach(contacts_list: List[Dict]) -> List[Dict]:
+            enriched = []
+            for r in contacts_list:
+                item = r.copy()
+                prompt = f"""
+Candidate Name: {candidate_name or 'Candidate'}
+Target Role: {job.title}
+Candidate Core Skills: {skills_str}
+
+Recruiter Details:
+- Name: {r.get('full_name', 'Talent Team')}
+- Title: {r.get('headline', 'Recruiter')}
+- Company: {job.company}
+"""
+                try:
+                    resp = await self.llm.ainvoke([
+                        {"role": "system", "content": COLD_OUTREACH_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt}
+                    ])
+                    raw_content = resp.content.strip()
+                    if "```json" in raw_content:
+                        raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+                    elif "```" in raw_content:
+                        raw_content = raw_content.split("```")[1].split("```")[0].strip()
+
+                    outreach_data = json.loads(raw_content)
+                    item["outreach_draft"] = {
+                        "email_subject": outreach_data.get("email_subject", f"Application for {job.title} - {candidate_name}"),
+                        "email_body": outreach_data.get("email_body", ""),
+                        "linkedin_note": outreach_data.get("linkedin_connection_note", "")
+                    }
+                except Exception:
+                    rec_name = r.get('full_name', '').split()[0] if r.get('full_name') else 'there'
+                    item["outreach_draft"] = {
+                        "email_subject": f"Application for {job.title} - {candidate_name}",
+                        "email_body": f"Hi {rec_name},\n\nI noticed {job.company} is hiring for a {job.title} and wanted to reach out directly given my background in {skills_str}.\n\nBest regards,\n{candidate_name}",
+                        "linkedin_note": f"Hi {rec_name}, I'd love to connect regarding open {job.title} opportunities at {job.company}!"
+                    }
+                enriched.append(item)
+            return enriched
+
+        enriched_hr = await _draft_outreach(hr_profiles)
+        enriched_tech = await _draft_outreach(tech_profiles)
+
+        # Save to database
+        job.hr_contacts = enriched_hr
+        job.tech_contacts = enriched_tech
+        self.db.commit()
+
+        return {
+            "status": "success",
+            "job_id": job_id,
+            "company": job.company,
+            "cached": False,
+            "cookie_expired": cookie_expired,
+            "hr_contacts": enriched_hr,
+            "tech_contacts": enriched_tech
+        }
+
 
     async def query_jobs_rag(self, search_id: str, query_text: str) -> str:
         """
@@ -303,7 +560,8 @@ User Query:
 
     def generate_jobs_csv(self, search_id: str) -> Optional[str]:
         """
-        Generates a detailed CSV file containing all job listings.
+        Generates a detailed CSV file containing all job listings with
+        HR contacts, tech contacts, company insights, and key requirements.
         """
         jobs = self.job_repo.get_jobs_by_search_id(search_id)
         if not jobs:
@@ -325,6 +583,27 @@ User Query:
                     salary = f"> {min_sal} {curr}"
                 elif max_sal:
                     salary = f"< {max_sal} {curr}"
+
+            # Extract company insights
+            insights = j.company_insights or {}
+            company_size = insights.get("size_indicator", "Unknown")
+            industry = insights.get("industry", "Unknown")
+            culture = ", ".join(insights.get("culture_signals", []))
+            red_flags = ", ".join(insights.get("red_flags", []))
+
+            # Extract HR contact info
+            hr_contacts = j.hr_contacts or []
+            hr_name = hr_contacts[0].get("full_name", "") if hr_contacts else ""
+            hr_email = hr_contacts[0].get("email", "") if hr_contacts else ""
+            hr_confidence = f"{hr_contacts[0].get('confidence_score', 0)}%" if hr_contacts else ""
+            hr_phone = hr_contacts[0].get("phone", "") if hr_contacts else ""
+
+            # Extract tech contact info
+            tech_contacts = j.tech_contacts or []
+            tech_name = tech_contacts[0].get("full_name", "") if tech_contacts else ""
+            tech_email = tech_contacts[0].get("email", "") if tech_contacts else ""
+            tech_confidence = f"{tech_contacts[0].get('confidence_score', 0)}%" if tech_contacts else ""
+            tech_phone = tech_contacts[0].get("phone", "") if tech_contacts else ""
                     
             data.append({
                 "Company Name": j.company,
@@ -337,6 +616,19 @@ User Query:
                 "Experience Fit": j.experience_fit or "Good Fit",
                 "Matching Skills": ", ".join(j.matching_skills or []),
                 "Missing Skills": ", ".join(j.missing_skills or []),
+                "Key Requirements": j.key_requirements or "",
+                "Company Size": company_size,
+                "Industry": industry,
+                "Culture Signals": culture,
+                "Red Flags": red_flags,
+                "HR Contact Name": hr_name,
+                "HR Email": hr_email,
+                "HR Email Confidence": hr_confidence,
+                "HR Phone": hr_phone,
+                "Tech Lead Name": tech_name,
+                "Tech Lead Email": tech_email,
+                "Tech Lead Email Confidence": tech_confidence,
+                "Tech Lead Phone": tech_phone,
                 "Match Reason": j.match_reason or "",
                 "URL": j.url or "",
                 "Source": j.source or ""
@@ -347,5 +639,105 @@ User Query:
         os.makedirs(export_dir, exist_ok=True)
         
         file_path = os.path.join(export_dir, f"jobs_export_{search_id}.csv")
+        df.to_csv(file_path, index=False, encoding="utf-8-sig")
+        return file_path
+
+    async def generate_company_insights_csv(self, search_id: str, candidate_name: str = "Candidate", candidate_skills: Optional[List[str]] = None) -> Optional[str]:
+        """
+        Generates a comprehensive CSV with HR emails, tech lead emails, phone numbers,
+        company insights, and all enrichment data for every job in the search.
+        Auto-fetches HR/tech contacts for any job that doesn't have them yet.
+        """
+        from src.services.linkedin_service import linkedin_service
+
+        jobs = self.job_repo.get_jobs_by_search_id(search_id)
+        if not jobs:
+            return None
+
+        # Auto-fetch contacts for jobs that don't have them
+        for job in jobs:
+            if not job.hr_contacts or not job.tech_contacts:
+                try:
+                    await self.fetch_job_hr_contacts(
+                        job_id=job.id,
+                        candidate_name=candidate_name,
+                        candidate_skills=candidate_skills,
+                        include_tech=True
+                    )
+                except Exception as e:
+                    print(f"Auto-fetch contacts error for {job.company}: {e}")
+
+        # Re-query to get updated contacts
+        self.db.expire_all()
+        jobs = self.job_repo.get_jobs_by_search_id(search_id)
+
+        data = []
+        for j in jobs:
+            loc = (j.location or "").lower()
+            work_type = "Remote" if "remote" in loc else ("Hybrid" if "hybrid" in loc else "Onsite")
+
+            salary = ""
+            if j.salary_range:
+                min_sal = j.salary_range.get("min")
+                max_sal = j.salary_range.get("max")
+                curr = j.salary_range.get("currency", "USD")
+                if min_sal and max_sal:
+                    salary = f"{min_sal}-{max_sal} {curr}"
+                elif min_sal:
+                    salary = f"> {min_sal} {curr}"
+                elif max_sal:
+                    salary = f"< {max_sal} {curr}"
+
+            insights = j.company_insights or {}
+
+            # Collect ALL HR contacts
+            hr_contacts = j.hr_contacts or []
+            all_hr_names = "; ".join([c.get("full_name", "") for c in hr_contacts if c.get("full_name")])
+            all_hr_emails = "; ".join([c.get("email", "") for c in hr_contacts if c.get("email")])
+            all_hr_phones = "; ".join([c.get("phone", "") for c in hr_contacts if c.get("phone")])
+            all_hr_confidence = "; ".join([f"{c.get('confidence_score', 0)}%" for c in hr_contacts])
+
+            # Collect ALL tech contacts
+            tech_contacts = j.tech_contacts or []
+            all_tech_names = "; ".join([c.get("full_name", "") for c in tech_contacts if c.get("full_name")])
+            all_tech_emails = "; ".join([c.get("email", "") for c in tech_contacts if c.get("email")])
+            all_tech_phones = "; ".join([c.get("phone", "") for c in tech_contacts if c.get("phone")])
+            all_tech_confidence = "; ".join([f"{c.get('confidence_score', 0)}%" for c in tech_contacts])
+
+            data.append({
+                "Company Name": j.company,
+                "Role / Title": j.title,
+                "Location": j.location,
+                "Work Type": work_type,
+                "Posted Date": format_posted_date_for_csv(j.posted_date),
+                "Salary": salary or "N/A",
+                "Match Score": f"{round(j.match_score or 0)}%",
+                "Experience Fit": j.experience_fit or "Good Fit",
+                "Matching Skills": ", ".join(j.matching_skills or []),
+                "Missing Skills": ", ".join(j.missing_skills or []),
+                "Key Requirements": j.key_requirements or "",
+                "Company Size": insights.get("size_indicator", "Unknown"),
+                "Industry": insights.get("industry", "Unknown"),
+                "Culture Signals": ", ".join(insights.get("culture_signals", [])),
+                "Red Flags": ", ".join(insights.get("red_flags", [])),
+                "HR Contact Names": all_hr_names,
+                "HR Emails": all_hr_emails,
+                "HR Email Confidence": all_hr_confidence,
+                "HR Phones": all_hr_phones,
+                "Tech Lead Names": all_tech_names,
+                "Tech Lead Emails": all_tech_emails,
+                "Tech Lead Email Confidence": all_tech_confidence,
+                "Tech Lead Phones": all_tech_phones,
+                "Job Description Summary": (j.description or "")[:500],
+                "Match Reason": j.match_reason or "",
+                "URL": j.url or "",
+                "Source": j.source or ""
+            })
+
+        df = pd.DataFrame(data)
+        export_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "exports")
+        os.makedirs(export_dir, exist_ok=True)
+
+        file_path = os.path.join(export_dir, f"company_insights_{search_id}.csv")
         df.to_csv(file_path, index=False, encoding="utf-8-sig")
         return file_path

@@ -56,13 +56,22 @@ def init_and_migrate_db():
                     "ALTER TABLE jobs ADD COLUMN matching_skills JSON",
                     "ALTER TABLE jobs ADD COLUMN missing_skills JSON",
                     "ALTER TABLE jobs ADD COLUMN experience_fit VARCHAR(50)",
+                    "ALTER TABLE jobs ADD COLUMN hr_contacts JSON",
+                    "ALTER TABLE jobs ADD COLUMN tech_contacts JSON",
+                    "ALTER TABLE jobs ADD COLUMN company_insights JSON",
+                    "ALTER TABLE jobs ADD COLUMN key_requirements TEXT",
                     "ALTER TABLE email_alerts ADD COLUMN user_id VARCHAR(36)",
                     "ALTER TABLE search_history ADD COLUMN user_id VARCHAR(36)",
                     "ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)",
                     "ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'user'",
                     "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE",
                     "ALTER TABLE users ADD COLUMN created_at TIMESTAMP",
-                    "ALTER TABLE users ADD COLUMN updated_at TIMESTAMP"
+                    "ALTER TABLE user_accounts ADD COLUMN linkedin_cookie TEXT",
+                    "ALTER TABLE user_accounts ADD COLUMN linkedin_cookie_status VARCHAR(50) DEFAULT 'unconfigured'",
+                    "ALTER TABLE user_accounts ADD COLUMN linkedin_cookie_checked_at TIMESTAMP",
+                    "ALTER TABLE user_accounts ADD COLUMN linkedin_cookie_last_notified_at TIMESTAMP",
+                    "ALTER TABLE email_alerts ADD COLUMN linkedin_cookie TEXT",
+                    "ALTER TABLE email_alerts ADD COLUMN cookie_status VARCHAR(50) DEFAULT 'active'",
                 ]:
                     try:
                         conn.execute(text(query))

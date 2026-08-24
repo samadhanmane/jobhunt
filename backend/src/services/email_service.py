@@ -210,6 +210,68 @@ class EmailService:
         </div>
         """
 
+    def send_cookie_expired_alert(self, to_email: str, scheduled_time: str, role: str, frontend_url: Optional[str] = None) -> bool:
+        """
+        Sends an automated notification when user's LinkedIn li_at cookie is detected as expired
+        prior to their scheduled daily automation run.
+        """
+        app_url = frontend_url or getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        if isinstance(app_url, str) and "," in app_url:
+            app_url = app_url.split(",")[0].strip()
+
+        subject = f"⚠️ Action Required: Your LinkedIn Session Cookie has Expired — JobAgent AI"
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #090d16; color: #f8fafc; margin: 0; padding: 0; }}
+                .container {{ max-width: 560px; margin: 24px auto; background-color: #0f172a; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.1); }}
+                .header {{ background: #1e1b4b; border-bottom: 2px solid #ef4444; padding: 24px; text-align: center; }}
+                .content {{ padding: 24px; }}
+                .btn {{ display: inline-block; background: #6366f1; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 600; padding: 10px 20px; border-radius: 8px; margin-top: 16px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2 style="margin: 0; color: #f87171; font-size: 20px;">⚠️ LinkedIn Session Cookie Expired</h2>
+                    <p style="margin: 6px 0 0 0; color: #94a3b8; font-size: 13px;">Pre-Automation Health Check Notification</p>
+                </div>
+                
+                <div class="content">
+                    <p style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+                        Hi there,<br><br>
+                        Our automated health checker detected that your personal <strong>LinkedIn session cookie (<code>li_at</code>) has expired</strong>.
+                    </p>
+                    
+                    <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 12px; color: #fca5a5;">
+                        ⏰ <strong>Scheduled Run Impact:</strong> Your daily job digest for <strong>{role}</strong> is scheduled for delivery at <strong>{scheduled_time}</strong>.
+                        Without an active LinkedIn cookie, recruiter & hiring manager contact discovery may use fallback search dorking.
+                    </div>
+                    
+                    <h3 style="font-size: 13px; color: #f8fafc; margin: 16px 0 8px 0;">How to refresh your cookie in 30 seconds:</h3>
+                    <ol style="font-size: 12px; color: #94a3b8; line-height: 1.8; padding-left: 20px; margin: 0 0 16px 0;">
+                        <li>Open <a href="https://www.linkedin.com" target="_blank" style="color: #818cf8;">LinkedIn.com</a> in your browser.</li>
+                        <li>Press <code>F12</code> &rarr; Application &rarr; Cookies &rarr; <code>.linkedin.com</code>.</li>
+                        <li>Copy the value of the <code>li_at</code> cookie.</li>
+                        <li>Paste it into your JobAgent AI dashboard under <strong>LinkedIn Cookie Settings</strong>.</li>
+                    </ol>
+                    
+                    <div style="text-align: center; margin-top: 20px;">
+                        <a href="{app_url}" class="btn" style="color: #ffffff;">Update LinkedIn Cookie Now &rarr;</a>
+                    </div>
+                </div>
+                
+                <div style="background-color: #080c15; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                    JobAgent AI Automation Engine • Automated Cookie Health Sentinel
+                </div>
+            </div>
+        </body>
+        </html>
+        """
         return self._send_via_nodemailer(to_email, subject, html, [])
 
 email_service = EmailService()
+

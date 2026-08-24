@@ -14,7 +14,7 @@ const API_BASE_URL = getApiBaseUrl();
 // Helper Functions
 // ==========================================
 function isWithinDays(dateStr, days) {
-    if (!dateStr) return true;
+    if (!dateStr || days === 0) return true;
     try {
         let jobDate;
         if (!isNaN(dateStr) && String(dateStr).length >= 10) {
@@ -35,7 +35,6 @@ function isWithinDays(dateStr, days) {
 // Main App Component
 // ==========================================
 function App() {
-    // Auth State
     const [token, setToken] = useState(() => localStorage.getItem("jobagent_auth_token") || "");
     const [currentUser, setCurrentUser] = useState(() => {
         try {
@@ -45,17 +44,42 @@ function App() {
         }
     });
 
-    // Active Navigation Tab: 'search' | 'alerts' | 'admin'
     const [activeTab, setActiveTab] = useState('search');
 
-    // Notification / Toast
+    // LinkedIn Cookie State
+    const [cookieModalOpen, setCookieModalOpen] = useState(false);
+    const [cookieStatusInfo, setCookieStatusInfo] = useState({
+        has_cookie: false,
+        cookie_status: 'unconfigured',
+        valid: false,
+        message: ''
+    });
+
     const [toast, setToast] = useState(null);
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
-        setTimeout(() => setToast(null), 4500);
+        setTimeout(() => setToast(null), 4000);
     };
 
-    // Verify token on initial load
+    // Check cookie status on login / session load
+    const refreshCookieStatus = () => {
+        if (!token) return;
+        fetch(`${API_BASE_URL}/api/v1/auth/linkedin-cookie-status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data) {
+                setCookieStatusInfo(data);
+                // If cookie expired, trigger modal popup automatically
+                if (data.cookie_status === 'expired') {
+                    showToast("⚠️ Your LinkedIn cookie has expired. Please update it.", "error");
+                }
+            }
+        })
+        .catch(() => {});
+    };
+
     useEffect(() => {
         if (token) {
             fetch(`${API_BASE_URL}/api/v1/auth/me`, {
@@ -68,6 +92,7 @@ function App() {
             .then(data => {
                 setCurrentUser(data.user);
                 localStorage.setItem("jobagent_user", JSON.stringify(data.user));
+                refreshCookieStatus();
             })
             .catch(() => {
                 handleLogout();
@@ -81,6 +106,7 @@ function App() {
         localStorage.setItem("jobagent_auth_token", newToken);
         localStorage.setItem("jobagent_user", JSON.stringify(user));
         showToast(`Welcome back, ${user.email}!`);
+        setTimeout(refreshCookieStatus, 500);
     };
 
     const handleLogout = () => {
@@ -91,7 +117,6 @@ function App() {
         setActiveTab('search');
     };
 
-    // If not authenticated, render Login Screen
     if (!token || !currentUser) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4">
@@ -102,23 +127,39 @@ function App() {
 
     return (
         <div className="flex-1 flex flex-col min-h-screen">
-            {/* Navigation Header */}
+            {/* Minimal Nav Header */}
             <Navbar 
                 user={currentUser} 
                 activeTab={activeTab} 
                 setActiveTab={setActiveTab} 
+                cookieStatusInfo={cookieStatusInfo}
+                onOpenCookieModal={() => setCookieModalOpen(true)}
                 onLogout={handleLogout} 
             />
 
+            {/* Cookie Expiry Banner if Expired */}
+            {cookieStatusInfo.cookie_status === 'expired' && (
+                <div className="bg-rose-950/80 border-b border-rose-500/30 px-4 py-2 text-center text-xs text-rose-200 flex items-center justify-center gap-2">
+                    <span>⚠️</span>
+                    <span><strong>Action Required:</strong> Your LinkedIn session cookie has expired.</span>
+                    <button 
+                        onClick={() => setCookieModalOpen(true)}
+                        className="px-2 py-0.5 rounded bg-rose-900/60 hover:bg-rose-900 text-white font-semibold underline"
+                    >
+                        Update Cookie Now &rarr;
+                    </button>
+                </div>
+            )}
+
             {/* Toast Notification */}
             {toast && (
-                <div className="fixed bottom-6 right-6 z-50 animate-bounce">
-                    <div className={`px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 border text-sm font-medium ${
+                <div className="fixed bottom-6 right-6 z-50 animate-fade-in">
+                    <div className={`px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md flex items-center gap-2.5 border text-xs font-medium ${
                         toast.type === 'error' 
-                            ? 'bg-rose-950/90 border-rose-500/50 text-rose-200' 
-                            : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+                            ? 'bg-rose-950/90 border-rose-500/30 text-rose-200' 
+                            : 'bg-emerald-950/90 border-emerald-500/30 text-emerald-200'
                     }`}>
-                        <span>{toast.type === 'error' ? '❌' : '✅'}</span>
+                        <span>{toast.type === 'error' ? '✕' : '✓'}</span>
                         <span>{toast.message}</span>
                     </div>
                 </div>
@@ -127,23 +168,48 @@ function App() {
             {/* Main Content Area */}
             <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {activeTab === 'search' && (
-                    <JobSearchDashboard token={token} user={currentUser} showToast={showToast} />
+                    <JobSearchDashboard 
+                        token={token} 
+                        user={currentUser} 
+                        cookieStatusInfo={cookieStatusInfo}
+                        onOpenCookieModal={() => setCookieModalOpen(true)}
+                        showToast={showToast} 
+                    />
                 )}
                 {activeTab === 'alerts' && (
-                    <EmailAlertsView token={token} user={currentUser} showToast={showToast} />
+                    <EmailAlertsView 
+                        token={token} 
+                        user={currentUser} 
+                        cookieStatusInfo={cookieStatusInfo}
+                        onOpenCookieModal={() => setCookieModalOpen(true)}
+                        showToast={showToast} 
+                    />
                 )}
                 {activeTab === 'admin' && currentUser.role === 'admin' && (
                     <AdminPortal token={token} user={currentUser} showToast={showToast} />
                 )}
             </main>
 
-            {/* Footer */}
-            <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-500">
+            {/* LinkedIn Cookie Modal */}
+            {cookieModalOpen && (
+                <LinkedInCookieModal 
+                    token={token}
+                    cookieStatusInfo={cookieStatusInfo}
+                    onClose={() => setCookieModalOpen(false)}
+                    onStatusUpdated={(newStatus) => {
+                        setCookieStatusInfo(newStatus);
+                    }}
+                    showToast={showToast}
+                />
+            )}
+
+            {/* Minimal Footer */}
+            <footer className="border-t border-white/[0.06] py-5 text-center text-xs text-slate-500">
                 <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-                    <p>© 2026 JobAgent AI. Multi-Platform Autonomous Job Pipeline & Deduplicator.</p>
-                    <div className="flex items-center gap-3">
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span>FastAPI + Mistral AI + React + Tailwind</span>
+                    <p>© 2026 JobAgent AI. Multi-Platform Intelligence, ATS Scrapers & Verified Contact Discovery.</p>
+                    <div className="flex items-center gap-2 text-slate-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>Multi-Source Parallel Scraping Engine Active</span>
                     </div>
                 </div>
             </footer>
@@ -152,7 +218,331 @@ function App() {
 }
 
 // ==========================================
-// Component: Login Screen
+// Component: Minimal Navigation Bar
+// ==========================================
+function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieModal, onLogout }) {
+    let cookieBadge = {
+        label: "Add LinkedIn Cookie",
+        color: "bg-slate-800 text-slate-400 border-white/10 hover:border-slate-500",
+        dot: "bg-slate-500"
+    };
+
+    if (cookieStatusInfo?.cookie_status === 'active') {
+        cookieBadge = {
+            label: "LinkedIn: Active",
+            color: "bg-emerald-950/60 text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50",
+            dot: "bg-emerald-400"
+        };
+    } else if (cookieStatusInfo?.cookie_status === 'expired') {
+        cookieBadge = {
+            label: "LinkedIn: Expired ⚠️",
+            color: "bg-rose-950/80 text-rose-300 border-rose-500/40 hover:border-rose-500 animate-pulse",
+            dot: "bg-rose-500"
+        };
+    }
+
+    return (
+        <header className="sticky top-0 z-40 minimal-nav">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                {/* Brand Logo */}
+                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('search')}>
+                    <div className="w-8 h-8 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center text-sm font-bold text-indigo-400">
+                        ⚡
+                    </div>
+                    <div>
+                        <div className="font-bold text-base text-slate-100 tracking-tight leading-none">
+                            JobAgent <span className="text-indigo-400 font-semibold">AI</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-medium tracking-wide">Multi-Source ATS & Talent Discovery</div>
+                    </div>
+                </div>
+
+                {/* Tab Navigation */}
+                <nav className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-white/[0.08]">
+                    <button 
+                        onClick={() => setActiveTab('search')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                            activeTab === 'search' 
+                                ? 'bg-indigo-600/90 text-white shadow-sm' 
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                        }`}
+                    >
+                        <span>🔍</span>
+                        <span>Job Search</span>
+                    </button>
+
+                    <button 
+                        onClick={() => setActiveTab('alerts')}
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                            activeTab === 'alerts' 
+                                ? 'bg-indigo-600/90 text-white shadow-sm' 
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                        }`}
+                    >
+                        <span>⏰</span>
+                        <span>Email Alerts</span>
+                    </button>
+
+                    {user.role === 'admin' && (
+                        <button 
+                            onClick={() => setActiveTab('admin')}
+                            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                activeTab === 'admin' 
+                                    ? 'bg-slate-700 text-white shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                            }`}
+                        >
+                            <span>🛡️</span>
+                            <span>Admin Portal</span>
+                        </button>
+                    )}
+                </nav>
+
+                {/* User Menu, LinkedIn Cookie Button & Logout */}
+                <div className="flex items-center gap-2 sm:gap-3">
+                    {/* LinkedIn Cookie Status Pill */}
+                    <button 
+                        onClick={onOpenCookieModal}
+                        title="Configure your LinkedIn session cookie for authenticated recruiter scraping"
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${cookieBadge.color}`}
+                    >
+                        <span className={`w-1.5 h-1.5 rounded-full ${cookieBadge.dot}`}></span>
+                        <span className="hidden sm:inline">{cookieBadge.label}</span>
+                        <span className="sm:hidden">LinkedIn</span>
+                    </button>
+
+                    <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs">
+                        <span className="text-slate-300 font-medium">{user.email}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            user.role === 'admin' 
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' 
+                                : 'bg-slate-800 text-slate-300 border border-white/10'
+                        }`}>
+                            {user.role}
+                        </span>
+                    </div>
+
+                    <button 
+                        onClick={onLogout}
+                        title="Sign Out"
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-xs font-medium transition-all"
+                    >
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+    );
+}
+
+// ==========================================
+// Component: LinkedIn Cookie Modal
+// ==========================================
+function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated, showToast }) {
+    const [cookieInput, setCookieInput] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [statusMsg, setStatusMsg] = useState(cookieStatusInfo?.message || "");
+    const [currentStatus, setCurrentStatus] = useState(cookieStatusInfo?.cookie_status || "unconfigured");
+
+    const handleSaveCookie = async (e) => {
+        e.preventDefault();
+        if (!cookieInput.trim()) return;
+
+        setSaving(true);
+        setStatusMsg("");
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/linkedin-cookie`, {
+                method: "POST",
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ linkedin_cookie: cookieInput.trim() })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setCurrentStatus(data.cookie_status);
+                setStatusMsg(data.message);
+                onStatusUpdated({
+                    has_cookie: true,
+                    cookie_status: data.cookie_status,
+                    valid: data.valid,
+                    message: data.message
+                });
+                if (data.valid) {
+                    showToast("LinkedIn cookie saved and verified active!");
+                    setTimeout(onClose, 1200);
+                } else {
+                    showToast(data.message || "Cookie validation failed", "error");
+                }
+            } else {
+                showToast(data.detail || "Failed to save cookie", "error");
+                setStatusMsg(data.detail || "Failed to save cookie");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+            setStatusMsg(err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCheckLive = async () => {
+        setTesting(true);
+        setStatusMsg("");
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/linkedin-cookie-status`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setCurrentStatus(data.cookie_status);
+                setStatusMsg(data.message);
+                onStatusUpdated(data);
+                showToast(data.valid ? "Cookie is active!" : data.message, data.valid ? "success" : "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    const handleRemoveCookie = async () => {
+        if (!confirm("Are you sure you want to disconnect your LinkedIn cookie?")) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/linkedin-cookie`, {
+                method: "DELETE",
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setCurrentStatus("unconfigured");
+                setStatusMsg("Cookie disconnected.");
+                setCookieInput("");
+                onStatusUpdated({
+                    has_cookie: false,
+                    cookie_status: 'unconfigured',
+                    valid: false,
+                    message: 'Cookie disconnected.'
+                });
+                showToast("LinkedIn cookie disconnected. Using stealth search dorking.");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="minimal-card rounded-2xl max-w-lg w-full p-5 sm:p-6 border border-white/15 shadow-2xl space-y-4 text-xs">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-sm">
+                            💼
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-sm text-white">Your LinkedIn Session Cookie</h3>
+                            <p className="text-[11px] text-slate-400">Authenticated HR & Team Contact Scraping</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white text-lg">✕</button>
+                </div>
+
+                {/* Status Callout Banner */}
+                <div className={`p-3 rounded-xl border flex items-start gap-2.5 ${
+                    currentStatus === 'active' 
+                        ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-200' 
+                        : currentStatus === 'expired' 
+                        ? 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                        : 'bg-slate-900 border-white/10 text-slate-300'
+                }`}>
+                    <span className="text-base">{currentStatus === 'active' ? '✓' : (currentStatus === 'expired' ? '⚠️' : 'ℹ️')}</span>
+                    <div className="flex-1 space-y-0.5">
+                        <div className="font-bold text-xs capitalize">
+                            Status: {currentStatus === 'active' ? 'Active & Authenticated' : (currentStatus === 'expired' ? 'Expired (Action Required)' : 'Unconfigured / Stealth Mode')}
+                        </div>
+                        <div className="text-[11px] opacity-90 leading-relaxed">
+                            {statusMsg || (currentStatus === 'active' 
+                                ? 'Your LinkedIn cookie is verified and active for live candidate searches.' 
+                                : 'Without a cookie, the system uses public search dorking. Adding your cookie enables direct Voyager profile extraction.')}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Guided 3-Step Instructions */}
+                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-white/[0.06] space-y-2">
+                    <div className="font-bold text-slate-300 text-[11px] uppercase tracking-wider">
+                        📖 How to get your LinkedIn <code>li_at</code> cookie:
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                        <li>Log in to <a href="https://www.linkedin.com" target="_blank" className="text-indigo-400 underline">LinkedIn.com</a> in your browser.</li>
+                        <li>Open DevTools (<code>F12</code> or Right-click &rarr; Inspect).</li>
+                        <li>Go to <strong>Application</strong> tab &rarr; <strong>Cookies</strong> &rarr; <code>https://www.linkedin.com</code>.</li>
+                        <li>Find the cookie named <strong><code>li_at</code></strong> and copy its value.</li>
+                    </ol>
+                </div>
+
+                {/* Form to Input Cookie */}
+                <form onSubmit={handleSaveCookie} className="space-y-3">
+                    <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                            Paste <code>li_at</code> Cookie Value:
+                        </label>
+                        <input 
+                            type="password"
+                            required
+                            placeholder="AQEDATxxxxxx..."
+                            value={cookieInput}
+                            onChange={(e) => setCookieInput(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
+                        />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                        <button 
+                            type="submit"
+                            disabled={saving || !cookieInput.trim()}
+                            className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                            {saving ? "Verifying with LinkedIn..." : "💾 Save & Verify Cookie"}
+                        </button>
+
+                        {currentStatus !== 'unconfigured' && (
+                            <button 
+                                type="button"
+                                onClick={handleCheckLive}
+                                disabled={testing}
+                                className="py-2.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all"
+                            >
+                                {testing ? "Checking..." : "↻ Test Health"}
+                            </button>
+                        )}
+                    </div>
+                </form>
+
+                {/* Disconnect button if cookie is configured */}
+                {cookieStatusInfo?.has_cookie && (
+                    <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500">Cookie is securely stored for your account.</span>
+                        <button 
+                            type="button" 
+                            onClick={handleRemoveCookie}
+                            className="text-rose-400 hover:text-rose-300 hover:underline font-medium"
+                        >
+                            Disconnect Cookie
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
+// Component: Minimal Login Screen
 // ==========================================
 function LoginScreen({ onLoginSuccess }) {
     const [email, setEmail] = useState("");
@@ -192,71 +582,55 @@ function LoginScreen({ onLoginSuccess }) {
     };
 
     return (
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-sm">
             <div className="text-center mb-6">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 shadow-xl shadow-indigo-500/25 mb-4 animate-float">
-                    <span className="text-3xl">⚡</span>
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-800 border border-white/10 text-xl text-indigo-400 mb-3">
+                    ⚡
                 </div>
-                <h1 className="text-3xl font-extrabold tracking-tight font-outfit text-white">
-                    JobAgent <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-400">AI</span>
+                <h1 className="text-2xl font-bold tracking-tight text-white">
+                    JobAgent <span className="text-indigo-400">AI</span>
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">Sign in to access your curated job intelligence platform</p>
+                <p className="text-slate-400 text-xs mt-1">Multi-Source ATS Search & Contact Intelligence</p>
             </div>
 
-            <div className="glass-card rounded-2xl p-8 shadow-2xl border border-white/10 relative overflow-hidden">
-                <div className="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
-
+            <div className="minimal-card rounded-xl p-6 shadow-xl border border-white/10">
                 {error && (
-                    <div className="mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
-                        <span className="text-base">⚠️</span>
-                        <div className="flex-1 leading-relaxed">{error}</div>
+                    <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                        {error}
                     </div>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Email Address</label>
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">✉️</span>
-                            <input 
-                                type="email" 
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="jobhuntadmin@gmail.com"
-                                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
-                            />
-                        </div>
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Email Address</label>
+                        <input 
+                            type="email" 
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="jobhuntadmin@gmail.com"
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs transition-all"
+                        />
                     </div>
 
                     <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Password</label>
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">🔒</span>
-                            <input 
-                                type="password" 
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all"
-                            />
-                        </div>
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Password</label>
+                        <input 
+                            type="password" 
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs transition-all"
+                        />
                     </div>
 
                     <button 
                         type="submit" 
                         disabled={loading}
-                        className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 transition-all transform active:scale-[0.98] disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
                     >
-                        {loading ? (
-                            <>
-                                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                <span>Authenticating...</span>
-                            </>
-                        ) : (
-                            <span>Sign In →</span>
-                        )}
+                        {loading ? "Authenticating..." : "Sign In →"}
                     </button>
                 </form>
             </div>
@@ -265,98 +639,9 @@ function LoginScreen({ onLoginSuccess }) {
 }
 
 // ==========================================
-// Component: Navigation Bar
-// ==========================================
-function Navbar({ user, activeTab, setActiveTab, onLogout }) {
-    return (
-        <header className="sticky top-0 z-40 glass-nav border-b border-white/10">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-                {/* Brand Logo */}
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('search')}>
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/30 text-xl">
-                        ⚡
-                    </div>
-                    <div>
-                        <div className="font-extrabold font-outfit text-xl text-white tracking-tight leading-none">
-                            JobAgent <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">AI</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-medium tracking-wide">Multi-Platform Job Discovery</div>
-                    </div>
-                </div>
-
-                {/* Tab Navigation */}
-                <nav className="flex items-center gap-1.5 bg-slate-900/60 p-1.5 rounded-xl border border-white/5">
-                    <button 
-                        onClick={() => setActiveTab('search')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                            activeTab === 'search' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' 
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                        }`}
-                    >
-                        <span>🔍</span>
-                        <span>Job Search</span>
-                    </button>
-
-                    <button 
-                        onClick={() => setActiveTab('alerts')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                            activeTab === 'alerts' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30' 
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                        }`}
-                    >
-                        <span>⏰</span>
-                        <span>Email Alerts</span>
-                    </button>
-
-                    {user.role === 'admin' && (
-                        <button 
-                            onClick={() => setActiveTab('admin')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                activeTab === 'admin' 
-                                    ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30' 
-                                    : 'text-purple-300 hover:text-purple-200 hover:bg-purple-500/10'
-                            }`}
-                        >
-                            <span>🛡️</span>
-                            <span>Admin Portal</span>
-                        </button>
-                    )}
-                </nav>
-
-                {/* User Menu & Logout */}
-                <div className="flex items-center gap-3">
-                    <div className="hidden sm:flex items-center gap-2.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                        <span className="text-slate-300 font-medium">{user.email}</span>
-                        <span className={`px-2 py-0.5 rounded-md font-bold uppercase text-[10px] ${
-                            user.role === 'admin' 
-                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' 
-                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        }`}>
-                            {user.role}
-                        </span>
-                    </div>
-
-                    <button 
-                        onClick={onLogout}
-                        title="Sign Out"
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-200 border border-white/10 hover:border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
-                    >
-                        <span>🚪</span>
-                        <span className="hidden sm:inline">Logout</span>
-                    </button>
-                </div>
-            </div>
-        </header>
-    );
-}
-
-// ==========================================
 // Component: Job Search & Discovery Dashboard
 // ==========================================
-function JobSearchDashboard({ token, user, showToast }) {
+function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
     // Form Inputs
     const [role, setRole] = useState("AI ML Intern");
     const [location, setLocation] = useState("Pune");
@@ -375,6 +660,9 @@ function JobSearchDashboard({ token, user, showToast }) {
     const [allJobs, setAllJobs] = useState([]);
     const [searchStats, setSearchStats] = useState({ total_found: 0, unique_count: 0 });
 
+    // Selected Job for Detailed Modal
+    const [selectedJob, setSelectedJob] = useState(null);
+
     // Filter Toolbar State
     const [filterKeyword, setFilterKeyword] = useState("");
     const [filterLocation, setFilterLocation] = useState("all");
@@ -390,6 +678,9 @@ function JobSearchDashboard({ token, user, showToast }) {
     const [ragQuery, setRagQuery] = useState("");
     const [ragAnswer, setRagAnswer] = useState("");
     const [ragLoading, setRagLoading] = useState(false);
+
+    // Exporting Insights CSV State
+    const [exportingInsights, setExportingInsights] = useState(false);
 
     // Resume Upload & Parse
     const handleResumeChange = async (e) => {
@@ -449,6 +740,7 @@ function JobSearchDashboard({ token, user, showToast }) {
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/search`, {
                 method: "POST",
+                headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
             });
             const data = await res.json();
@@ -460,7 +752,7 @@ function JobSearchDashboard({ token, user, showToast }) {
                 });
                 setAllJobs(data.jobs || []);
                 setFilterDate(searchDatePosted);
-                showToast(`Gathered ${data.total_found} raw postings -> ${data.unique_count} curated matching roles!`);
+                showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} deduplicated jobs!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
             }
@@ -469,6 +761,48 @@ function JobSearchDashboard({ token, user, showToast }) {
         } finally {
             setSearching(false);
         }
+    };
+
+    // Export Company Insights CSV
+    const handleExportInsightsCSV = async () => {
+        if (!currentSearchId) return;
+        setExportingInsights(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentSearchId}/export-insights`, {
+                method: "POST",
+                headers: { 
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({
+                    candidate_name: user?.email ? user.email.split("@")[0] : "Candidate",
+                    candidate_skills: resumeProfile?.skills || []
+                })
+            });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `company_insights_${currentSearchId}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                showToast("Downloaded Company Insights & Team Contacts CSV!");
+            } else {
+                showToast("Failed to generate insights CSV.", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setExportingInsights(false);
+        }
+    };
+
+    // Update job in list after contacts are fetched in modal
+    const handleUpdateJobContacts = (updatedJob) => {
+        setAllJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setSelectedJob(updatedJob);
     };
 
     // Filter & Sort Logic
@@ -495,7 +829,7 @@ function JobSearchDashboard({ token, user, showToast }) {
             if (filterLocation === 'remote' && !jobLoc.includes('remote') && !jobLoc.includes('wfh') && source !== 'himalayas' && jobLoc !== '') return false;
 
             // 3. Work Mode
-            const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || jobLoc.includes('anywhere');
+            const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere');
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'onsite' && isRemote) return false;
 
@@ -552,24 +886,26 @@ function JobSearchDashboard({ token, user, showToast }) {
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             {/* Search Input & Resume Header */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Search Form */}
-                <div className="lg:col-span-2 glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10">
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+                <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08]">
+                    <div className="flex items-center justify-between mb-5 pb-3 border-b border-white/[0.06]">
                         <div>
-                            <h2 className="text-xl font-bold font-outfit text-white flex items-center gap-2">
+                            <h2 className="text-base font-bold text-white flex items-center gap-2">
                                 <span>🎯</span> Search & Match Preferences
                             </h2>
-                            <p className="text-xs text-slate-400 mt-1">Multi-platform scraping across LinkedIn, Indeed, Freehire, Himalayas & Arbeitnow</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                                Parallel discovery across Greenhouse, Lever, Ashby, LinkedIn, Indeed, Himalayas, Arbeitnow, Jobicy & RemoteOK
+                            </p>
                         </div>
                     </div>
 
-                    <form onSubmit={handleSearchSubmit} className="space-y-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <form onSubmit={handleSearchSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                     Target Role / Title <span className="text-indigo-400">*</span>
                                 </label>
                                 <input 
@@ -577,66 +913,66 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     required
                                     value={role}
                                     onChange={(e) => setRole(e.target.value)}
-                                    placeholder="e.g. AI ML Intern, Full Stack Developer"
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    placeholder="e.g. AI ML Intern, Backend Engineer"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                     Preferred Location
                                 </label>
                                 <input 
                                     type="text" 
                                     value={location}
                                     onChange={(e) => setLocation(e.target.value)}
-                                    placeholder="e.g. Pune india, Bangalore, Remote"
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    placeholder="e.g. Pune, Bangalore, Remote, US"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
                                 />
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                     Work Mode
                                 </label>
                                 <select 
                                     value={remotePreference}
                                     onChange={(e) => setRemotePreference(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="any">🌐 Any (Remote + Onsite)</option>
                                     <option value="remote">🏠 Remote Only</option>
-                                    <option value="onsite">🏢 Onsite / Hybrid Only</option>
+                                    <option value="onsite">🏢 Onsite / Hybrid</option>
                                 </select>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                     Experience Level
                                 </label>
                                 <select 
                                     value={experienceLevel}
                                     onChange={(e) => setExperienceLevel(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="intern">🎓 Internship / Fresher (0 Yrs)</option>
                                     <option value="entry">🌱 Entry Level (0 - 2 Yrs)</option>
                                     <option value="mid">⚡ Mid Level (2 - 5 Yrs)</option>
                                     <option value="senior">💼 Senior Level (5 - 8 Yrs)</option>
-                                    <option value="lead">👑 Lead / Staff / Director (8+ Yrs)</option>
+                                    <option value="lead">👑 Lead / Staff (8+ Yrs)</option>
                                 </select>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                                    📅 Date Posted Filter
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                    Date Posted
                                 </label>
                                 <select 
                                     value={searchDatePosted}
                                     onChange={(e) => setSearchDatePosted(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="all">📅 Anytime / All Dates</option>
                                     <option value="24h">⚡ Past 24 Hours</option>
@@ -650,54 +986,54 @@ function JobSearchDashboard({ token, user, showToast }) {
                         <button 
                             type="submit" 
                             disabled={searching}
-                            className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold shadow-lg shadow-indigo-500/25 transition-all transform active:scale-[0.99] disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                            className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {searching ? (
                                 <>
-                                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                    <span>Harvesting & Ranking Across 5 Job Platforms...</span>
+                                    <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                    <span>Harvesting & Categorizing Across 9 Platforms...</span>
                                 </>
                             ) : (
-                                <span>⚡ Harvest & AI Rank Jobs Now</span>
+                                <span>⚡ Harvest & Analyze Jobs Now</span>
                             )}
                         </button>
                     </form>
                 </div>
 
                 {/* Resume Upload & Profile Card */}
-                <div className="glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10 flex flex-col justify-between">
+                <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
-                            <h3 className="font-bold text-white font-outfit flex items-center gap-2">
+                        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-white/[0.06]">
+                            <h3 className="font-bold text-white text-xs flex items-center gap-1.5">
                                 <span>📄</span> Resume AI Matcher
                             </h3>
                             {parsingResume && (
-                                <span className="text-xs text-indigo-400 animate-pulse font-medium">Parsing...</span>
+                                <span className="text-[11px] text-indigo-400 animate-pulse font-medium">Parsing...</span>
                             )}
                         </div>
 
-                        <div className="mb-4">
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                        <div className="mb-3">
+                            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                                 Upload Resume (PDF / DOCX)
                             </label>
                             <input 
                                 type="file" 
                                 accept=".pdf,.docx,.txt"
                                 onChange={handleResumeChange}
-                                className="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600/20 file:text-indigo-300 hover:file:bg-indigo-600/30 file:cursor-pointer cursor-pointer"
+                                className="block w-full text-xs text-slate-400 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-300 hover:file:bg-slate-700 cursor-pointer"
                             />
                         </div>
 
                         {resumeProfile ? (
-                            <div className="space-y-3">
-                                <div className="text-xs text-slate-400">
-                                    <strong className="text-slate-200">Seniority:</strong> {resumeProfile.seniority || 'Entry Level'} | <strong className="text-slate-200">Domain:</strong> {resumeProfile.core_domain || 'Tech'}
+                            <div className="space-y-2 text-xs">
+                                <div className="text-slate-400 text-[11px]">
+                                    <strong className="text-slate-200">Seniority:</strong> {resumeProfile.seniority || 'Entry'} | <strong className="text-slate-200">Domain:</strong> {resumeProfile.core_domain || 'Engineering'}
                                 </div>
                                 <div>
-                                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Extracted Skills:</div>
-                                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                                    <div className="text-[10px] font-semibold text-slate-400 uppercase mb-1">Indexed Skills ({resumeProfile.skills?.length || 0}):</div>
+                                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
                                         {(resumeProfile.skills || []).map((skill, idx) => (
-                                            <span key={idx} className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs font-medium">
+                                            <span key={idx} className="px-1.5 py-0.5 rounded bg-slate-800 border border-white/5 text-slate-300 text-[11px]">
                                                 {skill}
                                             </span>
                                         ))}
@@ -705,83 +1041,92 @@ function JobSearchDashboard({ token, user, showToast }) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-4 rounded-xl bg-slate-900/50 border border-dashed border-slate-700/60 text-center text-xs text-slate-500">
-                                Upload your resume to unlock AI skill matching and personalized scoring fit!
+                            <div className="p-3 rounded-lg bg-slate-900/60 border border-dashed border-slate-700/60 text-center text-xs text-slate-400">
+                                Upload your resume for automated skill-gap analysis and personalized match scoring.
                             </div>
                         )}
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
-                        <span>Protected deduplication</span>
-                        <span className="text-emerald-400 font-semibold">100% Guaranteed</span>
+                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Multi-source deduplication</span>
+                        <span className="text-emerald-400 font-medium">Active</span>
                     </div>
                 </div>
             </div>
 
             {/* Filter Toolbar & Search Results Header */}
             {allJobs.length > 0 && (
-                <div className="space-y-6">
+                <div className="space-y-5">
                     {/* Summary Stat Banner & Export Bar */}
-                    <div className="glass-card rounded-2xl p-5 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
-                        <div className="flex items-center gap-6">
+                    <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-5">
                             <div>
-                                <div className="text-xs text-slate-400 font-medium">Raw Gathered</div>
-                                <div className="text-2xl font-black font-outfit text-white">{searchStats.total_found}</div>
+                                <div className="text-[11px] text-slate-400">Raw Harvested</div>
+                                <div className="text-xl font-bold text-white">{searchStats.total_found}</div>
                             </div>
-                            <div className="h-8 w-px bg-white/10"></div>
+                            <div className="h-6 w-px bg-white/10"></div>
                             <div>
-                                <div className="text-xs text-slate-400 font-medium">Unique Deduplicated</div>
-                                <div className="text-2xl font-black font-outfit text-indigo-400">{searchStats.unique_count}</div>
+                                <div className="text-[11px] text-slate-400">Deduplicated</div>
+                                <div className="text-xl font-bold text-indigo-400">{searchStats.unique_count}</div>
                             </div>
-                            <div className="h-8 w-px bg-white/10"></div>
+                            <div className="h-6 w-px bg-white/10"></div>
                             <div>
-                                <div className="text-xs text-slate-400 font-medium">Filtered Showing</div>
-                                <div className="text-2xl font-black font-outfit text-emerald-400">{filteredJobs.length}</div>
+                                <div className="text-[11px] text-slate-400">Showing</div>
+                                <div className="text-xl font-bold text-emerald-400">{filteredJobs.length}</div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                             <button 
                                 onClick={() => setRagModalOpen(true)}
-                                className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
+                                className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
                             >
                                 <span>🤖</span>
-                                <span>Ask AI (RAG Assistant)</span>
+                                <span>Ask AI</span>
+                            </button>
+
+                            <button 
+                                onClick={handleExportInsightsCSV}
+                                disabled={exportingInsights}
+                                className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                            >
+                                <span>📊</span>
+                                <span>{exportingInsights ? "Generating..." : "Export Insights & Contacts CSV"}</span>
                             </button>
 
                             <a 
                                 href={`${API_BASE_URL}/api/v1/jobs/${currentSearchId}/export`}
                                 download
-                                className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
+                                className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
                             >
                                 <span>📥</span>
-                                <span>Export CSV</span>
+                                <span>Standard CSV</span>
                             </a>
                         </div>
                     </div>
 
                     {/* Filter Bar */}
-                    <div className="glass-card rounded-2xl p-5 border border-white/10 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-xs">
+                    <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Search in Results</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
                                 <input 
                                     type="text"
                                     placeholder="Company, title, skill..."
                                     value={filterKeyword}
                                     onChange={(e) => setFilterKeyword(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 />
                             </div>
 
                             {/* Location Preset */}
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Location</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Location</label>
                                 <select 
                                     value={filterLocation}
                                     onChange={(e) => setFilterLocation(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="all">📍 All Locations</option>
                                     <option value="india">🇮🇳 India</option>
@@ -793,52 +1138,41 @@ function JobSearchDashboard({ token, user, showToast }) {
 
                             {/* Work Mode */}
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
                                 <select 
                                     value={filterWorkMode}
                                     onChange={(e) => setFilterWorkMode(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="all">🌐 Any Mode</option>
-                                    <option value="remote">🏠 Remote Only</option>
-                                    <option value="onsite">🏢 Onsite Only</option>
+                                    <option value="remote">🏠 Remote</option>
+                                    <option value="onsite">🏢 Onsite / Hybrid</option>
                                 </select>
                             </div>
 
-                            {/* Seniority */}
+                            {/* Source Platform */}
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Seniority</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Platform Source</label>
                                 <select 
-                                    value={filterSeniority}
-                                    onChange={(e) => setFilterSeniority(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+                                    value={filterSource}
+                                    onChange={(e) => setFilterSource(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
-                                    <option value="all">🎓 All Levels</option>
-                                    <option value="intern">Internship</option>
-                                    <option value="junior">Junior / Entry</option>
-                                    <option value="senior">Senior / Lead</option>
-                                </select>
-                            </div>
-
-                            {/* Date Posted */}
-                            <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
-                                <select 
-                                    value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
-                                >
-                                    <option value="all">📅 All Dates</option>
-                                    <option value="24h">⚡ Past 24h</option>
-                                    <option value="3d">🕒 Past 3 days</option>
-                                    <option value="7d">📅 Past 7 days</option>
-                                    <option value="30d">🗓️ Past 30 days</option>
+                                    <option value="all">🌐 All Platforms</option>
+                                    <option value="greenhouse">🌿 Greenhouse ATS</option>
+                                    <option value="lever">⚙️ Lever ATS</option>
+                                    <option value="ashby">⚡ Ashby ATS</option>
+                                    <option value="jobicy">🌍 Jobicy</option>
+                                    <option value="remoteok">🏖️ RemoteOK</option>
+                                    <option value="arbeitnow">🇪🇺 Arbeitnow</option>
+                                    <option value="himalayas">🏔️ Himalayas</option>
+                                    <option value="linkedin">💼 LinkedIn / Indeed</option>
                                 </select>
                             </div>
 
                             {/* Min Match Score */}
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
                                     Min Match: <span className="text-indigo-400 font-bold">{minScore}%</span>
                                 </label>
                                 <input 
@@ -848,17 +1182,17 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     step="10"
                                     value={minScore}
                                     onChange={(e) => setMinScore(Number(e.target.value))}
-                                    className="w-full accent-indigo-500 cursor-pointer"
+                                    className="w-full accent-indigo-500 cursor-pointer mt-1"
                                 />
                             </div>
 
                             {/* Sort Mode */}
                             <div>
-                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
                                 <select 
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-700 text-white text-xs focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="score">⭐ Highest Match</option>
                                     <option value="date">📅 Most Recent</option>
@@ -869,9 +1203,9 @@ function JobSearchDashboard({ token, user, showToast }) {
 
                     {/* Job Cards Grid */}
                     {filteredJobs.length === 0 ? (
-                        <div className="glass-card rounded-2xl p-12 text-center border border-white/10 space-y-3">
-                            <div className="text-4xl">🔍</div>
-                            <h3 className="text-lg font-bold text-white">No jobs match your filter criteria</h3>
+                        <div className="minimal-card rounded-xl p-10 text-center border border-white/[0.08] space-y-2.5">
+                            <div className="text-3xl">🔍</div>
+                            <h3 className="text-base font-bold text-white">No jobs match your filter criteria</h3>
                             <p className="text-xs text-slate-400">Try resetting filters to show all gathered postings.</p>
                             <button 
                                 onClick={() => {
@@ -883,35 +1217,54 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     setFilterDate("all");
                                     setFilterSource("all");
                                 }}
-                                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold"
+                                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium"
                             >
                                 Reset All Filters
                             </button>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {filteredJobs.map((job, idx) => (
-                                <JobCard key={job.id || idx} job={job} onQueryAI={() => {
-                                    setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
-                                    setRagModalOpen(true);
-                                }} />
+                                <JobCard 
+                                    key={job.id || idx} 
+                                    job={job} 
+                                    onViewDetails={() => setSelectedJob(job)}
+                                    onQueryAI={() => {
+                                        setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
+                                        setRagModalOpen(true);
+                                    }} 
+                                />
                             ))}
                         </div>
                     )}
                 </div>
             )}
 
+            {/* Interactive Job Details Modal */}
+            {selectedJob && (
+                <JobDetailModal 
+                    job={selectedJob} 
+                    user={user}
+                    token={token}
+                    resumeSkills={resumeProfile?.skills || []}
+                    onClose={() => setSelectedJob(null)}
+                    onUpdateJob={handleUpdateJobContacts}
+                    onOpenCookieModal={onOpenCookieModal}
+                    showToast={showToast}
+                />
+            )}
+
             {/* RAG Assistant Modal */}
             {ragModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="glass-card rounded-2xl max-w-2xl w-full p-6 border border-white/15 shadow-2xl space-y-5">
-                        <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                            <h3 className="text-lg font-bold font-outfit text-white flex items-center gap-2">
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="minimal-card rounded-xl max-w-2xl w-full p-5 border border-white/15 shadow-2xl space-y-4">
+                        <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.08]">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                 <span>🤖</span> RAG Job Intelligence Assistant
                             </h3>
                             <button 
                                 onClick={() => setRagModalOpen(false)}
-                                className="text-slate-400 hover:text-white text-xl leading-none"
+                                className="text-slate-400 hover:text-white text-lg leading-none"
                             >
                                 ✕
                             </button>
@@ -923,21 +1276,21 @@ function JobSearchDashboard({ token, user, showToast }) {
                                     type="text"
                                     value={ragQuery}
                                     onChange={(e) => setRagQuery(e.target.value)}
-                                    placeholder="Ask anything (e.g. Which companies in Pune hire AI interns?)"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none pr-24"
+                                    placeholder="Ask anything (e.g. Which roles require Python and offer remote?)"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none pr-20"
                                 />
                                 <button 
                                     type="submit"
                                     disabled={ragLoading || !ragQuery.trim()}
-                                    className="absolute right-2 top-2 px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold disabled:opacity-50"
+                                    className="absolute right-1.5 top-1.5 px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-50"
                                 >
-                                    {ragLoading ? "Asking..." : "Ask AI"}
+                                    {ragLoading ? "Asking..." : "Ask"}
                                 </button>
                             </div>
                         </form>
 
                         {ragAnswer && (
-                            <div className="p-4 rounded-xl bg-slate-900/90 border border-purple-500/30 text-slate-200 text-sm leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
+                            <div className="p-3.5 rounded-lg bg-slate-900/90 border border-indigo-500/20 text-slate-200 text-xs leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap">
                                 {ragAnswer}
                             </div>
                         )}
@@ -949,109 +1302,601 @@ function JobSearchDashboard({ token, user, showToast }) {
 }
 
 // ==========================================
-// Component: Single Job Card
+// Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
-function JobCard({ job, onQueryAI }) {
+function JobCard({ job, onViewDetails, onQueryAI }) {
     const score = Math.round(job.match_score || 0);
-    let scoreColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-    if (score >= 80) scoreColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-    else if (score < 60) scoreColor = "bg-slate-500/20 text-slate-300 border-slate-500/30";
+    let scoreColor = "bg-slate-800 text-slate-300 border-slate-700";
+    if (score >= 80) scoreColor = "bg-emerald-950/60 text-emerald-300 border-emerald-500/30";
+    else if (score >= 65) scoreColor = "bg-amber-950/60 text-amber-300 border-amber-500/30";
 
-    // Salary formatting with strict N/A fallback
-    let salaryDisplay = "💰 Salary: N/A";
+    // Salary formatting
+    let salaryDisplay = "Salary: N/A";
     if (job.salary_range) {
         const minS = job.salary_range.min;
         const maxS = job.salary_range.max;
         const curr = job.salary_range.currency || "$";
-        if (minS && maxS) salaryDisplay = `💰 ${curr}${minS.toLocaleString()} - ${maxS.toLocaleString()}`;
-        else if (minS) salaryDisplay = `💰 > ${curr}${minS.toLocaleString()}`;
+        if (minS && maxS) salaryDisplay = `${curr}${minS.toLocaleString()} - ${maxS.toLocaleString()}`;
+        else if (minS) salaryDisplay = `> ${curr}${minS.toLocaleString()}`;
     }
 
     const matchingSkills = job.matching_skills || [];
-    const missingSkills = job.missing_skills || [];
+    const insights = job.company_insights || {};
+    const hrCount = (job.hr_contacts || []).length;
+    const techCount = (job.tech_contacts || []).length;
 
     return (
-        <div className="glass-card rounded-2xl p-5 border border-white/10 hover:border-indigo-500/40 transition-all flex flex-col justify-between space-y-4 shadow-lg hover:shadow-indigo-500/10">
-            <div className="space-y-3">
+        <div 
+            onClick={onViewDetails}
+            className="minimal-card rounded-xl p-4 border border-white/[0.08] hover:border-indigo-500/30 transition-all flex flex-col justify-between space-y-3 shadow-md hover:bg-slate-900/70 cursor-pointer"
+        >
+            <div className="space-y-2.5">
                 {/* Header */}
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-2.5">
                     <div>
-                        <h4 className="font-bold font-outfit text-white text-base leading-snug line-clamp-2">
+                        <h4 className="font-bold text-white text-sm leading-snug line-clamp-2">
                             {job.title}
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                            <span className="font-semibold text-slate-300">🏢 {job.company || 'Unknown Company'}</span>
+                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-200">🏢 {job.company || 'Company'}</span>
                             <span>•</span>
                             <span>📍 {job.location || 'Remote'}</span>
                         </p>
                     </div>
 
-                    <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs shrink-0 ${scoreColor}`}>
-                        ★ {score}% Match
+                    <span className={`px-2 py-0.5 rounded-md border font-bold text-xs shrink-0 ${scoreColor}`}>
+                        {score}% Match
                     </span>
                 </div>
 
                 {/* Metadata Pills */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-slate-800/80 text-slate-300 border border-white/5 font-medium">
-                        🔗 {job.source || 'Aggregator'}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
+                        🔗 {job.source || 'Direct'}
                     </span>
-                    <span className="px-2.5 py-1 rounded-md bg-slate-800/80 text-slate-300 border border-white/5 font-medium">
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
                         💼 {job.experience_fit || 'Good Fit'}
                     </span>
-                    <span className="px-2.5 py-1 rounded-md bg-slate-800/80 text-slate-300 border border-white/5 font-medium">
-                        📅 {job.posted_date && job.posted_date !== 'N/A' ? job.posted_date : 'Recently Listed'}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-md bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 font-medium">
-                        {salaryDisplay}
-                    </span>
+                    {salaryDisplay !== 'Salary: N/A' && (
+                        <span className="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 font-medium">
+                            💰 {salaryDisplay}
+                        </span>
+                    )}
+                    {insights.size_indicator && insights.size_indicator !== 'Unknown' && (
+                        <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-white/[0.06]">
+                            👥 {insights.size_indicator}
+                        </span>
+                    )}
                 </div>
 
-                {/* Skills Tags */}
-                {(matchingSkills.length > 0 || missingSkills.length > 0) && (
-                    <div className="space-y-1.5 pt-1">
-                        {matchingSkills.length > 0 && (
-                            <div className="flex flex-wrap gap-1 items-center">
-                                <span className="text-[11px] text-emerald-400 font-semibold mr-1">Matched:</span>
-                                {matchingSkills.slice(0, 4).map((s, idx) => (
-                                    <span key={idx} className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[11px] font-medium border border-emerald-500/30">
-                                        ✓ {s}
-                                    </span>
-                                ))}
-                            </div>
+                {/* Key Requirements Summary */}
+                {job.key_requirements ? (
+                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed bg-slate-950/40 p-2 rounded-lg border border-white/[0.04]">
+                        {job.key_requirements}
+                    </p>
+                ) : (
+                    job.match_reason && (
+                        <p className="text-xs text-slate-400 italic line-clamp-2 leading-relaxed">
+                            💡 {job.match_reason}
+                        </p>
+                    )
+                )}
+
+                {/* Skills Preview */}
+                {matchingSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                        {matchingSkills.slice(0, 3).map((s, idx) => (
+                            <span key={idx} className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 text-[10px] border border-emerald-500/20">
+                                ✓ {s}
+                            </span>
+                        ))}
+                        {matchingSkills.length > 3 && (
+                            <span className="text-[10px] text-slate-500">+{matchingSkills.length - 3} more</span>
                         )}
                     </div>
                 )}
-
-                {/* Match Reason */}
-                {job.match_reason && (
-                    <p className="text-xs text-slate-400 italic line-clamp-2 bg-slate-900/40 p-2.5 rounded-lg border border-white/5">
-                        💡 {job.match_reason}
-                    </p>
-                )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2.5 pt-3 border-t border-white/5">
-                {job.url && (
-                    <a 
-                        href={job.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs text-center transition-all shadow-md shadow-indigo-600/20"
+            {/* Bottom Contact & Action Strip */}
+            <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-xs">
+                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    {hrCount > 0 || techCount > 0 ? (
+                        <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                            <span>👥</span>
+                            <span>{hrCount} HR + {techCount} Tech Leads</span>
+                        </span>
+                    ) : (
+                        <span className="text-slate-500">Click to view team & verified emails</span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button 
+                        type="button" 
+                        onClick={(e) => { e.stopPropagation(); onViewDetails(); }}
+                        className="py-1 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition-all"
                     >
-                        Apply Directly ↗
-                    </a>
-                )}
-                <button 
-                    type="button" 
-                    onClick={onQueryAI}
-                    title="Ask AI about this role"
-                    className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-purple-900/40 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all"
-                >
-                    🤖 Ask AI
-                </button>
+                        View Details →
+                    </button>
+                </div>
             </div>
+        </div>
+    );
+}
+
+// ==========================================
+// Component: Interactive Job Details Modal
+// ==========================================
+function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, onOpenCookieModal, showToast }) {
+    const [fetchingContacts, setFetchingContacts] = useState(false);
+    const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'contacts' | 'outreach'
+
+    const score = Math.round(job.match_score || 0);
+    const insights = job.company_insights || {};
+    const hrContacts = job.hr_contacts || [];
+    const techContacts = job.tech_contacts || [];
+    const allContacts = [...hrContacts, ...techContacts];
+
+    // Fetch / Refresh HR & Tech Contacts
+    const handleFetchContacts = async () => {
+        setFetchingContacts(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${job.id}/fetch-hr-contacts`, {
+                method: "POST",
+                headers: { 
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({
+                    candidate_name: user?.email ? user.email.split("@")[0] : "Candidate",
+                    candidate_skills: resumeSkills || job.matching_skills || [],
+                    include_tech: true
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                const updated = {
+                    ...job,
+                    hr_contacts: data.hr_contacts || [],
+                    tech_contacts: data.tech_contacts || []
+                };
+                onUpdateJob(updated);
+                showToast(`Discovered ${data.hr_contacts?.length || 0} HR + ${data.tech_contacts?.length || 0} Tech contacts!`);
+                setActiveTab("contacts");
+
+                // If backend noticed cookie is expired
+                if (data.cookie_expired) {
+                    showToast("⚠️ LinkedIn cookie expired. Fallback dorking was used. Click top badge to refresh.", "error");
+                }
+            } else {
+                showToast(data.message || "Failed to discover contacts.", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setFetchingContacts(false);
+        }
+    };
+
+    const copyToClipboard = (text, label = "Copied!") => {
+        navigator.clipboard.writeText(text);
+        showToast(label);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="minimal-card rounded-2xl max-w-3xl w-full my-8 p-5 sm:p-6 border border-white/15 shadow-2xl space-y-5 text-xs max-h-[90vh] flex flex-col justify-between">
+                {/* Header */}
+                <div className="space-y-3 pb-3 border-b border-white/[0.08]">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 className="text-base sm:text-lg font-bold text-white leading-snug">
+                                {job.title}
+                            </h3>
+                            <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-indigo-300">🏢 {job.company}</span>
+                                <span>•</span>
+                                <span>📍 {job.location || 'Remote'}</span>
+                                <span>•</span>
+                                <span className="text-slate-400">📅 {job.posted_date || 'Recent'}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-bold text-xs shrink-0">
+                                {score}% Fit
+                            </span>
+                            <button 
+                                onClick={onClose}
+                                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Navigation Tabs */}
+                    <div className="flex items-center gap-1.5 pt-1">
+                        <button 
+                            onClick={() => setActiveTab("overview")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'overview' 
+                                    ? 'bg-indigo-600 text-white' 
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                        >
+                            📋 Overview & Insights
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab("contacts")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                activeTab === 'contacts' 
+                                    ? 'bg-indigo-600 text-white' 
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                        >
+                            <span>👥 Team & Emails</span>
+                            <span className="px-1.5 py-0.2 rounded bg-white/10 text-[10px]">
+                                {allContacts.length}
+                            </span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab("outreach")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                activeTab === 'outreach' 
+                                    ? 'bg-indigo-600 text-white' 
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                        >
+                            ✉️ AI Outreach Drafter
+                        </button>
+                    </div>
+                </div>
+
+                {/* Modal Tab Body */}
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    {/* TAB 1: OVERVIEW & INSIGHTS */}
+                    {activeTab === "overview" && (
+                        <div className="space-y-4">
+                            {/* Key Requirements Summary */}
+                            {job.key_requirements && (
+                                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-indigo-500/20 space-y-1">
+                                    <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">
+                                        ⚡ What This Job Actually Requires (Plain English)
+                                    </div>
+                                    <p className="text-slate-200 text-xs leading-relaxed">
+                                        {job.key_requirements}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Company Insights Panel */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2">
+                                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                        🏢 Company Profile
+                                    </div>
+                                    <div className="space-y-1 text-slate-400">
+                                        <div><strong className="text-slate-200">Size:</strong> {insights.size_indicator || 'Unknown'}</div>
+                                        <div><strong className="text-slate-200">Industry:</strong> {insights.industry || 'Tech'}</div>
+                                        <div><strong className="text-slate-200">Work Mode:</strong> {job.location?.toLowerCase().includes('remote') ? 'Remote' : 'Onsite / Hybrid'}</div>
+                                    </div>
+                                </div>
+
+                                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2">
+                                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                        🌱 Culture Signals
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {(insights.culture_signals || ["collaborative", "fast-paced"]).map((c, i) => (
+                                            <span key={i} className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px]">
+                                                {c}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Red Flags Alert if Any */}
+                            {insights.red_flags && insights.red_flags.length > 0 && (
+                                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-200 space-y-1">
+                                    <div className="font-bold flex items-center gap-1.5">
+                                        <span>⚠️</span>
+                                        <span>Noted Red Flags from Job Description</span>
+                                    </div>
+                                    <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                                        {insights.red_flags.map((rf, i) => (
+                                            <li key={i}>{rf}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* Skills Taxonomy Breakdown */}
+                            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2.5">
+                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                    🛠️ Skill Alignment Matrix
+                                </div>
+                                <div className="space-y-2">
+                                    {job.matching_skills && job.matching_skills.length > 0 && (
+                                        <div>
+                                            <span className="text-[11px] text-emerald-400 font-semibold block mb-1">Matched Skills:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {job.matching_skills.map((s, i) => (
+                                                    <span key={i} className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px]">
+                                                        ✓ {s}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.missing_skills && job.missing_skills.length > 0 && (
+                                        <div>
+                                            <span className="text-[11px] text-amber-400 font-semibold block mb-1">Missing / Skill Gaps:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {job.missing_skills.map((s, i) => (
+                                                    <span key={i} className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/30 text-amber-300 text-[11px]">
+                                                        ! {s}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Job Description Raw */}
+                            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-1.5">
+                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                                    📄 Full Job Description
+                                </div>
+                                <div className="text-slate-300 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap bg-slate-950/40 p-2.5 rounded-lg">
+                                    {job.description || "No full description available."}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAB 2: TEAM & CONTACTS */}
+                    {activeTab === "contacts" && (
+                        <div className="space-y-4">
+                            {allContacts.length === 0 ? (
+                                <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-3">
+                                    <div className="text-2xl">👥</div>
+                                    <div className="text-white font-bold text-xs">No recruiter or tech contacts loaded yet</div>
+                                    <p className="text-slate-400 text-xs">
+                                        Trigger live Scout multi-factor discovery to find HR managers, tech leads, verified emails, phone numbers, and LinkedIn profile URLs.
+                                    </p>
+                                    <button 
+                                        onClick={handleFetchContacts}
+                                        disabled={fetchingContacts}
+                                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50"
+                                    >
+                                        {fetchingContacts ? "Discovering Contacts..." : "⚡ Discover HR & Tech Contacts Now"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-300">
+                                            Found {hrContacts.length} HR Contacts + {techContacts.length} Tech Leads
+                                        </span>
+                                        <button 
+                                            onClick={handleFetchContacts}
+                                            disabled={fetchingContacts}
+                                            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] disabled:opacity-50"
+                                        >
+                                            {fetchingContacts ? "Refreshing..." : "↻ Refresh Contacts"}
+                                        </button>
+                                    </div>
+
+                                    {/* HR Contacts List */}
+                                    {hrContacts.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">
+                                                🎯 Technical Recruiters & Talent Acquisition
+                                            </div>
+                                            {hrContacts.map((c, i) => (
+                                                <ContactCard key={i} contact={c} onCopy={copyToClipboard} />
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Tech Leadership List */}
+                                    {techContacts.length > 0 && (
+                                        <div className="space-y-2 pt-2">
+                                            <div className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+                                                💻 Engineering Leadership & Tech Leads
+                                            </div>
+                                            {techContacts.map((c, i) => (
+                                                <ContactCard key={i} contact={c} onCopy={copyToClipboard} />
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TAB 3: AI OUTREACH DRAFTER */}
+                    {activeTab === "outreach" && (
+                        <div className="space-y-4">
+                            {allContacts.length === 0 ? (
+                                <div className="p-6 rounded-xl bg-slate-900/80 border border-dashed border-slate-700 text-center space-y-2">
+                                    <div className="text-slate-400 text-xs">
+                                        Discover team contacts first to generate tailored cold outreach drafts!
+                                    </div>
+                                    <button 
+                                        onClick={handleFetchContacts}
+                                        disabled={fetchingContacts}
+                                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
+                                    >
+                                        {fetchingContacts ? "Loading..." : "⚡ Find Contacts & Generate Drafts"}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {allContacts.map((c, i) => {
+                                        const draft = c.outreach_draft || {};
+                                        return (
+                                            <div key={i} className="p-3.5 rounded-xl bg-slate-900/90 border border-white/[0.08] space-y-2.5">
+                                                <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+                                                    <div>
+                                                        <span className="font-bold text-white text-xs">{c.full_name}</span>
+                                                        <span className="text-slate-400 text-[11px] ml-2">({c.headline})</span>
+                                                    </div>
+                                                    <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                                                        Tailored for {job.company}
+                                                    </span>
+                                                </div>
+
+                                                {/* Email Draft */}
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Cold Email Subject & Body:</span>
+                                                        <button 
+                                                            onClick={() => copyToClipboard(`${draft.email_subject || ''}\n\n${draft.email_body || ''}`, "Copied Cold Email!")}
+                                                            className="text-indigo-400 hover:underline text-[11px]"
+                                                        >
+                                                            📋 Copy Email
+                                                        </button>
+                                                    </div>
+                                                    <div className="bg-slate-950 p-2.5 rounded-lg border border-white/[0.04] space-y-1 text-slate-300">
+                                                        <div className="font-semibold text-slate-200">Subject: {draft.email_subject || `Application for ${job.title}`}</div>
+                                                        <div className="whitespace-pre-wrap leading-relaxed">{draft.email_body || "Draft will appear here."}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* LinkedIn Note */}
+                                                {draft.linkedin_note && (
+                                                    <div className="space-y-1 pt-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">LinkedIn Connection Note (&lt;280 chars):</span>
+                                                            <button 
+                                                                onClick={() => copyToClipboard(draft.linkedin_note, "Copied LinkedIn Note!")}
+                                                                className="text-indigo-400 hover:underline text-[11px]"
+                                                            >
+                                                                📋 Copy Note
+                                                            </button>
+                                                        </div>
+                                                        <div className="bg-slate-950 p-2 rounded-lg border border-white/[0.04] text-slate-300 italic">
+                                                            "{draft.linkedin_note}"
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer Action Bar */}
+                <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
+                    <button 
+                        onClick={handleFetchContacts}
+                        disabled={fetchingContacts}
+                        className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                    >
+                        <span>👥</span>
+                        <span>{fetchingContacts ? "Enriching Team..." : "Enrich Team Contacts"}</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={onClose}
+                            className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs"
+                        >
+                            Close
+                        </button>
+                        {job.url && (
+                            <a 
+                                href={job.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all shadow-sm"
+                            >
+                                Apply on Career Page ↗
+                            </a>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
+// Sub-Component: Contact Card
+// ==========================================
+function ContactCard({ contact, onCopy }) {
+    const conf = contact.confidence_score || 65;
+    let confBadge = "bg-slate-800 text-slate-300";
+    if (conf >= 85) confBadge = "bg-emerald-950 text-emerald-300 border border-emerald-500/30";
+    else if (conf >= 60) confBadge = "bg-amber-950 text-amber-300 border border-amber-500/30";
+
+    return (
+        <div className="p-3 rounded-xl bg-slate-900/90 border border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-xs">{contact.full_name}</span>
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${confBadge}`}>
+                        {conf}% verified
+                    </span>
+                </div>
+                <div className="text-[11px] text-slate-400">{contact.headline}</div>
+                
+                {/* Contact details row */}
+                <div className="flex flex-wrap items-center gap-3 pt-0.5 text-xs text-slate-300">
+                    {contact.email && (
+                        <div className="flex items-center gap-1.5">
+                            <span>✉️</span>
+                            <span className="font-mono text-[11px] text-indigo-300">{contact.email}</span>
+                            <button 
+                                onClick={() => onCopy(contact.email, "Copied Email!")}
+                                className="text-slate-500 hover:text-white text-[11px]"
+                                title="Copy Email"
+                            >
+                                📋
+                            </button>
+                        </div>
+                    )}
+
+                    {contact.phone && (
+                        <div className="flex items-center gap-1.5">
+                            <span>📞</span>
+                            <span className="text-[11px]">{contact.phone}</span>
+                            {contact.whatsapp_url && (
+                                <a 
+                                    href={contact.whatsapp_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-emerald-400 hover:underline text-[11px]"
+                                    title="Open WhatsApp Chat"
+                                >
+                                    💬 WhatsApp
+                                </a>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Profile Link Button */}
+            {contact.profile_url && (
+                <a 
+                    href={contact.profile_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium shrink-0 flex items-center justify-center gap-1"
+                >
+                    <span>🔗</span>
+                    <span>LinkedIn Profile</span>
+                </a>
+            )}
         </div>
     );
 }
@@ -1059,7 +1904,7 @@ function JobCard({ job, onQueryAI }) {
 // ==========================================
 // Component: Email Automation & Live Alerts
 // ==========================================
-function EmailAlertsView({ token, user, showToast }) {
+function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
     const [email, setEmail] = useState(user.email || "");
     const [role, setRole] = useState("AI ML Intern");
     const [location, setLocation] = useState("Pune");
@@ -1068,7 +1913,6 @@ function EmailAlertsView({ token, user, showToast }) {
     const [maxAgeDays, setMaxAgeDays] = useState(3);
     const [preferredTime, setPreferredTime] = useState("09:00");
 
-    // Optional Resume State
     const [resumeFile, setResumeFile] = useState(null);
     const [resumeProfile, setResumeProfile] = useState(null);
     const [parsingResume, setParsingResume] = useState(false);
@@ -1119,17 +1963,7 @@ function EmailAlertsView({ token, user, showToast }) {
                 if (data.profile.target_roles && data.profile.target_roles[0]) {
                     setRole(data.profile.target_roles[0]);
                 }
-                if (data.profile.seniority) {
-                    const s = data.profile.seniority.toLowerCase();
-                    if (s.includes("intern")) setExperienceLevel("intern");
-                    else if (s.includes("junior") || s.includes("entry")) setExperienceLevel("entry");
-                    else if (s.includes("senior")) setExperienceLevel("senior");
-                    else if (s.includes("lead") || s.includes("staff")) setExperienceLevel("lead");
-                    else setExperienceLevel("mid");
-                }
-                showToast(`Resume attached! Extracted ${data.profile.skills?.length || 0} skills for automation matching.`);
-            } else {
-                showToast("Resume attached (will be indexed during search).");
+                showToast(`Resume attached! Extracted ${data.profile.skills?.length || 0} skills.`);
             }
         } catch (err) {
             showToast("Resume attached.");
@@ -1196,7 +2030,7 @@ function EmailAlertsView({ token, user, showToast }) {
             });
             const data = await res.json();
             if (res.ok && (data.status === 'success' || data.status === 'partial')) {
-                showToast(`✅ Sent ${data.jobs_sent || 0} Jobs + 2 CSVs to ${email}!`);
+                showToast(`Sent ${data.jobs_sent || 0} Jobs + CSV to ${email}!`);
             } else {
                 showToast(data.detail || data.message || "Failed to send test email.", "error");
             }
@@ -1225,21 +2059,30 @@ function EmailAlertsView({ token, user, showToast }) {
     };
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Automation Setup Form */}
-            <div className="lg:col-span-2 glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10 space-y-6">
-                <div>
-                    <h2 className="text-xl font-bold font-outfit text-white flex items-center gap-2">
-                        <span>⏰</span> Automated Daily Job Digest
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                        Runs scheduled multi-board scrapers with deduplication and delivers matching roles with curated CSV directly to your inbox.
-                    </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 className="text-base font-bold text-white flex items-center gap-2">
+                            <span>⏰</span> Automated Daily Job Digest
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                            Runs scheduled multi-board scrapers with deduplication and delivers matching roles with curated CSV directly to your inbox.
+                        </p>
+                    </div>
+
+                    {/* Cookie Health Pill inside Alerts */}
+                    <button 
+                        onClick={onOpenCookieModal}
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-300 hover:text-white transition-all shrink-0"
+                    >
+                        {cookieStatusInfo?.cookie_status === 'active' ? '🟢 Cookie Active' : (cookieStatusInfo?.cookie_status === 'expired' ? '🔴 Cookie Expired' : '⚪ Add Cookie')}
+                    </button>
                 </div>
 
                 <form onSubmit={handleSaveAlert} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                             Destination Email Address <span className="text-indigo-400">*</span>
                         </label>
                         <input 
@@ -1248,13 +2091,13 @@ function EmailAlertsView({ token, user, showToast }) {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="e.g. xyz@gmail.com"
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                 Target Role / Title <span className="text-indigo-400">*</span>
                             </label>
                             <input 
@@ -1262,129 +2105,81 @@ function EmailAlertsView({ token, user, showToast }) {
                                 required
                                 value={role}
                                 onChange={(e) => setRole(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                 Preferred Location
                             </label>
                             <input 
                                 type="text" 
                                 value={location}
                                 onChange={(e) => setLocation(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             />
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                                Work Mode
-                            </label>
+                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
                             <select 
                                 value={workMode}
                                 onChange={(e) => setWorkMode(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             >
-                                <option value="any">🌐 Any (Remote + Onsite)</option>
-                                <option value="remote">🏠 Remote Only</option>
-                                <option value="onsite">🏢 Onsite Only</option>
+                                <option value="any">🌐 Any</option>
+                                <option value="remote">🏠 Remote</option>
+                                <option value="onsite">🏢 Onsite</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                                Experience Level
-                            </label>
+                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Level</label>
                             <select 
                                 value={experienceLevel}
                                 onChange={(e) => setExperienceLevel(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             >
-                                <option value="intern">🎓 Internship / Fresher</option>
-                                <option value="entry">🌱 Entry Level (0-2 Yrs)</option>
-                                <option value="mid">⚡ Mid Level (2-5 Yrs)</option>
-                                <option value="senior">💼 Senior Level (5-8 Yrs)</option>
-                                <option value="lead">👑 Lead / Staff (8+ Yrs)</option>
+                                <option value="intern">🎓 Intern</option>
+                                <option value="entry">🌱 Entry</option>
+                                <option value="mid">⚡ Mid</option>
+                                <option value="senior">💼 Senior</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                                Posted Date Filter
-                            </label>
+                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Posted Window</label>
                             <select 
                                 value={maxAgeDays}
                                 onChange={(e) => setMaxAgeDays(Number(e.target.value))}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             >
-                                <option value={1}>⏱️ Past 24 Hours</option>
-                                <option value={3}>📅 Past 3 Days</option>
-                                <option value={7}>🗓️ Past Week (7 Days)</option>
-                                <option value={14}>🗓️ Past 14 Days</option>
-                                <option value={30}>🗓️ Past Month (30 Days)</option>
-                                <option value={0}>🌐 Any Time (All Dates)</option>
+                                <option value={1}>⏱️ 24h</option>
+                                <option value={3}>📅 3 Days</option>
+                                <option value={7}>🗓️ 7 Days</option>
+                                <option value={0}>🌐 All Dates</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                                Daily Time (24h)
-                            </label>
+                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Time (24h)</label>
                             <input 
                                 type="time" 
                                 value={preferredTime}
                                 onChange={(e) => setPreferredTime(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-white text-sm focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                             />
                         </div>
                     </div>
 
-                    {/* Resume Upload for Automation Skill-Matching */}
-                    <div className="p-4 rounded-xl bg-slate-900/90 border border-indigo-500/30 shadow-inner space-y-2.5">
-                        <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-2">
-                                <span>📄</span>
-                                <span>Candidate Resume for Automation <span className="text-slate-400 font-normal lowercase">(optional - matches skills to job description)</span></span>
-                            </label>
-                            {resumeFile && (
-                                <button 
-                                    type="button" 
-                                    onClick={() => { setResumeFile(null); setResumeProfile(null); }}
-                                    className="text-xs text-rose-400 hover:text-rose-300 font-semibold underline"
-                                >
-                                    ✕ Remove
-                                </button>
-                            )}
-                        </div>
-                        <input 
-                            type="file" 
-                            accept=".pdf,.docx,.txt"
-                            onChange={handleResumeChange}
-                            className="block w-full text-xs text-slate-300 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer transition-all"
-                        />
-                        {parsingResume && (
-                            <p className="text-xs text-indigo-400 animate-pulse flex items-center gap-1.5">
-                                <span className="inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
-                                <span>Parsing resume skills for automated daily matching...</span>
-                            </p>
-                        )}
-                        {resumeProfile && (
-                            <div className="mt-2 flex flex-wrap gap-1.5 items-center text-xs text-emerald-300 bg-emerald-950/50 border border-emerald-500/40 p-2.5 rounded-xl">
-                                <span className="font-bold">✓ {resumeFile?.name}</span>
-                                <span className="text-emerald-400">• {resumeProfile.skills?.length || 0} skills indexed for daily matching</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
                         <button 
                             type="submit" 
                             disabled={saving}
-                            className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all disabled:opacity-50"
+                            className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
                         >
                             {saving ? "Saving Schedule..." : "💾 Save Daily Automation"}
                         </button>
@@ -1393,52 +2188,44 @@ function EmailAlertsView({ token, user, showToast }) {
                             type="button" 
                             onClick={handleSendTestEmail}
                             disabled={testing}
-                            className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
                         >
-                            {testing ? (
-                                <>
-                                    <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                    <span>Harvesting & Sending...</span>
-                                </>
-                            ) : (
-                                <span>⚡ Send Live Test Email & CSV Now</span>
-                            )}
+                            {testing ? "Sending..." : "⚡ Send Live Test Digest Now"}
                         </button>
                     </div>
                 </form>
             </div>
 
             {/* Active Automations List */}
-            <div className="glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10 space-y-4">
-                <h3 className="font-bold text-white font-outfit flex items-center justify-between pb-3 border-b border-white/5">
+            <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-3">
+                <h3 className="font-bold text-white text-xs flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
                     <span>📋 Active Automations</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                         {activeAlerts.length} Active
                     </span>
                 </h3>
 
                 {loadingAlerts ? (
-                    <div className="text-center py-8 text-xs text-slate-500 animate-pulse">Loading schedules...</div>
+                    <div className="text-center py-6 text-xs text-slate-500">Loading schedules...</div>
                 ) : activeAlerts.length === 0 ? (
-                    <div className="p-6 rounded-xl bg-slate-900/50 border border-dashed border-slate-700/60 text-center text-xs text-slate-500">
-                        No active email schedules yet. Save an alert to receive automated daily digests!
+                    <div className="p-4 rounded-lg bg-slate-900/40 border border-dashed border-slate-700 text-center text-xs text-slate-400">
+                        No active schedules.
                     </div>
                 ) : (
-                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                         {activeAlerts.map((alert) => (
-                            <div key={alert.id} className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-2">
+                            <div key={alert.id} className="p-3 rounded-lg bg-slate-900 border border-white/[0.04] space-y-1">
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <div className="font-bold text-white text-xs">{alert.role}</div>
                                         <div className="text-[11px] text-slate-400">
-                                            📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time} • 📅 {alert.max_age_days === 1 ? 'Past 24h' : (alert.max_age_days === 0 ? 'All Dates' : `Past ${alert.max_age_days || 1}d`)}
+                                            📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time}
                                         </div>
                                         <div className="text-[10px] text-indigo-400">✉️ {alert.email}</div>
                                     </div>
                                     <button 
                                         onClick={() => handleDeleteAlert(alert.id)}
                                         className="text-slate-500 hover:text-rose-400 text-xs p-1"
-                                        title="Delete schedule"
                                     >
                                         🗑️
                                     </button>
@@ -1459,7 +2246,6 @@ function AdminPortal({ token, user, showToast }) {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // New User Form
     const [newEmail, setNewEmail] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [newRole, setNewRole] = useState("user");
@@ -1507,7 +2293,7 @@ function AdminPortal({ token, user, showToast }) {
             });
             const data = await res.json();
             if (res.ok) {
-                showToast(`User '${newEmail}' created successfully!`);
+                showToast(`User '${newEmail}' created!`);
                 setNewEmail("");
                 setNewPassword("");
                 setNewRole("user");
@@ -1560,119 +2346,77 @@ function AdminPortal({ token, user, showToast }) {
     };
 
     return (
-        <div className="space-y-8">
-            <div className="glass-card rounded-2xl p-6 sm:p-7 shadow-xl border border-white/10">
-                <div className="flex items-center justify-between pb-4 mb-6 border-b border-white/5">
-                    <div>
-                        <h2 className="text-xl font-bold font-outfit text-white flex items-center gap-2">
-                            <span>🛡️</span> Admin User Access Control
-                        </h2>
-                        <p className="text-xs text-slate-400 mt-1">
-                            Only authorized user accounts created here can log in and access the system.
-                        </p>
-                    </div>
-                </div>
-
-                {/* Add User Form */}
-                <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end bg-slate-900/60 p-4 rounded-xl border border-white/5">
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">User Email</label>
-                        <input 
-                            type="email"
-                            required
-                            placeholder="colleague@company.com"
-                            value={newEmail}
-                            onChange={(e) => setNewEmail(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-purple-500"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Password</label>
-                        <input 
-                            type="text"
-                            required
-                            placeholder="Initial password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-purple-500"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Assigned Role</label>
-                        <select 
-                            value={newRole}
-                            onChange={(e) => setNewRole(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-purple-500"
-                        >
-                            <option value="user">Candidate / Standard User</option>
-                            <option value="admin">Platform Administrator</option>
-                        </select>
-                    </div>
-
+        <div className="space-y-6">
+            <div className="minimal-card rounded-xl p-5 border border-white/[0.08]">
+                <h2 className="text-base font-bold text-white mb-3">🛡️ Admin User Control</h2>
+                <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <input 
+                        type="email"
+                        required
+                        placeholder="User email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
+                    />
+                    <input 
+                        type="text"
+                        required
+                        placeholder="Initial password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
+                    />
+                    <select 
+                        value={newRole}
+                        onChange={(e) => setNewRole(e.target.value)}
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
+                    >
+                        <option value="user">Standard User</option>
+                        <option value="admin">Administrator</option>
+                    </select>
                     <button 
                         type="submit"
                         disabled={creating}
-                        className="w-full py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md shadow-purple-600/25 transition-all disabled:opacity-50"
+                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold"
                     >
-                        {creating ? "Creating..." : "➕ Create User"}
+                        {creating ? "Creating..." : "➕ Create Account"}
                     </button>
                 </form>
             </div>
 
-            {/* Users Table */}
-            <div className="glass-card rounded-2xl overflow-hidden border border-white/10 shadow-xl">
-                <div className="p-5 border-b border-white/5 flex items-center justify-between">
-                    <h3 className="font-bold text-white text-sm font-outfit">Registered Accounts ({users.length})</h3>
-                    <button onClick={fetchUsers} className="text-xs text-indigo-400 hover:underline">Refresh List</button>
+            <div className="minimal-card rounded-xl overflow-hidden border border-white/[0.08]">
+                <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
+                    <h3 className="font-bold text-white text-xs">Registered Accounts ({users.length})</h3>
+                    <button onClick={fetchUsers} className="text-xs text-indigo-400 hover:underline">Refresh</button>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-900/80 text-slate-400 uppercase tracking-wider border-b border-white/5">
+                        <thead className="bg-slate-900 text-slate-400 border-b border-white/[0.06]">
                             <tr>
-                                <th className="py-3 px-4">User Email</th>
-                                <th className="py-3 px-4">Role</th>
-                                <th className="py-3 px-4">Status</th>
-                                <th className="py-3 px-4">Created Date</th>
-                                <th className="py-3 px-4 text-right">Actions</th>
+                                <th className="py-2.5 px-4">Email</th>
+                                <th className="py-2.5 px-4">Role</th>
+                                <th className="py-2.5 px-4">Status</th>
+                                <th className="py-2.5 px-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5">
+                        <tbody className="divide-y divide-white/[0.04]">
                             {users.map((u) => (
-                                <tr key={u.id} className="hover:bg-white/[0.02]">
-                                    <td className="py-3 px-4 font-semibold text-slate-200">{u.email}</td>
-                                    <td className="py-3 px-4">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                            u.role === 'admin' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-slate-700/50 text-slate-300'
-                                        }`}>
-                                            {u.role}
-                                        </span>
-                                    </td>
-                                    <td className="py-3 px-4">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                            u.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-                                        }`}>
+                                <tr key={u.id} className="hover:bg-white/[0.01]">
+                                    <td className="py-2.5 px-4 text-slate-200">{u.email}</td>
+                                    <td className="py-2.5 px-4 text-slate-400">{u.role}</td>
+                                    <td className="py-2.5 px-4">
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${u.is_active ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'}`}>
                                             {u.is_active ? 'ACTIVE' : 'DEACTIVATED'}
                                         </span>
                                     </td>
-                                    <td className="py-3 px-4 text-slate-400">
-                                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
-                                    </td>
-                                    <td className="py-3 px-4 text-right space-x-2">
+                                    <td className="py-2.5 px-4 text-right space-x-2">
                                         {u.id !== user.id && (
                                             <>
-                                                <button 
-                                                    onClick={() => handleToggleStatus(u.id)}
-                                                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
-                                                >
+                                                <button onClick={() => handleToggleStatus(u.id)} className="text-slate-400 hover:text-white text-[11px]">
                                                     {u.is_active ? 'Deactivate' : 'Activate'}
                                                 </button>
-                                                <button 
-                                                    onClick={() => handleDeleteUser(u.id)}
-                                                    className="px-2.5 py-1 rounded bg-rose-900/30 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 text-[11px]"
-                                                >
+                                                <button onClick={() => handleDeleteUser(u.id)} className="text-rose-400 hover:underline text-[11px]">
                                                     Delete
                                                 </button>
                                             </>

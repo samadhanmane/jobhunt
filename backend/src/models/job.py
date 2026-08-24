@@ -21,4 +21,9 @@ class Job(Base):
     experience_fit = Column(String(50), nullable=True)
     search_id = Column(String(100), nullable=False)
     embedding = Column(JSON, nullable=True)
+    hr_contacts = Column(JSON, nullable=True)
+    tech_contacts = Column(JSON, nullable=True)
+    company_insights = Column(JSON, nullable=True)
+    key_requirements = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+

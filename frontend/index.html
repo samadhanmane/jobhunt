@@ -4,15 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JobAgent AI — Intelligent Multi-Platform Job Hunter & Automation</title>
+    <title>JobAgent AI — Minimalist Intelligent Job Hunter & ATS Pipeline</title>
     <!-- Favicon -->
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
-    <!-- Fonts -->
+    <!-- Fonts: Inter & Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -23,108 +23,98 @@
                 extend: {
                     colors: {
                         brand: {
-                            50: '#eef2ff',
-                            100: '#e0e7ff',
-                            200: '#c7d2fe',
-                            300: '#a5b4fc',
-                            400: '#818cf8',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                            800: '#3730a3',
-                            900: '#312e81',
-                            950: '#1e1b4b',
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
                         },
-                        dark: {
-                            bg: '#0a0d14',
-                            card: '#111726',
-                            cardHover: '#161e31',
-                            border: 'rgba(255, 255, 255, 0.08)',
-                            borderHover: 'rgba(99, 102, 241, 0.4)',
+                        slate: {
+                            850: '#131b2e',
+                            900: '#0f172a',
+                            950: '#080c15',
+                        },
+                        neutral: {
+                            850: '#1a1f2c',
+                            900: '#10141f',
+                            950: '#0a0d14',
                         }
                     },
                     fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        outfit: ['Outfit', 'sans-serif'],
-                        mono: ['Fira Code', 'monospace'],
-                    },
-                    animation: {
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'float': 'float 6s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0px)' },
-                            '50%': { transform: 'translateY(-8px)' },
-                        }
+                        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
                     }
                 }
             }
         }
     </script>
-    <!-- Custom Glassmorphism Styles -->
+    <!-- Minimalist Aesthetic Styles -->
     <style>
         body {
-            background-color: #0a0d14;
-            color: #f1f5f9;
-            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #e2e8f0;
+            font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
             overflow-x: hidden;
         }
 
-        .bg-glow {
+        .bg-subtle-mesh {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
             background:
-                radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 85% 20%, rgba(168, 85, 247, 0.10) 0%, transparent 40%),
-                radial-gradient(circle at 50% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
+                radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 90% 10%, rgba(56, 189, 248, 0.03) 0%, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
             pointer-events: none;
             z-index: 0;
         }
 
-        .glass-card {
-            background: rgba(17, 23, 38, 0.75);
+        .minimal-card {
+            background: rgba(15, 23, 42, 0.65);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.07);
         }
 
-        .glass-card:hover {
-            border-color: rgba(99, 102, 241, 0.35);
+        .minimal-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
         }
 
-        .glass-card-active {
-            background: rgba(22, 30, 49, 0.85);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(99, 102, 241, 0.5);
+        .minimal-card-active {
+            background: rgba(20, 29, 51, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.4);
         }
 
-        .glass-nav {
-            background: rgba(10, 13, 20, 0.85);
+        .minimal-nav {
+            background: rgba(9, 13, 22, 0.85);
             backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
-        /* Custom scrollbars */
+        /* Subtle scrollbars */
         ::-webkit-scrollbar {
-            width: 7px;
-            height: 7px;
+            width: 6px;
+            height: 6px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #0a0d14;
+            background: #090d16;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #242e42;
+            background: #1e293b;
             border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #374151;
+            background: #334155;
         }
     </style>
     <!-- React 18 and Babel Standalone -->
@@ -133,15 +123,15 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 
-<body class="min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
-    <div class="bg-glow"></div>
+<body class="min-h-screen flex flex-col antialiased selection:bg-slate-700 selection:text-white">
+    <div class="bg-subtle-mesh"></div>
     <div id="root" class="relative z-10 flex-1 flex flex-col"></div>
 
     <!-- Runtime Configuration Script -->
-    <script src="config.js?v=2.7"></script>
+    <script src="config.js?v=2.8"></script>
 
     <!-- React Application Component Script -->
-    <script type="text/babel" src="app.jsx?v=2.7"></script>
+    <script type="text/babel" src="app.jsx?v=2.8"></script>
 </body>
 
 </html>

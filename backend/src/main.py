@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src.config import settings
-from src.api.routes import search, jobs, health, alerts, auth, admin
+from src.api.routes import search, jobs, health, alerts, auth, admin, contacts
 from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
 from src.services.keepalive_service import keepalive_service
@@ -83,6 +83,22 @@ else:
     ])
     allow_origins_list = list(cors_origins)
 
+from src.middleware.security import (
+    SecurityHeadersMiddleware,
+    RequestSizeLimitMiddleware,
+    RateLimitMiddleware
+)
+
+# 1. Add Security Headers Middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. Add Request Size Limit (15MB max) Anti-DDoS Middleware
+app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=15 * 1024 * 1024)
+
+# 3. Add Sliding-Window Rate Limiter
+app.add_middleware(RateLimitMiddleware)
+
+# 4. Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins_list,
@@ -97,6 +113,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(search.router, tags=["Search"])
 app.include_router(jobs.router, tags=["Jobs"])
+app.include_router(contacts.router, tags=["Recruiter & HR Contacts"])
 app.include_router(alerts.router, tags=["Email Alerts"])
 app.include_router(health.router, tags=["Health Check"])
 

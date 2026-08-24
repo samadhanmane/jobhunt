@@ -21,6 +21,8 @@ class EmailAlert(Base):
     skills = Column(JSON, nullable=True)                          # List of technical skills
     resume_summary = Column(Text, nullable=True)                  # Parsed resume text/summary
     sent_job_hashes = Column(JSON, nullable=True, default=list)   # URLs/hashes of sent jobs to prevent repeat emails
+    linkedin_cookie = Column(Text, nullable=True)                # Optional user/alert linkedin cookie override
+    cookie_status = Column(String(50), default="active")         # 'active', 'expired', 'invalid'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_sent_at = Column(DateTime, nullable=True)

@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from src.models.database import SessionLocal
 from src.models.email_alert import EmailAlert
+from src.models.user_account import UserAccount
 from src.agents.orchestrator import OrchestratorAgent
 from src.agents.deduplication import DeduplicationAgent
 from src.agents.ranking import RankingAgent
 from src.services.email_service import email_service
+from src.services.linkedin_service import linkedin_service
 from src.utils.date_utils import format_posted_date_for_csv, is_within_days
 
 def generate_job_hash(job: Dict[str, Any]) -> str:
@@ -127,9 +129,7 @@ class SchedulerService:
             # 4. Rank with LLM
             ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences)
 
-            # 5. Generate BOTH CSV Reports:
-            # CSV 1: All Raw Fetched Jobs (Pre-Deduplication, fully structured)
-            # CSV 2: Curated & Filtered Matching Jobs (Post-Deduplication & AI-Ranked)
+            # 5. Generate BOTH CSV Reports
             backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             export_dir = os.path.join(backend_root, "exports")
             os.makedirs(export_dir, exist_ok=True)
@@ -175,15 +175,13 @@ class SchedulerService:
                     })
                 return rows
 
-            # Export CSV 1: All raw jobs
             raw_csv_rows = build_csv_rows(raw_jobs, is_raw=True)
             pd.DataFrame(raw_csv_rows).to_csv(raw_csv_path, index=False, encoding="utf-8-sig")
 
-            # Export CSV 2: Curated matching jobs
             curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
             pd.DataFrame(curated_csv_rows).to_csv(curated_csv_path, index=False, encoding="utf-8-sig")
 
-            # 6. Send Email Digest with BOTH CSV Attachments
+            # 6. Send Email Digest with Attachments
             summary_note = f"Personalized daily report for {alert.role} ({alert.location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
             sent_success = email_service.send_daily_job_digest(
                 to_email=alert.email,
@@ -195,11 +193,11 @@ class SchedulerService:
                 raw_total_count=len(raw_jobs)
             )
 
-            # 7. Update Database with sent hashes and last_sent_at (safely wrapped)
+            # 7. Update Database with sent hashes and last_sent_at
             try:
                 db_alert = db.query(EmailAlert).filter(EmailAlert.id == alert.id).first()
                 if db_alert:
-                    db_alert.sent_job_hashes = new_hashes[-300:]  # Keep last 300 to prevent unbounded growth
+                    db_alert.sent_job_hashes = new_hashes[-300:]
                     db_alert.last_sent_at = datetime.utcnow()
                     db.commit()
             except Exception as db_err:
@@ -223,6 +221,78 @@ class SchedulerService:
             if close_db:
                 db.close()
 
+    async def check_scheduled_alerts_cookie_health(self):
+        """
+        Health Sentinel: Proactively checks LinkedIn session cookies for all active users
+        1 hour prior to their scheduled automation and periodically every 6-12 hours.
+        Dispatches an email alert if a cookie has expired.
+        """
+        db = SessionLocal()
+        try:
+            active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
+            if not active_alerts:
+                return
+
+            now_utc = datetime.utcnow()
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+
+            for alert in active_alerts:
+                user = None
+                if alert.user_id:
+                    user = db.query(UserAccount).filter(UserAccount.id == alert.user_id).first()
+                if not user:
+                    user = db.query(UserAccount).filter(UserAccount.email == alert.email).first()
+
+                cookie_to_check = alert.linkedin_cookie or (user.linkedin_cookie if user else None)
+                if not cookie_to_check or len(cookie_to_check.strip()) < 10:
+                    continue
+
+                # Check if checked recently in last 6 hours unless upcoming in next 60 minutes
+                pref_time = (alert.preferred_time or "09:00").strip()
+                should_check = False
+
+                last_checked = user.linkedin_cookie_checked_at if user else None
+                if not last_checked or (now_utc - last_checked).total_seconds() > 6 * 3600:
+                    should_check = True
+
+                # Also check if scheduled automation is ~1 hour away
+                try:
+                    pref_parts = pref_time.split(":")
+                    pref_h, pref_m = int(pref_parts[0]), int(pref_parts[1])
+                    curr_h, curr_m = now_utc.hour, now_utc.minute
+                    diff_mins = ((pref_h - curr_h) * 60 + (pref_m - curr_m)) % 1440
+                    if 45 <= diff_mins <= 75:
+                        should_check = True
+                except Exception:
+                    pass
+
+                if should_check:
+                    validation = linkedin_service.validate_cookie(cookie_to_check)
+                    status = validation.get("status", "invalid")
+
+                    if user:
+                        user.linkedin_cookie_status = status
+                        user.linkedin_cookie_checked_at = now_utc
+                        db.commit()
+
+                    if status == "expired":
+                        last_notified = user.linkedin_cookie_last_notified_at if user else None
+                        if not last_notified or (now_utc - last_notified).total_seconds() > 12 * 3600:
+                            print(f"[Scheduler/Health] Detected EXPIRED LinkedIn cookie for {alert.email}. Sending notification email...")
+                            email_service.send_cookie_expired_alert(
+                                to_email=alert.email,
+                                scheduled_time=pref_time,
+                                role=alert.role
+                            )
+                            if user:
+                                user.linkedin_cookie_last_notified_at = now_utc
+                                db.commit()
+
+        except Exception as e:
+            print(f"[Scheduler/Health] Cookie health check notice: {e}")
+        finally:
+            db.close()
+
     async def check_and_trigger_due_alerts(self):
         """
         Polls active email alerts and triggers execution if current time
@@ -236,19 +306,14 @@ class SchedulerService:
 
             now_utc = datetime.utcnow()
             now_hhmm_utc = now_utc.strftime("%H:%M")
-            
-            # Also calculate common IST (UTC+5:30) offset for Indian Standard Time
             now_ist = now_utc + timedelta(hours=5, minutes=30)
             now_hhmm_ist = now_ist.strftime("%H:%M")
 
             for alert in active_alerts:
-                # Skip if already sent today (within last 20 hours)
                 if alert.last_sent_at and (now_utc - alert.last_sent_at).total_seconds() < 20 * 3600:
                     continue
 
                 pref_time = (alert.preferred_time or "09:00").strip()
-                
-                # Trigger if preferred time matches current local or UTC minute
                 if pref_time in [now_hhmm_utc, now_hhmm_ist]:
                     print(f"[Scheduler] Time match ({pref_time}) for alert '{alert.email}' (Role: {alert.role}). Dispatching now...")
                     asyncio.create_task(self.execute_alert_run(alert.id))
@@ -259,12 +324,22 @@ class SchedulerService:
 
     async def start_background_scheduler(self):
         """
-        Runs continuous background scheduler loop checking every 60 seconds.
+        Runs continuous background scheduler loop checking alerts every 60s
+        and cookie health every 10 minutes.
         """
         print("[Scheduler] Automated daily email background worker started.")
+        health_check_counter = 0
+
         while True:
             try:
                 await self.check_and_trigger_due_alerts()
+                
+                # Run Cookie Health Sentinel every 10 minutes (10 loops * 60s)
+                health_check_counter += 1
+                if health_check_counter >= 10:
+                    health_check_counter = 0
+                    await self.check_scheduled_alerts_cookie_health()
+
             except Exception as loop_err:
                 print(f"[Scheduler] Background loop error: {loop_err}")
             await asyncio.sleep(60)
