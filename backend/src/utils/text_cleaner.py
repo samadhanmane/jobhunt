@@ -54,3 +54,51 @@ def clean_html_job_description(raw_html: str) -> str:
             prev_blank = False
 
     return '\n'.join(result).strip()
+
+def extract_job_experience_metadata(title: str, description: str, experience_fit: str = "") -> dict:
+    """
+    Extracts the exact required experience string, numeric minimum years, and seniority level.
+    """
+    title_l = (title or "").lower()
+    desc_l = (description or "").lower()
+    fit_l = (experience_fit or "").lower()
+
+    if any(w in title_l for w in ["intern", "internship", "trainee", "apprentice", "student", "co-op"]) or "intern" in fit_l:
+        return {"experience_required": "🌱 Internship (0 Yrs)", "min_experience_years": 0, "seniority_level": "intern"}
+
+    plus_matches = re.findall(r'(\d+)\s*\+\s*(?:years?|yrs?)\b', desc_l)
+    min_matches = re.findall(r'(?:minimum|min\.?|at\s+least|requires?|require|with)\s*(\d+)\s*\+?\s*(?:years?|yrs?)\b', desc_l)
+    range_matches = re.findall(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:years?|yrs?)\b', desc_l)
+
+    found_years = []
+    for m in plus_matches:
+        val = int(m)
+        if 1 <= val <= 25: found_years.append(val)
+    for m in min_matches:
+        val = int(m)
+        if 1 <= val <= 25: found_years.append(val)
+    for m in range_matches:
+        val = int(m[0])
+        if 1 <= val <= 25: found_years.append(val)
+
+    if found_years:
+        req = max(found_years)
+        if req == 0:
+            return {"experience_required": "🌱 0 Yrs (Fresher)", "min_experience_years": 0, "seniority_level": "intern"}
+        elif req == 1:
+            return {"experience_required": "🚀 1 Yr (Entry Level)", "min_experience_years": 1, "seniority_level": "entry"}
+        elif req == 2:
+            return {"experience_required": "⚡ 2 Yrs (Junior)", "min_experience_years": 2, "seniority_level": "junior"}
+        elif req <= 5:
+            return {"experience_required": f"💼 {req}+ Yrs (Mid-Level)", "min_experience_years": req, "seniority_level": "mid"}
+        elif req <= 8:
+            return {"experience_required": f"👑 {req}+ Yrs (Senior)", "min_experience_years": req, "seniority_level": "senior"}
+        else:
+            return {"experience_required": f"🏆 {req}+ Yrs (Lead / Principal)", "min_experience_years": req, "seniority_level": "lead"}
+
+    if any(w in title_l for w in ["entry", "junior", "associate", "graduate"]) or "junior" in fit_l or "entry" in fit_l:
+        return {"experience_required": "🚀 0–2 Yrs (Junior)", "min_experience_years": 1, "seniority_level": "junior"}
+    if any(w in title_l for w in ["senior", "sr.", "sr ", "lead", "staff", "principal", "architect", "director", "head of"]) or "senior" in fit_l or "lead" in fit_l:
+        return {"experience_required": "👑 5+ Yrs (Senior)", "min_experience_years": 5, "seniority_level": "senior"}
+
+    return {"experience_required": "💼 1–3 Yrs (Mid-Level)", "min_experience_years": 2, "seniority_level": "mid"}

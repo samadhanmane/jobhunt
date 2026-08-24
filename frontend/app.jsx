@@ -80,6 +80,50 @@ function cleanHtmlJobDescription(rawHtml) {
 }
 
 // ==========================================
+// Smart Location NLP Aliases Dictionary
+// ==========================================
+const LOCATION_ALIASES = {
+    'india': ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'in'],
+    'pune': ['pune', 'maharashtra', 'india'],
+    'bangalore': ['bangalore', 'bengaluru', 'karnataka', 'india'],
+    'bengaluru': ['bangalore', 'bengaluru', 'karnataka', 'india'],
+    'mumbai': ['mumbai', 'maharashtra', 'bombay', 'india'],
+    'hyderabad': ['hyderabad', 'telangana', 'secunderabad', 'india'],
+    'delhi': ['delhi', 'noida', 'gurgaon', 'gurugram', 'ncr', 'india'],
+    'noida': ['noida', 'delhi', 'ncr', 'india'],
+    'gurgaon': ['gurgaon', 'gurugram', 'delhi', 'ncr', 'india'],
+    'chennai': ['chennai', 'madras', 'tamil nadu', 'india'],
+    'us': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
+    'usa': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
+    'united states': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
+    'california': ['california', 'ca', 'san francisco', 'sf', 'bay area', 'silicon valley', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'oakland', 'los angeles', 'la', 'san diego'],
+    'bay area': ['bay area', 'san francisco', 'sf', 'silicon valley', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'oakland', 'ca'],
+    'san francisco': ['san francisco', 'sf', 'bay area', 'silicon valley', 'ca'],
+    'new york': ['new york', 'ny', 'nyc', 'manhattan', 'brooklyn'],
+    'texas': ['texas', 'tx', 'austin', 'dallas', 'houston'],
+    'austin': ['austin', 'texas', 'tx'],
+    'seattle': ['seattle', 'wa', 'washington'],
+    'uk': ['united kingdom', 'uk', 'london', 'manchester', 'cambridge', 'edinburgh', 'birmingham', 'bristol', 'england', 'gb'],
+    'united kingdom': ['united kingdom', 'uk', 'london', 'manchester', 'cambridge', 'edinburgh', 'birmingham', 'bristol', 'england', 'gb'],
+    'london': ['london', 'uk', 'england'],
+    'germany': ['germany', 'de', 'berlin', 'munich', 'münchen', 'frankfurt', 'hamburg', 'cologne'],
+    'berlin': ['berlin', 'germany'],
+    'munich': ['munich', 'münchen', 'germany', 'de'],
+    'canada': ['canada', 'ca', 'toronto', 'ontario', 'vancouver', 'bc', 'montreal', 'quebec', 'ottawa'],
+    'toronto': ['toronto', 'ontario', 'canada'],
+    'vancouver': ['vancouver', 'bc', 'canada'],
+    'australia': ['australia', 'au', 'sydney', 'melbourne', 'brisbane'],
+    'singapore': ['singapore', 'sg'],
+    'netherlands': ['netherlands', 'amsterdam', 'rotterdam', 'nl'],
+    'amsterdam': ['amsterdam', 'netherlands', 'nl'],
+    'uae': ['united arab emirates', 'uae', 'dubai', 'abu dhabi'],
+    'dubai': ['dubai', 'uae', 'united arab emirates'],
+    'europe': ['europe', 'eu', 'emea', 'germany', 'uk', 'france', 'netherlands', 'spain', 'poland', 'switzerland', 'sweden', 'ireland'],
+    'apac': ['apac', 'asia', 'singapore', 'india', 'japan', 'australia', 'hong kong', 'taiwan', 'korea'],
+    'remote': ['remote', 'wfh', 'work from home', 'anywhere', 'worldwide', 'virtual', 'distributed']
+};
+
+// ==========================================
 // Main App Component
 // ==========================================
 function App() {
@@ -702,10 +746,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [resumeProfile, setResumeProfile] = useState(null);
     const [parsingResume, setParsingResume] = useState(false);
 
-    // Search Execution State
+    // Search Execution State & Dual Results View ('matched' vs 'all')
+    const [activeResultsTab, setActiveResultsTab] = useState("matched"); // 'matched' | 'all'
     const [searching, setSearching] = useState(false);
     const [currentSearchId, setCurrentSearchId] = useState("");
-    const [allJobs, setAllJobs] = useState([]);
+    const [allMatchedJobs, setAllMatchedJobs] = useState([]);
+    const [allHarvestedJobs, setAllHarvestedJobs] = useState([]);
     const [searchStats, setSearchStats] = useState({ total_found: 0, unique_count: 0 });
 
     // Selected Job for Detailed Modal
@@ -713,7 +759,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
     // Filter Toolbar State
     const [filterKeyword, setFilterKeyword] = useState("");
-    const [filterLocation, setFilterLocation] = useState("all");
+    const [filterLocationInput, setFilterLocationInput] = useState("");
+    const [filterExpYears, setFilterExpYears] = useState("all");
     const [filterWorkMode, setFilterWorkMode] = useState("all");
     const [minScore, setMinScore] = useState(0);
     const [filterSeniority, setFilterSeniority] = useState("all");
@@ -774,7 +821,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const handleSearchSubmit = async (e) => {
         e.preventDefault();
         setSearching(true);
-        setAllJobs([]);
+        setAllMatchedJobs([]);
+        setAllHarvestedJobs([]);
 
         const formData = new FormData();
         formData.append("role", role);
@@ -798,7 +846,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     total_found: data.total_found || 0,
                     unique_count: data.unique_count || 0
                 });
-                setAllJobs(data.jobs || []);
+                const matched = data.jobs || [];
+                const harvested = data.all_jobs && data.all_jobs.length > 0 ? data.all_jobs : matched;
+                setAllMatchedJobs(matched);
+                setAllHarvestedJobs(harvested);
                 setFilterDate(searchDatePosted);
                 showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} deduplicated jobs!`);
             } else {
@@ -849,48 +900,76 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
     // Update job in list after contacts are fetched in modal
     const handleUpdateJobContacts = (updatedJob) => {
-        setAllJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setAllMatchedJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setAllHarvestedJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
         setSelectedJob(updatedJob);
     };
 
-    // Filter & Sort Logic
+    // Filter & Sort Logic for Matched and All Harvested sections
     const filteredJobs = useMemo(() => {
-        return allJobs.filter(job => {
+        const sourceList = activeResultsTab === 'matched' ? allMatchedJobs : allHarvestedJobs;
+
+        return sourceList.filter(job => {
             const title = (job.title || "").toLowerCase();
             const company = (job.company || "").toLowerCase();
             const jobLoc = (job.location || "").toLowerCase();
             const desc = (job.description || "").toLowerCase();
             const source = (job.source || "").toLowerCase();
+            const expReq = (job.experience_required || "").toLowerCase();
+            const fit = (job.experience_fit || "").toLowerCase();
 
-            // 1. Keyword search
+            // 1. Keyword search (Title, Company, Description, Skills)
             if (filterKeyword) {
-                const kw = filterKeyword.toLowerCase();
-                if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw)) {
+                const kw = filterKeyword.toLowerCase().trim();
+                const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
+                if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
                     return false;
                 }
             }
 
-            // 2. Location Preset
-            if (filterLocation === 'india' && !jobLoc.includes('india') && !jobLoc.includes('pune') && !jobLoc.includes('bangalore') && !jobLoc.includes('mumbai') && !jobLoc.includes('delhi') && !jobLoc.includes('hyderabad')) return false;
-            if (filterLocation === 'us' && !jobLoc.includes('united states') && !jobLoc.includes('usa') && !jobLoc.includes('us') && !jobLoc.includes('ca') && !jobLoc.includes('ny') && !jobLoc.includes('tx')) return false;
-            if (filterLocation === 'uk' && !jobLoc.includes('united kingdom') && !jobLoc.includes('uk') && !jobLoc.includes('london')) return false;
-            if (filterLocation === 'remote' && !jobLoc.includes('remote') && !jobLoc.includes('wfh') && source !== 'himalayas' && jobLoc !== '') return false;
+            // 2. Smart Location NLP / Custom Location Input
+            if (filterLocationInput && filterLocationInput.trim()) {
+                const locQuery = filterLocationInput.toLowerCase().trim();
+                const isPresetRemote = locQuery === 'remote';
+                
+                if (isPresetRemote) {
+                    const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere') || jobLoc === '';
+                    if (!isRemote) return false;
+                } else if (LOCATION_ALIASES[locQuery]) {
+                    const aliases = LOCATION_ALIASES[locQuery];
+                    const matchesAlias = aliases.some(alias => jobLoc.includes(alias));
+                    if (!matchesAlias) return false;
+                } else {
+                    const tokens = locQuery.split(/[,\s/]+/).filter(t => t.length >= 2);
+                    const matchesTokens = tokens.length > 0 ? tokens.some(t => jobLoc.includes(t)) : jobLoc.includes(locQuery);
+                    if (!matchesTokens && !jobLoc.includes(locQuery)) return false;
+                }
+            }
 
             // 3. Work Mode
             const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere');
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'onsite' && isRemote) return false;
 
-            // 4. Min Score
-            if ((job.match_score || 0) < minScore) return false;
+            // 4. Min Score (only applies strictly when on matched tab or when slider > 0)
+            if ((activeResultsTab === 'matched' || minScore > 0) && (job.match_score || 0) < minScore) {
+                return false;
+            }
 
-            // 5. Seniority Filter
-            const fit = (job.experience_fit || "").toLowerCase();
-            
-            const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year');
-            const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee');
-            const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || isInternRole) && !isSeniorRole;
+            // 5. Granular Experience Level & Seniority Fit
+            const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
+            const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year') || minYears >= 4;
+            const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee') || expReq.includes('intern') || expReq.includes('0 yr') || minYears === 0;
+            const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears === 1 || minYears === 2 || isInternRole) && !isSeniorRole;
 
+            if (filterExpYears === '0' && (!isInternRole || isSeniorRole)) return false;
+            if (filterExpYears === '1' && (minYears > 1 || isSeniorRole)) return false;
+            if (filterExpYears === '2' && (minYears > 2 || isSeniorRole)) return false;
+            if (filterExpYears === '3-5' && (minYears < 3 || minYears > 5 || isInternRole)) return false;
+            if (filterExpYears === '5+' && !isSeniorRole && minYears < 5) return false;
+            if (filterExpYears === '8+' && minYears < 8 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
+
+            // Seniority dropdown fallback
             if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
             if (filterSeniority === 'junior' && (!isJuniorRole || isSeniorRole)) return false;
             if (filterSeniority === 'senior' && !isSeniorRole) return false;
@@ -901,7 +980,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterDate === '7d' && !isWithinDays(job.posted_date, 7)) return false;
             if (filterDate === '30d' && !isWithinDays(job.posted_date, 30)) return false;
 
-            // 7. Source
+            // 7. Source Platform
             if (filterSource !== 'all' && !source.includes(filterSource)) return false;
 
             return true;
@@ -910,7 +989,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
             return 0;
         });
-    }, [allJobs, filterKeyword, filterLocation, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+    }, [activeResultsTab, allMatchedJobs, allHarvestedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // RAG AI Query Handler
     const handleAskAI = async (e) => {
@@ -1108,7 +1187,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             </div>
 
             {/* Filter Toolbar & Search Results Header */}
-            {allJobs.length > 0 && (
+            {(allMatchedJobs.length > 0 || allHarvestedJobs.length > 0) && (
                 <div className="space-y-5">
                     {/* Summary Stat Banner & Export Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1119,12 +1198,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             </div>
                             <div className="h-6 w-px bg-white/10"></div>
                             <div>
-                                <div className="text-[11px] text-slate-400">Deduplicated</div>
+                                <div className="text-[11px] text-slate-400">Unique Roles</div>
                                 <div className="text-xl font-bold text-indigo-400">{searchStats.unique_count}</div>
                             </div>
                             <div className="h-6 w-px bg-white/10"></div>
                             <div>
-                                <div className="text-[11px] text-slate-400">Showing</div>
+                                <div className="text-[11px] text-slate-400">Current View</div>
                                 <div className="text-xl font-bold text-emerald-400">{filteredJobs.length}</div>
                             </div>
                         </div>
@@ -1158,9 +1237,48 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         </div>
                     </div>
 
+                    {/* DUAL SECTION VIEW TOGGLE TABS */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-1.5 bg-slate-950/60 rounded-2xl border border-white/[0.08]">
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setActiveResultsTab("matched")}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                    activeResultsTab === "matched"
+                                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400/30"
+                                        : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-white/[0.04]"
+                                }`}
+                            >
+                                <span>🎯 Top Matched Jobs</span>
+                                <span className="px-2 py-0.5 rounded-full bg-black/40 text-[11px] font-extrabold text-indigo-200">
+                                    {allMatchedJobs.length}
+                                </span>
+                            </button>
+
+                            <button 
+                                onClick={() => setActiveResultsTab("all")}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                    activeResultsTab === "all"
+                                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400/30"
+                                        : "bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-white/[0.04]"
+                                }`}
+                            >
+                                <span>🌐 All Harvested Jobs</span>
+                                <span className="px-2 py-0.5 rounded-full bg-black/40 text-[11px] font-extrabold text-emerald-200">
+                                    {allHarvestedJobs.length}
+                                </span>
+                            </button>
+                        </div>
+
+                        <div className="text-[11px] text-slate-400 px-3 flex items-center gap-1.5 self-center sm:self-auto">
+                            <span>Showing</span>
+                            <strong className="text-white">{filteredJobs.length}</strong>
+                            <span>{activeResultsTab === 'matched' ? 'curated matches' : 'harvested postings'}</span>
+                        </div>
+                    </div>
+
                     {/* Filter Bar */}
-                    <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 text-xs">
+                    <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
@@ -1173,35 +1291,35 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 />
                             </div>
 
-                            {/* Date Posted (Freshness) Filter */}
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
-                                <select 
-                                    value={filterDate}
-                                    onChange={(e) => setFilterDate(e.target.value)}
+                            {/* Smart Location Input with NLP expansion */}
+                            <div className="lg:col-span-2">
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
+                                    📍 Location (City, State, Region)
+                                </label>
+                                <input 
+                                    type="text"
+                                    placeholder="e.g. Pune, Bangalore, SF, Bay Area, Remote..."
+                                    value={filterLocationInput}
+                                    onChange={(e) => setFilterLocationInput(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="all">📅 Any Time</option>
-                                    <option value="24h">⚡ Past 24 Hours</option>
-                                    <option value="3d">🔥 Past 3 Days</option>
-                                    <option value="7d">📅 Past Week (7 Days)</option>
-                                    <option value="30d">🗓️ Past Month (30 Days)</option>
-                                </select>
+                                />
                             </div>
 
-                            {/* Location Preset */}
+                            {/* Granular Experience Required Filter */}
                             <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Location</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Required</label>
                                 <select 
-                                    value={filterLocation}
-                                    onChange={(e) => setFilterLocation(e.target.value)}
+                                    value={filterExpYears}
+                                    onChange={(e) => setFilterExpYears(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
-                                    <option value="all">📍 All Locations</option>
-                                    <option value="india">🇮🇳 India</option>
-                                    <option value="us">🇺🇸 United States</option>
-                                    <option value="uk">🇬🇧 United Kingdom</option>
-                                    <option value="remote">🏠 Remote</option>
+                                    <option value="all">🎓 All Levels</option>
+                                    <option value="0">🌱 Internship / Fresher (0 Yrs)</option>
+                                    <option value="1">🚀 0–1 Yr (Entry Level)</option>
+                                    <option value="2">⚡ 1–2 Yrs (Junior)</option>
+                                    <option value="3-5">💼 3–5 Yrs (Mid-Level)</option>
+                                    <option value="5+">👑 5+ Yrs (Senior)</option>
+                                    <option value="8+">🏆 8+ Yrs (Lead / Principal)</option>
                                 </select>
                             </div>
 
@@ -1219,22 +1337,68 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 </select>
                             </div>
 
-                            {/* Seniority / Role Fit */}
+                            {/* Sort Mode */}
                             <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Seniority Level</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
                                 <select 
-                                    value={filterSeniority}
-                                    onChange={(e) => setFilterSeniority(e.target.value)}
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
-                                    <option value="all">🎓 Any Seniority</option>
-                                    <option value="intern">🌱 Internship / Trainee</option>
-                                    <option value="junior">🚀 Entry / Junior</option>
-                                    <option value="senior">👑 Senior / Lead</option>
+                                    <option value="score">⭐ Highest Match</option>
+                                    <option value="date">📅 Most Recent</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Quick Location Preset Suggestion Chips */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                            <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Quick Hubs:</span>
+                            {[
+                                { label: "📍 All", val: "" },
+                                { label: "🇮🇳 India", val: "india" },
+                                { label: "📍 Pune", val: "pune" },
+                                { label: "📍 Bangalore", val: "bangalore" },
+                                { label: "🇺🇸 United States", val: "us" },
+                                { label: "🌉 Bay Area", val: "bay area" },
+                                { label: "🇬🇧 UK", val: "uk" },
+                                { label: "🇩🇪 Germany", val: "germany" },
+                                { label: "🏠 Remote", val: "remote" }
+                            ].map((hub, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setFilterLocationInput(hub.val)}
+                                    className={`px-2 py-0.5 rounded-md transition-all font-medium ${
+                                        filterLocationInput.toLowerCase() === hub.val
+                                            ? "bg-indigo-600 text-white border border-indigo-400"
+                                            : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]"
+                                    }`}
+                                >
+                                    {hub.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Secondary Filter Row: Freshness, Source, Score Slider & Reset */}
+                        <div className="pt-3 border-t border-white/[0.05] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center text-xs">
+                            {/* Date Posted (Freshness) Filter */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
+                                <select 
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value="all">📅 Any Time</option>
+                                    <option value="24h">⚡ Past 24 Hours</option>
+                                    <option value="3d">🔥 Past 3 Days</option>
+                                    <option value="7d">📅 Past Week (7 Days)</option>
+                                    <option value="30d">🗓️ Past Month (30 Days)</option>
                                 </select>
                             </div>
 
-                            {/* Source Platform */}
+                            {/* Platform Source */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Platform Source</label>
                                 <select 
@@ -1254,26 +1418,14 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 </select>
                             </div>
 
-                            {/* Sort Mode */}
+                            {/* Min Match Slider */}
                             <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
-                                <select 
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="score">⭐ Highest Match</option>
-                                    <option value="date">📅 Most Recent</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Secondary Filter Row: Min Match Slider & Reset Button */}
-                        <div className="pt-2.5 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <span className="text-[10px] font-semibold text-slate-400 uppercase whitespace-nowrap">
-                                    Min Match Score: <strong className="text-indigo-400">{minScore}%</strong>
-                                </span>
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase">
+                                        Min Match Score
+                                    </span>
+                                    <span className="text-xs font-bold text-indigo-400">{minScore}%</span>
+                                </div>
                                 <input 
                                     type="range"
                                     min="0"
@@ -1281,26 +1433,30 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     step="10"
                                     value={minScore}
                                     onChange={(e) => setMinScore(Number(e.target.value))}
-                                    className="w-36 accent-indigo-500 cursor-pointer"
+                                    className="w-full accent-indigo-500 cursor-pointer"
                                 />
                             </div>
 
-                            {(filterKeyword || filterLocation !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
-                                <button 
-                                    onClick={() => {
-                                        setFilterKeyword("");
-                                        setFilterLocation("all");
-                                        setFilterWorkMode("all");
-                                        setMinScore(0);
-                                        setFilterSeniority("all");
-                                        setFilterDate("all");
-                                        setFilterSource("all");
-                                    }}
-                                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium underline flex items-center gap-1 self-end sm:self-center"
-                                >
-                                    <span>↺</span> Reset Active Filters
-                                </button>
-                            )}
+                            {/* Reset Button */}
+                            <div className="flex justify-end pt-3 sm:pt-0">
+                                {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
+                                    <button 
+                                        onClick={() => {
+                                            setFilterKeyword("");
+                                            setFilterLocationInput("");
+                                            setFilterExpYears("all");
+                                            setFilterWorkMode("all");
+                                            setMinScore(0);
+                                            setFilterSeniority("all");
+                                            setFilterDate("all");
+                                            setFilterSource("all");
+                                        }}
+                                        className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold underline flex items-center gap-1"
+                                    >
+                                        <span>↺</span> Reset Active Filters
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -1454,11 +1610,12 @@ function JobCard({ job, onViewDetails, onQueryAI }) {
 
                 {/* Metadata Pills */}
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
-                        🔗 {job.source || 'Direct'}
+                    {/* Exact Required Experience Badge */}
+                    <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                        ⏳ Exp: {job.experience_required || job.experience_fit || '🌱 Internship (0 Yrs)'}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
-                        💼 {job.experience_fit || 'Good Fit'}
+                        🔗 {job.source || 'Direct'}
                     </span>
                     {salaryDisplay !== 'Salary: N/A' && (
                         <span className="px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 font-medium">
@@ -1661,6 +1818,20 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                     {/* TAB 1: OVERVIEW & INSIGHTS */}
                     {activeTab === "overview" && (
                         <div className="space-y-4">
+                            {/* Experience & Seniority Requirement */}
+                            <div className="p-3.5 rounded-xl bg-slate-900/90 border border-emerald-500/20 space-y-2">
+                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                                    <span>⏳ Experience & Seniority Requirements</span>
+                                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold shadow-sm">
+                                        {job.experience_required || job.experience_fit || '🌱 Internship (0 Yrs)'}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
+                                    <div><strong className="text-slate-400">Experience Needed:</strong> <span className="text-white font-semibold">{job.experience_required || '0–1 Yrs (Entry Level)'}</span></div>
+                                    <div><strong className="text-slate-400">AI Seniority Fit:</strong> <span className="text-indigo-300 font-semibold">{job.experience_fit || 'Good Fit'}</span></div>
+                                </div>
+                            </div>
+
                             {/* Key Requirements Summary */}
                             {job.key_requirements && (
                                 <div className="p-3.5 rounded-xl bg-slate-900/90 border border-indigo-500/20 space-y-1">
