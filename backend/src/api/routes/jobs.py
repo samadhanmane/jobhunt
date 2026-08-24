@@ -45,24 +45,13 @@ async def scrape_job_links(request: ScrapeLinksRequest, db: Session = Depends(ge
 @router.get("/api/v1/jobs/{search_id}")
 def get_jobs(search_id: str, db: Session = Depends(get_db)):
     """
-    Retrieve aggregated, ranked jobs for a search session.
+    Retrieve live streaming aggregated, ranked jobs for a search session.
     """
-    search_repo = SearchRepository(db)
-    search_record = search_repo.get_search_by_id(search_id)
-    
-    if not search_record:
-        raise HTTPException(status_code=404, detail="Search session not found.")
-        
     job_service = JobService(db)
-    jobs = job_service.get_results(search_id)
-    
-    return {
-        "search_id": search_id,
-        "status": search_record.status,
-        "total_found": search_record.total_found,
-        "unique_count": search_record.unique_count,
-        "jobs": jobs
-    }
+    session_data = job_service.get_session_data(search_id)
+    if session_data.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Search session not found.")
+    return session_data
 
 @router.post("/api/v1/jobs/{search_id}/query")
 async def query_jobs(search_id: str, request: RAGQueryRequest, db: Session = Depends(get_db)):

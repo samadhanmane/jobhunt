@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sklearn.metrics.pairwise import cosine_similarity
-
+import asyncio
 from src.config import settings
 from src.agents.orchestrator import OrchestratorAgent
 from src.agents.deduplication import DeduplicationAgent
@@ -22,6 +22,9 @@ from src.llm.embeddings import embedding_client
 from src.llm.llm_client import get_llm
 from src.services.vector_service import vector_service
 from src.utils.date_utils import format_posted_date_for_csv
+
+# Global In-Memory Cache for Live Streaming Search Sessions
+ACTIVE_SEARCH_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 class JobService:
     def __init__(self, db: Session):
@@ -368,10 +371,39 @@ class JobService:
                     "tech_contacts": []
                 })
 
-            # Trigger automatic parallel background contact enrichment for all discovered jobs
+            # Initialize active streaming search session
+            curated_jobs = self.get_results(search_id)
+            ACTIVE_SEARCH_SESSIONS[search_id] = {
+                "status": "harvesting",
+                "raw_jobs": list(all_raw_payload),
+                "unique_jobs": list(all_unique_payload),
+                "jobs": list(curated_jobs)
+            }
+
+            # Seen sets to prevent duplicates across streaming rounds
+            seen_urls = set(j.get("url", "").strip().lower() for j in raw_jobs if j.get("url"))
+            seen_titles = set(f"{(j.get('company') or '').lower().strip()}|{(j.get('title') or '').lower().strip()}" for j in unique_jobs)
+
             cand_name = candidate_profile.get("current_or_recent_role") or "Candidate"
             cand_skills = candidate_profile.get("skills", [])
             custom_cookie = preferences.get("linkedin_cookie")
+
+            # 1. Trigger continuous live background harvesting across remaining queries/boards
+            try:
+                asyncio.create_task(
+                    self.background_harvest_stream(
+                        search_id=search_id,
+                        candidate_profile=candidate_profile,
+                        preferences=preferences,
+                        initial_seen_urls=seen_urls,
+                        initial_seen_titles=seen_titles,
+                        custom_cookie=custom_cookie
+                    )
+                )
+            except Exception as stream_err:
+                print(f"Notice: Background harvest stream initialization: {stream_err}")
+
+            # 2. Trigger automatic parallel background contact enrichment for top discovered jobs
             try:
                 asyncio.create_task(
                     self.background_enrich_all_jobs_contacts(
@@ -388,8 +420,8 @@ class JobService:
                 "search_id": search_id,
                 "total_found": total_found,
                 "unique_count": unique_count,
-                "status": "completed",
-                "jobs": self.get_results(search_id),
+                "status": "harvesting",
+                "jobs": curated_jobs,
                 "unique_jobs": all_unique_payload,
                 "raw_jobs": all_raw_payload,
                 "all_jobs": all_unique_payload
@@ -399,6 +431,245 @@ class JobService:
             print(f"Error executing job search pipeline: {e}")
             self.search_repo.update_search_status(search_id, "failed")
             raise e
+
+    def get_session_data(self, search_id: str) -> Dict[str, Any]:
+        """
+        Retrieves the latest live streaming jobs (Raw, Unique, and Curated) for a search session.
+        """
+        if search_id in ACTIVE_SEARCH_SESSIONS:
+            sess = ACTIVE_SEARCH_SESSIONS[search_id]
+            raw_list = sess.get("raw_jobs", [])
+            uniq_list = sess.get("unique_jobs", [])
+            curated_list = sess.get("jobs", [])
+            return {
+                "search_id": search_id,
+                "status": sess.get("status", "completed"),
+                "total_found": len(raw_list),
+                "unique_count": len(uniq_list),
+                "jobs": curated_list,
+                "unique_jobs": uniq_list,
+                "raw_jobs": raw_list,
+                "all_jobs": uniq_list
+            }
+
+        search_record = self.search_repo.get_search_by_id(search_id)
+        if not search_record:
+            return {
+                "search_id": search_id,
+                "status": "not_found",
+                "total_found": 0,
+                "unique_count": 0,
+                "jobs": [],
+                "unique_jobs": [],
+                "raw_jobs": [],
+                "all_jobs": []
+            }
+
+        db_jobs = self.get_results(search_id)
+        return {
+            "search_id": search_id,
+            "status": search_record.status,
+            "total_found": search_record.total_found or len(db_jobs),
+            "unique_count": search_record.unique_count or len(db_jobs),
+            "jobs": db_jobs,
+            "unique_jobs": db_jobs,
+            "raw_jobs": db_jobs,
+            "all_jobs": db_jobs
+        }
+
+    async def background_harvest_stream(
+        self,
+        search_id: str,
+        candidate_profile: dict,
+        preferences: dict,
+        initial_seen_urls: set,
+        initial_seen_titles: set,
+        custom_cookie: Optional[str] = None
+    ):
+        """
+        Continuously discovers subsequent batches of jobs in the background,
+        deduplicating and streaming new results live into the active search session.
+        """
+        import asyncio
+        from src.utils.text_cleaner import extract_job_experience_metadata
+        from src.utils.date_utils import format_posted_date_for_csv
+        from src.models.database import SessionLocal
+
+        try:
+            plan = await self.orchestrator.get_search_plan(candidate_profile, preferences)
+            primary_query = plan.get("primary_query", preferences.get("role", "Software Engineer"))
+            location = plan.get("location", preferences.get("location", ""))
+            remote = plan.get("remote_only", False)
+            skills_filter = plan.get("skills_filter", [])
+            seniority = plan.get("seniority") or preferences.get("experience_level") or candidate_profile.get("seniority") or "mid"
+            domain_keywords = plan.get("domain_keywords", []) or []
+            secondary_queries = plan.get("secondary_queries", [])
+            raw_user_role = preferences.get("role", "").strip()
+
+            additional_queries = []
+            for q in secondary_queries + [f"{raw_user_role} Specialist", f"{primary_query} Remote", f"{primary_query} Worldwide", f"{raw_user_role} Developer", f"{primary_query} Associate"]:
+                if q and isinstance(q, str):
+                    cleaned_q = q.strip()
+                    if cleaned_q and len(cleaned_q) > 2 and cleaned_q.lower() not in [sq.lower() for sq in additional_queries]:
+                        additional_queries.append(cleaned_q)
+
+            query_batches = [
+                additional_queries[:2],
+                additional_queries[2:5],
+                [f"{raw_user_role} Engineer", f"{primary_query}"]
+            ]
+
+            seen_urls = set(initial_seen_urls)
+            seen_titles = set(initial_seen_titles)
+
+            for round_idx, q_batch in enumerate(query_batches):
+                if not q_batch or search_id not in ACTIVE_SEARCH_SESSIONS:
+                    break
+
+                await asyncio.sleep(2.0)
+
+                tasks = []
+                for q_title in q_batch:
+                    tasks.append(self.orchestrator.jobspy.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.himalayas.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords))
+                    tasks.append(self.orchestrator.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority))
+                    tasks.append(self.orchestrator.jobicy.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.remoteok.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.greenhouse.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.lever.search(query=q_title, location=location, remote=remote))
+                    tasks.append(self.orchestrator.ashby.search(query=q_title, location=location, remote=remote))
+
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                new_raw_batch = []
+                for res in results:
+                    if isinstance(res, list):
+                        for j in res:
+                            u = j.get("url", "").strip().lower()
+                            if u and u in seen_urls:
+                                continue
+                            if u:
+                                seen_urls.add(u)
+                            new_raw_batch.append(j)
+
+                if not new_raw_batch or search_id not in ACTIVE_SEARCH_SESSIONS:
+                    continue
+
+                new_raw_payload = []
+                for raw_j in new_raw_batch:
+                    raw_title = raw_j.get("title", "Unknown Role")
+                    raw_desc = raw_j.get("description", "")
+                    raw_exp = extract_job_experience_metadata(raw_title, raw_desc, raw_j.get("experience_fit", ""))
+                    raw_date = raw_j.get("posted_date")
+                    formatted_date = format_posted_date_for_csv(raw_date)
+                    if formatted_date == "N/A":
+                        formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+                    new_raw_payload.append({
+                        "id": str(uuid.uuid4()),
+                        "title": raw_title,
+                        "company": raw_j.get("company", "Unknown Company"),
+                        "location": raw_j.get("location", "Remote"),
+                        "description": raw_desc,
+                        "url": raw_j.get("url", ""),
+                        "source": raw_j.get("source", "unknown"),
+                        "posted_date": formatted_date,
+                        "salary_range": raw_j.get("salary_range"),
+                        "match_score": float(raw_j.get("match_score", 50.0)),
+                        "match_reason": raw_j.get("match_reason", "Live streaming job listing."),
+                        "matching_skills": raw_j.get("matching_skills", []),
+                        "missing_skills": raw_j.get("missing_skills", []),
+                        "experience_fit": raw_j.get("experience_fit", "Standard Fit"),
+                        "experience_required": raw_exp["experience_required"],
+                        "min_experience_years": raw_exp["min_experience_years"],
+                        "seniority_level": raw_exp["seniority_level"],
+                        "key_requirements": raw_j.get("key_requirements", ""),
+                        "company_insights": raw_j.get("company_insights") or {},
+                        "hr_contacts": [],
+                        "tech_contacts": []
+                    })
+
+                new_unique_batch = []
+                for raw_j in new_raw_batch:
+                    comp = (raw_j.get("company") or "").lower().strip()
+                    t = (raw_j.get("title") or "").lower().strip()
+                    key = f"{comp}|{t}"
+                    if key in seen_titles:
+                        continue
+                    seen_titles.add(key)
+                    new_unique_batch.append(raw_j)
+
+                new_ranked = await self.ranker.rank_jobs(new_unique_batch, candidate_profile, preferences) if new_unique_batch else []
+                new_unique_payload = []
+                for rj in new_ranked:
+                    rtitle = rj.get("title", "Unknown Role")
+                    rdesc = rj.get("description", "")
+                    rexp = extract_job_experience_metadata(rtitle, rdesc, rj.get("experience_fit", ""))
+                    rdate = rj.get("posted_date")
+                    fdate = format_posted_date_for_csv(rdate)
+                    if fdate == "N/A":
+                        fdate = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+                    new_unique_payload.append({
+                        "id": str(uuid.uuid4()),
+                        "title": rtitle,
+                        "company": rj.get("company", "Unknown Company"),
+                        "location": rj.get("location", "Remote"),
+                        "description": rdesc,
+                        "url": rj.get("url", ""),
+                        "source": rj.get("source", "unknown"),
+                        "posted_date": fdate,
+                        "salary_range": rj.get("salary_range"),
+                        "match_score": float(rj.get("match_score", 50.0)),
+                        "match_reason": rj.get("match_reason", "Live streaming unique role."),
+                        "matching_skills": rj.get("matching_skills", []),
+                        "missing_skills": rj.get("missing_skills", []),
+                        "experience_fit": rj.get("experience_fit", "Standard Fit"),
+                        "experience_required": rexp["experience_required"],
+                        "min_experience_years": rexp["min_experience_years"],
+                        "seniority_level": rexp["seniority_level"],
+                        "key_requirements": rj.get("key_requirements", ""),
+                        "company_insights": rj.get("company_insights") or {},
+                        "hr_contacts": [],
+                        "tech_contacts": []
+                    })
+
+                if search_id in ACTIVE_SEARCH_SESSIONS:
+                    sess = ACTIVE_SEARCH_SESSIONS[search_id]
+                    sess["raw_jobs"].extend(new_raw_payload)
+                    sess["unique_jobs"].extend(new_unique_payload)
+
+                    all_curated = sess["jobs"] + new_unique_payload
+                    all_curated.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+                    sess["jobs"] = all_curated[:50]
+
+                    db = SessionLocal()
+                    try:
+                        self.search_repo.update_search_status(
+                            search_id, 
+                            "harvesting", 
+                            total_found=len(sess["raw_jobs"]), 
+                            unique_count=len(sess["unique_jobs"])
+                        )
+                    finally:
+                        db.close()
+
+            if search_id in ACTIVE_SEARCH_SESSIONS:
+                ACTIVE_SEARCH_SESSIONS[search_id]["status"] = "completed"
+                db = SessionLocal()
+                try:
+                    self.search_repo.update_search_status(
+                        search_id, 
+                        "completed", 
+                        total_found=len(ACTIVE_SEARCH_SESSIONS[search_id]["raw_jobs"]), 
+                        unique_count=len(ACTIVE_SEARCH_SESSIONS[search_id]["unique_jobs"])
+                    )
+                finally:
+                    db.close()
+
+        except Exception as stream_err:
+            print(f"Notice: Streaming harvest notice: {stream_err}")
+            if search_id in ACTIVE_SEARCH_SESSIONS:
+                ACTIVE_SEARCH_SESSIONS[search_id]["status"] = "completed"
 
     def get_results(self, search_id: str) -> List[Dict[str, Any]]:
         from src.utils.text_cleaner import extract_job_experience_metadata

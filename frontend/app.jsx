@@ -786,9 +786,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Exporting Insights CSV State
     const [exportingInsights, setExportingInsights] = useState(false);
 
+    const [isHarvestingLive, setIsHarvestingLive] = useState(false);
+
     // Execute Search across 9 platforms directly Worldwide
     const executeSearch = async (overrideFile = null, overrideRole = null) => {
         setSearching(true);
+        setIsHarvestingLive(false);
         setAllMatchedJobs([]);
         setAllUniqueJobs([]);
         setAllRawJobs([]);
@@ -825,7 +828,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 setAllMatchedJobs(matched);
                 setAllUniqueJobs(unique);
                 setAllRawJobs(raw);
-                showToast(`Harvested ${data.total_found} postings -> ${data.unique_count} unique roles!`);
+
+                // If backend started continuous background harvesting
+                setIsHarvestingLive(true);
+                showToast(`Harvested initial ${data.total_found} postings -> streaming more in background!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
             }
@@ -836,17 +842,18 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         }
     };
 
-    // Automatic Parallel Background Sync for Enriched Contacts
+    // Automatic Continuous Live Streaming Background Poller
     useEffect(() => {
         if (!currentSearchId) return;
 
         let pollCount = 0;
-        const maxPolls = 15; // 15 polls * 3s = 45s of active background sync
+        const maxPolls = 25; // 25 polls * 2.5s = ~62s of continuous streaming
 
         const pollInterval = setInterval(async () => {
             pollCount++;
             if (pollCount > maxPolls) {
                 clearInterval(pollInterval);
+                setIsHarvestingLive(false);
                 return;
             }
 
@@ -854,41 +861,32 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentSearchId}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.jobs && data.jobs.length > 0) {
-                        const hasContacts = data.jobs.some(j => (j.hr_contacts && j.hr_contacts.length > 0) || (j.tech_contacts && j.tech_contacts.length > 0));
-                        if (hasContacts) {
-                            setAllMatchedJobs(data.jobs);
-                            
-                            const contactsByCompany = {};
-                            data.jobs.forEach(j => {
-                                if (j.company && (j.hr_contacts?.length || j.tech_contacts?.length)) {
-                                    contactsByCompany[j.company] = {
-                                        hr_contacts: j.hr_contacts || [],
-                                        tech_contacts: j.tech_contacts || []
-                                    };
-                                }
-                            });
+                    if (data.raw_jobs && data.raw_jobs.length > 0) {
+                        setSearchStats({
+                            total_found: data.total_found || data.raw_jobs.length,
+                            unique_count: data.unique_count || data.unique_jobs.length
+                        });
+                        setAllRawJobs(data.raw_jobs);
+                        setAllUniqueJobs(data.unique_jobs || []);
+                        setAllMatchedJobs(data.jobs || []);
 
-                            setAllUniqueJobs(prev => prev.map(uj => {
-                                const found = contactsByCompany[uj.company];
-                                return found ? { ...uj, ...found } : uj;
-                            }));
-
-                            setAllRawJobs(prev => prev.map(rj => {
-                                const found = contactsByCompany[rj.company];
-                                return found ? { ...rj, ...found } : rj;
-                            }));
-
+                        // Keep modal contacts synced
+                        if (data.jobs && data.jobs.length > 0) {
                             setSelectedJob(prev => {
                                 if (!prev) return null;
-                                const updated = data.jobs.find(j => j.id === prev.id) || (contactsByCompany[prev.company] ? { ...prev, ...contactsByCompany[prev.company] } : prev);
-                                return updated;
+                                const updated = data.jobs.find(j => j.id === prev.id) || (data.unique_jobs || []).find(j => j.id === prev.id);
+                                return updated || prev;
                             });
                         }
                     }
+
+                    if (data.status === 'completed' && pollCount > 4) {
+                        setIsHarvestingLive(false);
+                        clearInterval(pollInterval);
+                    }
                 }
             } catch (err) {}
-        }, 3000);
+        }, 2500);
 
         return () => clearInterval(pollInterval);
     }, [currentSearchId]);
@@ -1329,6 +1327,16 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <div className="text-[10px] text-slate-400 font-medium">Filtered View</div>
                                 <div className="text-base sm:text-lg font-bold text-cyan-300">{filteredJobs.length}</div>
                             </div>
+
+                            {isHarvestingLive && (
+                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold animate-pulse shadow-sm">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </span>
+                                    <span>Harvesting Live...</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
