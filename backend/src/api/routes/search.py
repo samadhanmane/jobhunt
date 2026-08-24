@@ -132,7 +132,10 @@ async def search_jobs(
             "search_id": search_id,
             "total_found": results.get("total_found", 0),
             "unique_count": results.get("unique_count", 0),
-            "jobs": results.get("jobs", [])
+            "jobs": results.get("jobs", []),
+            "unique_jobs": results.get("unique_jobs", []),
+            "raw_jobs": results.get("raw_jobs", []),
+            "all_jobs": results.get("all_jobs", [])
         }
     except Exception as e:
         import traceback
