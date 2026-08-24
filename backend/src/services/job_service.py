@@ -635,6 +635,7 @@ User Query:
                 "Tech Lead Email": tech_email,
                 "Tech Lead Email Confidence": tech_confidence,
                 "Tech Lead Phone": tech_phone,
+                "Full Job Description": j.description or "",
                 "Match Reason": j.match_reason or "",
                 "URL": j.url or "",
                 "Source": j.source or ""
@@ -734,7 +735,7 @@ User Query:
                 "Tech Lead Emails": all_tech_emails,
                 "Tech Lead Email Confidence": all_tech_confidence,
                 "Tech Lead Phones": all_tech_phones,
-                "Job Description Summary": (j.description or "")[:500],
+                "Full Job Description": j.description or "",
                 "Match Reason": j.match_reason or "",
                 "URL": j.url or "",
                 "Source": j.source or ""
