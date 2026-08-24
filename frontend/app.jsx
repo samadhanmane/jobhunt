@@ -1155,7 +1155,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                     {/* Filter Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 text-xs">
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
@@ -1166,6 +1166,22 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     onChange={(e) => setFilterKeyword(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 />
+                            </div>
+
+                            {/* Date Posted (Freshness) Filter */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
+                                <select 
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value="all">📅 Any Time</option>
+                                    <option value="24h">⚡ Past 24 Hours</option>
+                                    <option value="3d">🔥 Past 3 Days</option>
+                                    <option value="7d">📅 Past Week (7 Days)</option>
+                                    <option value="30d">🗓️ Past Month (30 Days)</option>
+                                </select>
                             </div>
 
                             {/* Location Preset */}
@@ -1198,6 +1214,21 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 </select>
                             </div>
 
+                            {/* Seniority / Role Fit */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Seniority Level</label>
+                                <select 
+                                    value={filterSeniority}
+                                    onChange={(e) => setFilterSeniority(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value="all">🎓 Any Seniority</option>
+                                    <option value="intern">🌱 Internship / Trainee</option>
+                                    <option value="junior">🚀 Entry / Junior</option>
+                                    <option value="senior">👑 Senior / Lead</option>
+                                </select>
+                            </div>
+
                             {/* Source Platform */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Platform Source</label>
@@ -1218,22 +1249,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 </select>
                             </div>
 
-                            {/* Min Match Score */}
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
-                                    Min Match: <span className="text-indigo-400 font-bold">{minScore}%</span>
-                                </label>
-                                <input 
-                                    type="range"
-                                    min="0"
-                                    max="90"
-                                    step="10"
-                                    value={minScore}
-                                    onChange={(e) => setMinScore(Number(e.target.value))}
-                                    className="w-full accent-indigo-500 cursor-pointer mt-1"
-                                />
-                            </div>
-
                             {/* Sort Mode */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
@@ -1246,6 +1261,41 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     <option value="date">📅 Most Recent</option>
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Secondary Filter Row: Min Match Slider & Reset Button */}
+                        <div className="pt-2.5 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase whitespace-nowrap">
+                                    Min Match Score: <strong className="text-indigo-400">{minScore}%</strong>
+                                </span>
+                                <input 
+                                    type="range"
+                                    min="0"
+                                    max="90"
+                                    step="10"
+                                    value={minScore}
+                                    onChange={(e) => setMinScore(Number(e.target.value))}
+                                    className="w-36 accent-indigo-500 cursor-pointer"
+                                />
+                            </div>
+
+                            {(filterKeyword || filterLocation !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
+                                <button 
+                                    onClick={() => {
+                                        setFilterKeyword("");
+                                        setFilterLocation("all");
+                                        setFilterWorkMode("all");
+                                        setMinScore(0);
+                                        setFilterSeniority("all");
+                                        setFilterDate("all");
+                                        setFilterSource("all");
+                                    }}
+                                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium underline flex items-center gap-1 self-end sm:self-center"
+                                >
+                                    <span>↺</span> Reset Active Filters
+                                </button>
+                            )}
                         </div>
                     </div>
 
