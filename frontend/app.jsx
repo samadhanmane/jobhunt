@@ -733,7 +733,6 @@ function LoginScreen({ onLoginSuccess }) {
 function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
     // Form Inputs
     const [role, setRole] = useState("AI ML Engineer");
-    const [location, setLocation] = useState("Pune");
 
     // Resume Profile State & Persistence
     const [resumeFile, setResumeFile] = useState(null);
@@ -786,19 +785,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Exporting Insights CSV State
     const [exportingInsights, setExportingInsights] = useState(false);
 
-    // Execute Search across 9 platforms (Worldwide fallback when location is blank)
-    const executeSearch = async (overrideFile = null, overrideRole = null, overrideLoc = null) => {
+    // Execute Search across 9 platforms directly Worldwide
+    const executeSearch = async (overrideFile = null, overrideRole = null) => {
         setSearching(true);
         setAllMatchedJobs([]);
         setAllHarvestedJobs([]);
 
         const activeRole = (overrideRole || role || "Software Engineer").trim();
-        const rawLoc = overrideLoc !== null ? overrideLoc : location;
-        const activeLoc = rawLoc.trim() ? rawLoc.trim() : "Worldwide";
 
         const formData = new FormData();
         formData.append("role", activeRole);
-        formData.append("location", activeLoc);
+        formData.append("location", "Worldwide");
         formData.append("experience_level", resumeProfile?.seniority?.toLowerCase() || "intern");
         formData.append("remote_preference", "any");
         
@@ -862,7 +859,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 showToast(`Resume parsed! Found ${data.profile.skills?.length || 0} skills. Fetching jobs...`);
                 
                 // Live fetch jobs matching the newly uploaded resume
-                executeSearch(file, newRole, location);
+                executeSearch(file, newRole);
             } else {
                 showToast(data.detail || "Failed to parse resume.", "error");
             }
@@ -1069,33 +1066,23 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         </div>
 
                         <form onSubmit={handleSearchSubmit} className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                            <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
                                         Target Role / Title <span className="text-indigo-400">*</span>
                                     </label>
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={role}
-                                        onChange={(e) => setRole(e.target.value)}
-                                        placeholder="e.g. AI ML Engineer, Backend Developer"
-                                        className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
-                                    />
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold flex items-center gap-1">
+                                        <span>🌍</span> Worldwide Multi-Board Search
+                                    </span>
                                 </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                        Preferred Location <span className="text-slate-500 font-normal lowercase">(leave blank for worldwide)</span>
-                                    </label>
-                                    <input 
-                                        type="text" 
-                                        value={location}
-                                        onChange={(e) => setLocation(e.target.value)}
-                                        placeholder="e.g. Pune, Bangalore, Remote, Worldwide..."
-                                        className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
-                                    />
-                                </div>
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={role}
+                                    onChange={(e) => setRole(e.target.value)}
+                                    placeholder="e.g. AI ML Engineer, Full Stack Developer, Data Scientist"
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
+                                />
                             </div>
 
                             <button 
@@ -1106,10 +1093,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 {searching ? (
                                     <>
                                         <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                        <span>Harvesting & Analyzing Across 9 Platforms...</span>
+                                        <span>Harvesting Worldwide Across 9 Platforms...</span>
                                     </>
                                 ) : (
-                                    <span>⚡ Harvest & Analyze Jobs Now</span>
+                                    <span>⚡ Harvest Worldwide Jobs & Match Profile</span>
                                 )}
                             </button>
                         </form>
