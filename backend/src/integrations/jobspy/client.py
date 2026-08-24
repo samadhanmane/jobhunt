@@ -50,40 +50,61 @@ class JobSpyClient(BaseJobIntegration):
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
         loop = asyncio.get_event_loop()
         
-        # Determine exact country for Indeed/Glassdoor scrapers
-        country_indeed = get_indeed_country(location)
-        
-        # Site names to scrape (LinkedIn + Indeed are fast & reliable)
-        site_names = ["linkedin", "indeed"]
-        
-        # Format clean location string
         is_specific_loc = bool(location and location.lower().strip() not in ["remote", "worldwide", "global", "any", "all", ""])
         loc_clean = location.strip() if is_specific_loc else ("Remote" if remote else "")
-        
-        # When a specific city/country is given (e.g. Pune, India), target that geo specifically
         is_remote_param = False if is_specific_loc else remote
-        
-        # Fetch 20 results per scraper for fast 5-second live response
         results_count = kwargs.get("results_wanted", 20)
-            
-        scrape_func = partial(
-            scrape_jobs,
-            site_name=site_names,
-            search_term=query,
-            location=loc_clean,
-            results_wanted=results_count,
-            hours_old=168,  # 7 days of jobs
-            country_indeed=country_indeed,
-            is_remote=is_remote_param
-        )
+
+        # Build list of Indeed country domains to scrape
+        if is_specific_loc:
+            target_countries = [get_indeed_country(location)]
+        else:
+            # Multi-domain global scraping across top tech hubs
+            target_countries = ["usa", "india", "uk", "germany", "canada"]
+
+        def scrape_site(sites, country_code, count):
+            try:
+                return scrape_jobs(
+                    site_name=sites,
+                    search_term=query,
+                    location=loc_clean,
+                    results_wanted=count,
+                    hours_old=168,  # 7 days of jobs
+                    country_indeed=country_code,
+                    is_remote=is_remote_param
+                )
+            except Exception as e:
+                print(f"Notice: JobSpy scrape notice ({sites}, {country_code}): {e}")
+                return None
+
+        # Prepare parallel scraping tasks
+        tasks = []
         
+        # 1. Scrape LinkedIn (Global)
+        tasks.append(loop.run_in_executor(None, scrape_site, ["linkedin"], "usa", results_count))
+
+        # 2. Scrape Indeed across multiple global domains in parallel
+        for c in target_countries:
+            tasks.append(loop.run_in_executor(None, scrape_site, ["indeed"], c, 12 if len(target_countries) > 1 else results_count))
+
         try:
-            df = await loop.run_in_executor(None, scrape_func)
-            if df is None or df.empty:
-                return []
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
+            dataframes = []
+            for res in results:
+                if isinstance(res, pd.DataFrame) and not res.empty:
+                    dataframes.append(res)
+
+            if not dataframes:
+                return []
+
+            combined_df = pd.concat(dataframes, ignore_index=True)
+            # Deduplicate by job_url if available
+            if "job_url" in combined_df.columns:
+                combined_df = combined_df.drop_duplicates(subset=["job_url"])
+
             raw_jobs = []
-            for _, row in df.iterrows():
+            for _, row in combined_df.iterrows():
                 min_sal = float(row["min_amount"]) if "min_amount" in row and pd.notna(row["min_amount"]) else None
                 max_sal = float(row["max_amount"]) if "max_amount" in row and pd.notna(row["max_amount"]) else None
                 currency = str(row.get("currency", "USD")) if "currency" in row and pd.notna(row["currency"]) else "USD"
@@ -138,8 +159,8 @@ class JobSpyClient(BaseJobIntegration):
 
                 enriched_jobs = await asyncio.gather(*[enrich_description(j) for j in raw_jobs])
 
-            print(f"[JobSpy] Fetched & enriched {len(enriched_jobs)} jobs for query='{query}' location='{loc_clean}' country='{country_indeed}'")
+            print(f"[JobSpy] Fetched & enriched {len(enriched_jobs)} jobs across {len(target_countries)} domains for query='{query}'")
             return enriched_jobs
         except Exception as e:
-            print(f"Error scraping with JobSpy (Location: '{location}', Country: '{country_indeed}'): {e}")
+            print(f"Error scraping with JobSpy (Location: '{location}', Domains: {target_countries}): {e}")
             return []
