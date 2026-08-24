@@ -774,7 +774,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [filterSeniority, setFilterSeniority] = useState("all");
     const [filterDate, setFilterDate] = useState("all");
     const [filterSource, setFilterSource] = useState("all");
-    const [sortBy, setSortBy] = useState("score"); // 'score' | 'date' | 'unique' | 'raw'
+    const [jobScope, setJobScope] = useState("curated"); // 'curated' | 'unique' | 'raw'
+    const [sortBy, setSortBy] = useState("score"); // 'score' | 'date'
 
     // RAG AI Query State
     const [ragModalOpen, setRagModalOpen] = useState(false);
@@ -997,15 +998,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         setSelectedJob(updatedJob);
     };
 
-    // Filter & Sort Logic for Selected View (Matched, Unique, or All Raw)
+    // Filter & Sort Logic for Selected Pool (Curated, Unique, or Raw Harvested)
     const filteredJobs = useMemo(() => {
         let sourceList = allMatchedJobs;
-        if (sortBy === 'raw') {
+        if (jobScope === 'raw') {
             sourceList = allRawJobs;
-        } else if (sortBy === 'unique') {
+        } else if (jobScope === 'unique') {
             sourceList = allUniqueJobs;
-        } else if (sourceList.length === 0 && allUniqueJobs.length > 0) {
-            sourceList = allUniqueJobs;
+        } else {
+            sourceList = allMatchedJobs.length > 0 ? allMatchedJobs : allUniqueJobs;
         }
 
         return sourceList.filter(job => {
@@ -1086,9 +1087,9 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         }).sort((a, b) => {
             if (sortBy === 'score') return (b.match_score || 0) - (a.match_score || 0);
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
-            return 0;
+            return (b.match_score || 0) - (a.match_score || 0);
         });
-    }, [allMatchedJobs, allUniqueJobs, allRawJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+    }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // RAG AI Query Handler
     const handleAskAI = async (e) => {
@@ -1278,20 +1279,55 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 <div className="space-y-5">
                     {/* Summary Stat Banner & Export Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-5">
-                            <div>
-                                <div className="text-[11px] text-slate-400">Raw Harvested</div>
-                                <div className="text-xl font-bold text-white">{searchStats.total_found}</div>
-                            </div>
-                            <div className="h-6 w-px bg-white/10"></div>
-                            <div>
-                                <div className="text-[11px] text-slate-400">Unique Roles</div>
-                                <div className="text-xl font-bold text-indigo-400">{searchStats.unique_count}</div>
-                            </div>
-                            <div className="h-6 w-px bg-white/10"></div>
-                            <div>
-                                <div className="text-[11px] text-slate-400">Current View</div>
-                                <div className="text-xl font-bold text-emerald-400">{filteredJobs.length}</div>
+                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                            <button 
+                                type="button"
+                                onClick={() => setJobScope("raw")}
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
+                                    jobScope === "raw" 
+                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm" 
+                                        : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
+                                }`}
+                            >
+                                <div className="text-[10px] text-slate-400 font-medium">Raw Harvested</div>
+                                <div className="text-base sm:text-lg font-bold text-white">{searchStats.total_found || allRawJobs.length}</div>
+                            </button>
+                            
+                            <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
+
+                            <button 
+                                type="button"
+                                onClick={() => setJobScope("unique")}
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
+                                    jobScope === "unique" 
+                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm" 
+                                        : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
+                                }`}
+                            >
+                                <div className="text-[10px] text-slate-400 font-medium">Unique Roles</div>
+                                <div className="text-base sm:text-lg font-bold text-indigo-400">{searchStats.unique_count || allUniqueJobs.length}</div>
+                            </button>
+                            
+                            <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
+
+                            <button 
+                                type="button"
+                                onClick={() => setJobScope("curated")}
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
+                                    jobScope === "curated" 
+                                        ? "bg-emerald-600/25 border-emerald-500/70 shadow-sm" 
+                                        : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
+                                }`}
+                            >
+                                <div className="text-[10px] text-slate-400 font-medium">Curated Matches</div>
+                                <div className="text-base sm:text-lg font-bold text-emerald-400">{allMatchedJobs.length}</div>
+                            </button>
+
+                            <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
+
+                            <div className="px-2 py-1">
+                                <div className="text-[10px] text-slate-400 font-medium">Filtered View</div>
+                                <div className="text-base sm:text-lg font-bold text-cyan-300">{filteredJobs.length}</div>
                             </div>
                         </div>
 
@@ -1326,7 +1362,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                     {/* Filter Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3.5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 text-xs">
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
@@ -1353,50 +1389,50 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 />
                             </div>
 
+                            {/* Job Pool / Scope Filter */}
+                            <div className="lg:col-span-2">
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
+                                    📦 Job Pool / Scope
+                                </label>
+                                <select 
+                                    value={jobScope}
+                                    onChange={(e) => setJobScope(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-emerald-300"
+                                >
+                                    <option value="curated">🎯 Curated Matches ({allMatchedJobs.length || 0})</option>
+                                    <option value="unique">🧬 Unique Roles ({allUniqueJobs.length || searchStats.unique_count})</option>
+                                    <option value="raw">🌐 Raw Harvested ({allRawJobs.length || searchStats.total_found})</option>
+                                </select>
+                            </div>
+
+                            {/* Sort By Filter */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
+                                <select 
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-indigo-300"
+                                >
+                                    <option value="score">⭐ Highest Match Score</option>
+                                    <option value="date">📅 Most Recent</option>
+                                </select>
+                            </div>
+
                             {/* Granular Experience Required Filter */}
                             <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Required</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience</label>
                                 <select 
                                     value={filterExpYears}
                                     onChange={(e) => setFilterExpYears(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
                                     <option value="all">🎓 All Levels</option>
-                                    <option value="0">🌱 Internship / Fresher (0 Yrs)</option>
-                                    <option value="1">🚀 0–1 Yr (Entry Level)</option>
+                                    <option value="0">🌱 0 Yrs (Intern)</option>
+                                    <option value="1">🚀 0–1 Yr (Entry)</option>
                                     <option value="2">⚡ 1–2 Yrs (Junior)</option>
-                                    <option value="3-5">💼 3–5 Yrs (Mid-Level)</option>
+                                    <option value="3-5">💼 3–5 Yrs (Mid)</option>
                                     <option value="5+">👑 5+ Yrs (Senior)</option>
-                                    <option value="8+">🏆 8+ Yrs (Lead / Principal)</option>
-                                </select>
-                            </div>
-
-                            {/* Work Mode */}
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
-                                <select 
-                                    value={filterWorkMode}
-                                    onChange={(e) => setFilterWorkMode(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                >
-                                    <option value="all">🌐 Any Mode</option>
-                                    <option value="remote">🏠 Remote</option>
-                                    <option value="onsite">🏢 Onsite / Hybrid</option>
-                                </select>
-                            </div>
-
-                            {/* Sort & View Mode */}
-                            <div>
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort & View Mode</label>
-                                <select 
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-indigo-300"
-                                >
-                                    <option value="score">⭐ Highest Match (Curated)</option>
-                                    <option value="date">📅 Most Recent</option>
-                                    <option value="unique">🧬 Unique Jobs ({allUniqueJobs.length || searchStats.unique_count})</option>
-                                    <option value="raw">🌐 All Jobs ({allRawJobs.length || searchStats.total_found})</option>
+                                    <option value="8+">🏆 8+ Yrs (Lead)</option>
                                 </select>
                             </div>
                         </div>
