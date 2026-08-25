@@ -23,12 +23,18 @@ def get_primary_engine():
 
             return create_engine(
                 settings.DATABASE_URL,
-                pool_size=25,
-                max_overflow=50,
+                pool_size=10,
+                max_overflow=20,
                 pool_pre_ping=True,
-                pool_recycle=300,
+                pool_recycle=60,
                 pool_timeout=30,
-                connect_args={"connect_timeout": 15}
+                connect_args={
+                    "connect_timeout": 15,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5
+                }
             )
     except Exception as e:
         print(f"Notice: PostgreSQL connection notice ({e}). Defaulting to local SQLite.")
