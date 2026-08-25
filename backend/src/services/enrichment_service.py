@@ -141,12 +141,85 @@ class LeadEnricher:
         except Exception:
             return None
 
+    CANONICAL_COMPANY_DOMAINS = {
+        "tata consultancy services": "tcs.com",
+        "tata consultancy services limited": "tcs.com",
+        "tcs": "tcs.com",
+        "barclays": "barclays.com",
+        "barclays corporate & investment bank": "barclays.com",
+        "ntt data": "nttdata.com",
+        "ntt data north america": "nttdata.com",
+        "ntt data services": "nttdata.com",
+        "infosys": "infosys.com",
+        "wipro": "wipro.com",
+        "cognizant": "cognizant.com",
+        "accenture": "accenture.com",
+        "capgemini": "capgemini.com",
+        "deloitte": "deloitte.com",
+        "pwc": "pwc.com",
+        "ey": "ey.com",
+        "ernst & young": "ey.com",
+        "kpmg": "kpmg.com",
+        "google": "google.com",
+        "microsoft": "microsoft.com",
+        "amazon": "amazon.com",
+        "amazon web services": "amazon.com",
+        "aws": "amazon.com",
+        "apple": "apple.com",
+        "meta": "meta.com",
+        "netflix": "netflix.com",
+        "uber": "uber.com",
+        "airbnb": "airbnb.com",
+        "stripe": "stripe.com",
+        "salesforce": "salesforce.com",
+        "oracle": "oracle.com",
+        "ibm": "ibm.com",
+        "cisco": "cisco.com",
+        "intel": "intel.com",
+        "qualcomm": "qualcomm.com",
+        "adobe": "adobe.com",
+        "nvidia": "nvidia.com",
+        "jpmorgan": "jpmorgan.com",
+        "jpmorgan chase": "jpmorgan.com",
+        "j.p. morgan": "jpmorgan.com",
+        "goldman sachs": "gs.com",
+        "morgan stanley": "morganstanley.com",
+        "deutsche bank": "db.com",
+        "hsbc": "hsbc.com",
+        "citi": "citi.com",
+        "citigroup": "citi.com",
+        "bank of america": "bofa.com",
+        "wells fargo": "wellsfargo.com",
+        "hcltech": "hcltech.com",
+        "hcl technologies": "hcltech.com",
+        "tech mahindra": "techmahindra.com",
+        "l&t technology services": "ltts.com",
+        "ltts": "ltts.com",
+        "mindtree": "mindtree.com",
+        "mphasis": "mphasis.com",
+        "persistent systems": "persistent.com",
+        "hexaware": "hexaware.com",
+        "birlasoft": "birlasoft.com",
+        "zensar": "zensar.com",
+        "cyient": "cyient.com",
+        "sonata software": "sonata-software.com",
+        "coforge": "coforge.com",
+        "kpit": "kpit.com",
+        "kpit technologies": "kpit.com"
+    }
+
     def _guess_company_domain(self, company_name: str) -> Optional[str]:
         """Resolves target company name into an active, MX-verified domain."""
         if not company_name:
             return None
             
         clean = company_name.lower().strip()
+
+        # Check canonical mapping first
+        for key, dom in self.CANONICAL_COMPANY_DOMAINS.items():
+            if clean == key or clean.startswith(key + " ") or (" " + key + " ") in (" " + clean + " "):
+                return dom
+
         clean = re.sub(
             r'\s+(inc|llc|ltd|co|corp|corporation|group|holdings|technologies|solutions|foundation|labs|software|systems|technologies pvt ltd)\.?$',
             '', clean, flags=re.IGNORECASE
