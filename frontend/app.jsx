@@ -816,13 +816,105 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [isHarvestingLive, setIsHarvestingLive] = useState(false);
     const [csvMenuOpen, setCsvMenuOpen] = useState(false);
 
+    // ==========================================
+    // High-Capacity Offline Storage (IndexedDB + LocalStorage Fallback)
+    // Reliably stores thousands of accumulated jobs without 5MB quota errors
+    // ==========================================
+    const JobDB = {
+        dbName: "JobHuntDB",
+        storeName: "saved_pool",
+        version: 1,
+        
+        getDB() {
+            return new Promise((resolve) => {
+                if (typeof window === "undefined" || !window.indexedDB) return resolve(null);
+                const req = indexedDB.open(this.dbName, this.version);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(this.storeName)) {
+                        db.createObjectStore(this.storeName);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+        },
+
+        async savePool(data) {
+            try {
+                const db = await this.getDB();
+                if (db) {
+                    return new Promise((resolve) => {
+                        const tx = db.transaction(this.storeName, "readwrite");
+                        const store = tx.objectStore(this.storeName);
+                        store.put(data, "current_pool");
+                        tx.oncomplete = () => resolve(true);
+                        tx.onerror = () => resolve(false);
+                    });
+                }
+            } catch (e) {
+                console.warn("IndexedDB save notice:", e);
+            }
+            // Fallback to localStorage with lightweight summaries
+            try {
+                localStorage.setItem("jobhunt_cached_search", JSON.stringify({
+                    search_id: data.search_id || "",
+                    matched: (data.matched || []).slice(0, 100),
+                    unique: (data.unique || []).slice(0, 300),
+                    raw: (data.raw || []).slice(0, 500),
+                    stats: data.stats
+                }));
+            } catch (e) {}
+        },
+
+        async loadPool() {
+            try {
+                const db = await this.getDB();
+                if (db) {
+                    const result = await new Promise((resolve) => {
+                        const tx = db.transaction(this.storeName, "readonly");
+                        const store = tx.objectStore(this.storeName);
+                        const req = store.get("current_pool");
+                        req.onsuccess = () => resolve(req.result || null);
+                        req.onerror = () => resolve(null);
+                    });
+                    if (result && (result.raw?.length || result.unique?.length || result.matched?.length)) {
+                        return result;
+                    }
+                }
+            } catch (e) {
+                console.warn("IndexedDB load notice:", e);
+            }
+            // Fallback load from localStorage
+            try {
+                const saved = localStorage.getItem("jobhunt_cached_search");
+                if (saved) return JSON.parse(saved);
+            } catch (e) {}
+            return null;
+        },
+
+        async clearPool() {
+            try {
+                const db = await this.getDB();
+                if (db) {
+                    const tx = db.transaction(this.storeName, "readwrite");
+                    const store = tx.objectStore(this.storeName);
+                    store.delete("current_pool");
+                }
+            } catch (e) {}
+            try {
+                localStorage.removeItem("jobhunt_cached_search");
+            } catch (e) {}
+        }
+    };
+
     // Helper to merge new incoming jobs with existing accumulated jobs without duplicates
     const mergeJobList = (existingList = [], incomingList = []) => {
         const map = new Map();
         // Add newest incoming first
         for (const item of (incomingList || [])) {
             if (!item) continue;
-            const key = (item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
+            const key = (item.url || item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
             if (key && !map.has(key)) {
                 map.set(key, item);
             }
@@ -830,7 +922,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         // Then add existing items
         for (const item of (existingList || [])) {
             if (!item) continue;
-            const key = (item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
+            const key = (item.url || item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
             if (key && !map.has(key)) {
                 map.set(key, item);
             }
@@ -838,17 +930,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         return Array.from(map.values());
     };
 
-    // Helper to persist search results in localStorage so they never disappear
+    // Helper to persist search results in IndexedDB so they never disappear across reloads
     const persistSearchData = (sId, matched, unique, raw, stats) => {
-        try {
-            localStorage.setItem("jobhunt_cached_search", JSON.stringify({
-                search_id: sId || "",
-                matched: (matched || []).slice(0, 300),
-                unique: (unique || []).slice(0, 800),
-                raw: (raw || []).slice(0, 1500),
-                stats: stats || { total_found: (raw || []).length, unique_count: (unique || []).length }
-            }));
-        } catch (e) { }
+        JobDB.savePool({
+            search_id: sId || "",
+            matched: matched || [],
+            unique: unique || [],
+            raw: raw || [],
+            stats: stats || { total_found: (raw || []).length, unique_count: (unique || []).length }
+        });
     };
 
     // Handler to clear accumulated job pool
@@ -858,7 +948,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             setAllUniqueJobs([]);
             setAllRawJobs([]);
             setSearchStats({ total_found: 0, unique_count: 0 });
-            localStorage.removeItem("jobhunt_cached_search");
+            JobDB.clearPool();
             showToast("Job pool cleared. Ready for fresh location harvests!");
         }
     };
@@ -885,15 +975,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 }
             }
 
-            const savedSearch = localStorage.getItem("jobhunt_cached_search");
-            if (savedSearch) {
-                const parsedSearch = JSON.parse(savedSearch);
-                if (parsedSearch.search_id) setCurrentSearchId(parsedSearch.search_id);
-                if (parsedSearch.matched?.length) setAllMatchedJobs(parsedSearch.matched);
-                if (parsedSearch.unique?.length) setAllUniqueJobs(parsedSearch.unique);
-                if (parsedSearch.raw?.length) setAllRawJobs(parsedSearch.raw);
-                if (parsedSearch.stats) setSearchStats(parsedSearch.stats);
-            }
+            // Load full accumulated pool from IndexedDB
+            JobDB.loadPool().then((savedSearch) => {
+                if (savedSearch) {
+                    if (savedSearch.matched?.length) setAllMatchedJobs(savedSearch.matched);
+                    if (savedSearch.unique?.length) setAllUniqueJobs(savedSearch.unique);
+                    if (savedSearch.raw?.length) setAllRawJobs(savedSearch.raw);
+                    if (savedSearch.stats) setSearchStats(savedSearch.stats);
+                }
+            });
 
             const savedFilters = localStorage.getItem("jobhunt_active_filters");
             if (savedFilters) {
