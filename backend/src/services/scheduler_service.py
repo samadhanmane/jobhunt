@@ -28,9 +28,9 @@ class SchedulerService:
         self.deduplicator = DeduplicationAgent()
         self.ranking_agent = RankingAgent()
 
-    def cleanup_old_jobs(self, db: Session, days: int = 3) -> int:
+    def cleanup_old_jobs(self, db: Session, days: int = 7) -> int:
         """
-        Deletes stored jobs and search sessions older than `days` (default 3 days)
+        Deletes stored jobs and search sessions older than `days` (default 7 days)
         to keep the database lightweight and performant.
         """
         try:

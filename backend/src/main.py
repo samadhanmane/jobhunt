@@ -27,11 +27,11 @@ async def async_startup_tasks():
     except Exception as e:
         print(f"Notice: Database init notice: {e}")
 
-    # 2. Run 3-day data retention cleanup in worker thread pool
+    # 2. Run 7-day data retention cleanup in worker thread pool
     try:
         def cleanup():
             db = SessionLocal()
-            scheduler_service.cleanup_old_jobs(db, days=3)
+            scheduler_service.cleanup_old_jobs(db, days=7)
             db.close()
         await asyncio.to_thread(cleanup)
     except Exception as e:
