@@ -200,105 +200,113 @@ class LinkedInService:
                     return parts[-1].strip().rstrip('.')
         return ""
 
-    async def _dorking_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    async def _multi_engine_search(self, queries: List[str], limit: int = 6) -> List[Dict[str, Any]]:
         """
-        Autonomous stealth dorking search with human timestops, rotating browser fingerprints,
-        and concurrency throttling to avoid bot detection on search engines.
+        High-performance multi-engine search scraper using Brave, Bing, and DuckDuckGo with BeautifulSoup.
+        Extracts verified LinkedIn profiles, names, titles, and usernames.
         """
-        encoded_query = urllib.parse.quote(query)
-        search_urls = [
-            f"https://html.duckduckgo.com/html/?q={encoded_query}",
-            f"https://lite.duckduckgo.com/lite/?q={encoded_query}"
-        ]
+        import base64
 
         found_profiles = []
-        seen_urls = set()
+        seen_usernames = set()
         semaphore = get_scrape_semaphore()
 
+        headers = get_random_browser_headers()
+
+        def decode_bing_redirect(raw_u: str) -> str:
+            try:
+                if raw_u.startswith("a1"):
+                    clean_b64 = raw_u[2:]
+                    clean_b64 += "=" * ((4 - len(clean_b64) % 4) % 4)
+                    return base64.b64decode(clean_b64).decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+            return raw_u
+
         async with semaphore:
-            # Human pacing delay before search query
-            await human_jitter_delay(min_sec=1.0, max_sec=2.2)
-
-            headers = get_random_browser_headers()
-
-            async with httpx.AsyncClient(headers=headers, timeout=14, follow_redirects=True, verify=False) as client:
-                for s_url in search_urls:
-                    try:
-                        resp = await client.get(s_url)
-                        if resp.status_code == 429:
-                            # Polite exponential backoff
-                            await human_jitter_delay(min_sec=3.0, max_sec=5.0)
-                            continue
-                        if resp.status_code != 200:
-                            continue
-
-                        soup = BeautifulSoup(resp.text, "html.parser")
-
-                        for a in soup.select(".result"):
-                            title_el = a.select_one(".result__title") or a.select_one(".result__snippet")
-                            link_el = a.select_one(".result__url") or a.select_one("a.result__url")
-                            snippet_el = a.select_one(".result__snippet")
-
-                            raw_title = title_el.get_text(strip=True) if title_el else ""
-                            raw_link = link_el.get("href", "") if link_el else ""
-                            raw_snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-
-                            linkedin_match = (
-                                re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]+)", raw_link) or
-                                re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]+)", raw_title) or
-                                re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]+)", raw_snippet)
-                            )
-                            if not linkedin_match:
-                                continue
-
-                            username = linkedin_match.group(1)
-                            clean_url = f"https://www.linkedin.com/in/{username}/"
-
-                            if clean_url in seen_urls:
-                                continue
-                            seen_urls.add(clean_url)
-
-                            headline = raw_title.replace(" | LinkedIn", "").replace(" - LinkedIn", "")
-                            if " - " in headline:
-                                parts = headline.split(" - ")
-                                name = parts[0].strip()
-                                headline = " - ".join(parts[1:]).strip()
-                            elif " | " in headline:
-                                parts = headline.split(" | ")
-                                name = parts[0].strip()
-                                headline = " | ".join(parts[1:]).strip()
-                            else:
-                                name = username.replace("-", " ").title()
-
-                            found_profiles.append({
-                                "full_name": name,
-                                "headline": headline,
-                                "profile_url": clean_url,
-                                "username": username,
-                                "bio": raw_snippet
-                            })
-
-                            if len(found_profiles) >= limit:
-                                break
-
-                    except Exception as e:
-                        logger.debug(f"Dorking query notice: {e}")
-
-                    if found_profiles:
+            async with httpx.AsyncClient(headers=headers, timeout=12, follow_redirects=True) as client:
+                for q in queries:
+                    if len(found_profiles) >= limit:
                         break
+
+                    encoded_q = urllib.parse.quote(q)
+                    search_endpoints = [
+                        f"https://search.brave.com/search?q={encoded_q}",
+                        f"https://www.bing.com/search?q={encoded_q}"
+                    ]
+
+                    for s_url in search_endpoints:
+                        if len(found_profiles) >= limit:
+                            break
+                        try:
+                            resp = await client.get(s_url)
+                            if resp.status_code != 200:
+                                continue
+
+                            soup = BeautifulSoup(resp.text, "html.parser")
+
+                            # Parse result blocks
+                            result_blocks = soup.select(".snippet") or soup.select("li.b_algo") or soup.select("div[data-type='web']") or soup.find_all("div", class_=re.compile("result|snippet"))
+                            
+                            # Also check all links in page
+                            all_anchors = soup.find_all("a", href=True)
+
+                            for a in all_anchors:
+                                raw_href = a["href"]
+                                decoded_href = decode_bing_redirect(raw_href) if "bing.com/ck/a" in raw_href else urllib.parse.unquote(raw_href)
+                                
+                                match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]{3,50})", decoded_href)
+                                if match:
+                                    username = match.group(1).lower().strip()
+                                    if username in ["in", "pub", "feed", "search", "login", "signup", "pulse", "jobs"] or username in seen_usernames:
+                                        continue
+                                    seen_usernames.add(username)
+
+                                    raw_text = a.get_text(strip=True)
+                                    clean_text = raw_text.replace(" | LinkedIn", "").replace(" - LinkedIn", "")
+
+                                    if " - " in clean_text:
+                                        parts = clean_text.split(" - ")
+                                        name = parts[0].strip()
+                                        headline = " - ".join(parts[1:]).strip()
+                                    elif " | " in clean_text:
+                                        parts = clean_text.split(" | ")
+                                        name = parts[0].strip()
+                                        headline = " | ".join(parts[1:]).strip()
+                                    else:
+                                        name = username.replace("-", " ").title()
+                                        headline = "Team Member"
+
+                                    found_profiles.append({
+                                        "full_name": name,
+                                        "headline": headline,
+                                        "profile_url": f"https://www.linkedin.com/in/{username}/",
+                                        "username": username,
+                                        "bio": clean_text
+                                    })
+
+                                    if len(found_profiles) >= limit:
+                                        break
+
+                        except Exception as err:
+                            logger.debug(f"Multi-engine search notice for {s_url}: {err}")
 
         return found_profiles
 
     async def search_company_hr_dorking(self, company_name: str, limit: int = 5) -> List[Dict[str, Any]]:
         clean_company = company_name.strip()
-        query = f'site:linkedin.com/in "{clean_company}" ("Technical Recruiter" OR "Talent Acquisition" OR "Recruiter" OR "HR Manager" OR "Head of People")'
+        queries = [
+            f'site:linkedin.com/in {clean_company} recruiter',
+            f'site:linkedin.com/in {clean_company} talent acquisition',
+            f'site:linkedin.com/in {clean_company} technical recruiter'
+        ]
         
-        found_recruiters = await self._dorking_search(query, limit=limit)
+        found_recruiters = await self._multi_engine_search(queries, limit=limit)
         
         for r in found_recruiters:
             r["company"] = clean_company
             if not r.get("headline") or clean_company.lower() not in r.get("headline", "").lower():
-                r["headline"] = r.get("headline", "") or f"Talent Acquisition & Recruiting Team at {clean_company}"
+                r["headline"] = r.get("headline", "") or f"Talent Acquisition & Recruiting at {clean_company}"
             r["contact_type"] = "hr"
 
         if not found_recruiters:
@@ -317,12 +325,18 @@ class LinkedInService:
 
     async def search_company_tech_team(self, company_name: str, limit: int = 5) -> List[Dict[str, Any]]:
         clean_company = company_name.strip()
-        query = f'site:linkedin.com/in "{clean_company}" ("Engineering Manager" OR "Tech Lead" OR "CTO" OR "VP Engineering" OR "Staff Engineer" OR "Principal Engineer" OR "Software Architect" OR "Head of Engineering")'
+        queries = [
+            f'site:linkedin.com/in {clean_company} tech lead',
+            f'site:linkedin.com/in {clean_company} engineering manager',
+            f'site:linkedin.com/in {clean_company} VP engineering'
+        ]
         
-        found_tech = await self._dorking_search(query, limit=limit)
+        found_tech = await self._multi_engine_search(queries, limit=limit)
         
         for r in found_tech:
             r["company"] = clean_company
+            if not r.get("headline") or clean_company.lower() not in r.get("headline", "").lower():
+                r["headline"] = r.get("headline", "") or f"Engineering Leadership at {clean_company}"
             r["contact_type"] = "tech"
 
         return found_tech

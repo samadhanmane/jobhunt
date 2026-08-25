@@ -751,7 +751,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Selected Job for Detailed Modal
     const [selectedJob, setSelectedJob] = useState(null);
 
-    // Filter Toolbar State
+    // Filter Toolbar State with Saved Defaults
     const [filterKeyword, setFilterKeyword] = useState("");
     const [filterLocationInput, setFilterLocationInput] = useState("");
     const [filterExpYears, setFilterExpYears] = useState("all");
@@ -787,7 +787,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         } catch (e) {}
     };
 
-    // Load persisted resume and saved search results on component mount
+    // Keep-Alive Heartbeat: Send /health ping every 50 seconds to keep Render free backend awake
+    useEffect(() => {
+        const keepAlivePing = () => {
+            fetch(`${API_BASE_URL}/api/v1/health`, { cache: 'no-store' }).catch(() => {});
+        };
+        keepAlivePing();
+        const pingInterval = setInterval(keepAlivePing, 50000);
+        return () => clearInterval(pingInterval);
+    }, []);
+
+    // Load persisted resume, saved search results, and active filter choices on component mount
     useEffect(() => {
         try {
             const savedResume = localStorage.getItem("jobhunt_resume_profile");
@@ -808,8 +818,41 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 if (parsedSearch.raw?.length) setAllRawJobs(parsedSearch.raw);
                 if (parsedSearch.stats) setSearchStats(parsedSearch.stats);
             }
+
+            const savedFilters = localStorage.getItem("jobhunt_active_filters");
+            if (savedFilters) {
+                const f = JSON.parse(savedFilters);
+                if (f.jobScope) setJobScope(f.jobScope);
+                if (f.filterKeyword !== undefined) setFilterKeyword(f.filterKeyword);
+                if (f.filterLocationInput !== undefined) setFilterLocationInput(f.filterLocationInput);
+                if (f.filterExpYears !== undefined) setFilterExpYears(f.filterExpYears);
+                if (f.filterWorkMode !== undefined) setFilterWorkMode(f.filterWorkMode);
+                if (f.minScore !== undefined) setMinScore(f.minScore);
+                if (f.filterSeniority !== undefined) setFilterSeniority(f.filterSeniority);
+                if (f.filterDate !== undefined) setFilterDate(f.filterDate);
+                if (f.filterSource !== undefined) setFilterSource(f.filterSource);
+                if (f.sortBy !== undefined) setSortBy(f.sortBy);
+            }
         } catch (e) {}
     }, []);
+
+    // Automatically persist active filter settings whenever user changes any filter
+    useEffect(() => {
+        try {
+            localStorage.setItem("jobhunt_active_filters", JSON.stringify({
+                jobScope,
+                filterKeyword,
+                filterLocationInput,
+                filterExpYears,
+                filterWorkMode,
+                minScore,
+                filterSeniority,
+                filterDate,
+                filterSource,
+                sortBy
+            }));
+        } catch (e) {}
+    }, [jobScope, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // Execute Search across 9 platforms directly Worldwide (retains previous results until fresh ones arrive)
     const executeSearch = async (overrideFile = null, overrideRole = null) => {
@@ -1166,16 +1209,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
     // Filter & Sort Logic for Selected Pool (Curated, Unique, or Raw Harvested)
     const filteredJobs = useMemo(() => {
-        let sourceList = allMatchedJobs;
+        let sourceList = [];
         if (jobScope === 'raw') {
-            sourceList = allRawJobs;
+            sourceList = (allRawJobs && allRawJobs.length > 0) ? allRawJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allMatchedJobs);
         } else if (jobScope === 'unique') {
-            sourceList = allUniqueJobs;
+            sourceList = (allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : ((allRawJobs && allRawJobs.length > 0) ? allRawJobs : allMatchedJobs);
         } else {
-            sourceList = allMatchedJobs.length > 0 ? allMatchedJobs : allUniqueJobs;
+            sourceList = (allMatchedJobs && allMatchedJobs.length > 0) ? allMatchedJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allRawJobs);
         }
 
-        return sourceList.filter(job => {
+        return (sourceList || []).filter(job => {
+            if (!job) return false;
             const title = (job.title || "").toLowerCase();
             const company = (job.company || "").toLowerCase();
             const jobLoc = (job.location || "").toLowerCase();
@@ -1217,8 +1261,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'onsite' && isRemote) return false;
 
-            // 4. Min Score (applies when slider > 0)
-            if (minScore > 0 && (job.match_score || 0) < minScore) {
+            // 4. Min Score (only applies when slider is active > 0 and not in raw scope)
+            if (minScore > 0 && jobScope !== 'raw' && (job.match_score || 0) < minScore) {
                 return false;
             }
 
