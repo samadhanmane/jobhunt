@@ -182,6 +182,8 @@ function generateJobsCSV(jobsList = [], scopeLabel = "Curated Matches", filename
     const headers = [
         "Job ID",
         "Scope",
+        "Applied Status",
+        "Applied Date",
         "Job Title",
         "Company Name",
         "Location",
@@ -242,10 +244,14 @@ function generateJobsCSV(jobsList = [], scopeLabel = "Curated Matches", filename
         }
 
         const insights = j.company_insights ? JSON.stringify(j.company_insights) : "";
+        const isAppliedStr = j.applied_at ? "Applied" : "Not Applied";
+        const appliedDateStr = j.applied_at ? new Date(j.applied_at).toLocaleString() : "";
 
         return [
             escapeCSV(j.id || ""),
             escapeCSV(scopeLabel),
+            escapeCSV(isAppliedStr),
+            escapeCSV(appliedDateStr),
             escapeCSV(j.title || ""),
             escapeCSV(j.company || ""),
             escapeCSV(j.location || "Remote"),
@@ -930,8 +936,51 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [filterSeniority, setFilterSeniority] = useState("all");
     const [filterDate, setFilterDate] = useState("all");
     const [filterSource, setFilterSource] = useState("all");
-    const [jobScope, setJobScope] = useState("curated"); // 'curated' | 'unique' | 'raw'
+    const [jobScope, setJobScope] = useState("curated"); // 'curated' | 'unique' | 'raw' | 'applied'
     const [sortBy, setSortBy] = useState("score"); // 'score' | 'date'
+
+    // Applied Jobs Tracker State
+    const [appliedJobs, setAppliedJobs] = useState([]);
+
+    const getJobKey = (job) => {
+        if (!job) return "";
+        return ((job.url || job.job_url || `${job.title}-${job.company}-${job.location}`) || "").toLowerCase().trim();
+    };
+
+    const appliedJobKeys = useMemo(() => {
+        const set = new Set();
+        for (const j of appliedJobs) {
+            const k = getJobKey(j);
+            if (k) set.add(k);
+        }
+        return set;
+    }, [appliedJobs]);
+
+    const toggleJobApplied = (job) => {
+        if (!job) return;
+        const key = getJobKey(job);
+        if (!key) return;
+
+        setAppliedJobs(prev => {
+            const exists = prev.some(item => getJobKey(item) === key);
+            let updated;
+            if (exists) {
+                updated = prev.filter(item => getJobKey(item) !== key);
+                showToast(`Removed "${job.title}" from Applied tracker.`);
+            } else {
+                const appliedEntry = {
+                    ...job,
+                    applied_at: new Date().toISOString()
+                };
+                updated = [appliedEntry, ...prev];
+                showToast(`✓ Marked "${job.title}" as Applied!`);
+            }
+            try {
+                localStorage.setItem("jobhunt_applied_jobs", JSON.stringify(updated.slice(0, 500)));
+            } catch (e) {}
+            return updated;
+        });
+    };
 
     // Listen for incoming historical automation snapshots to inspect
     useEffect(() => {
@@ -1131,6 +1180,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     if (savedSearch.stats) setSearchStats(savedSearch.stats);
                 }
             });
+
+            // Load applied jobs tracker
+            const savedApplied = localStorage.getItem("jobhunt_applied_jobs");
+            if (savedApplied) {
+                try {
+                    const parsed = JSON.parse(savedApplied);
+                    if (Array.isArray(parsed)) setAppliedJobs(parsed);
+                } catch (e) {}
+            }
 
             const savedFilters = localStorage.getItem("jobhunt_active_filters");
             if (savedFilters) {
@@ -1410,6 +1468,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             jobsList = allMatchedJobs;
             filenamePrefix = "curated_matched_jobs";
             scopeLabel = "Curated Matches";
+        } else if (scope === "applied") {
+            jobsList = appliedJobs;
+            filenamePrefix = "applied_jobs_tracker";
+            scopeLabel = "Applied Jobs";
         } else if (scope === "filtered") {
             jobsList = filteredJobs;
             filenamePrefix = "filtered_view_jobs";
@@ -1467,18 +1529,23 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         setAllMatchedJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
         setAllUniqueJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
         setAllRawJobs(prev => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+        setAppliedJobs(prev => prev.map(j => getJobKey(j) === getJobKey(updatedJob) ? { ...updatedJob, applied_at: j.applied_at } : j));
         setSelectedJob(updatedJob);
     };
 
-    // Filter & Sort Logic for Selected Pool (Curated, Unique, or Raw Harvested)
+    // Filter & Sort Logic for Selected Pool (Curated, Unique, Raw, or Applied)
     const filteredJobs = useMemo(() => {
         let sourceList = [];
         if (jobScope === 'raw') {
-            sourceList = (allRawJobs && allRawJobs.length > 0) ? allRawJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allMatchedJobs);
+            sourceList = allRawJobs;
         } else if (jobScope === 'unique') {
-            sourceList = (allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : ((allRawJobs && allRawJobs.length > 0) ? allRawJobs : allMatchedJobs);
+            sourceList = allUniqueJobs;
+        } else if (jobScope === 'curated') {
+            sourceList = allMatchedJobs;
+        } else if (jobScope === 'applied') {
+            sourceList = appliedJobs;
         } else {
-            sourceList = (allMatchedJobs && allMatchedJobs.length > 0) ? allMatchedJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allRawJobs);
+            sourceList = allMatchedJobs;
         }
 
         return (sourceList || []).filter(job => {
@@ -1528,7 +1595,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterWorkMode === 'hybrid' && !isHybrid) return false;
             if (filterWorkMode === 'onsite' && !isOnsite) return false;
 
-            // 4. Min Score (Only apply score cutoff in 'curated' matches mode, never in raw or unique scopes)
+            // 4. Min Score (Only apply score cutoff in 'curated' matches mode, never in raw, unique, or applied scopes)
             if (jobScope === 'curated' && minScore > 0 && (job.match_score || 0) < minScore) {
                 return false;
             }
@@ -1570,7 +1637,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
             return (b.match_score || 0) - (a.match_score || 0);
         });
-    }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+    }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, appliedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // RAG AI Query Handler
     const handleAskAI = async (e) => {
@@ -1799,7 +1866,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             </div>
 
             {/* Filter Toolbar & Search Results Header */}
-            {(allMatchedJobs.length > 0 || allUniqueJobs.length > 0 || allRawJobs.length > 0) && (
+            {(allMatchedJobs.length > 0 || allUniqueJobs.length > 0 || allRawJobs.length > 0 || appliedJobs.length > 0) && (
                 <div className="space-y-5">
                     {/* Summary Stat Banner & Export Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1842,6 +1909,22 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             >
                                 <div className="text-[10px] text-slate-400 font-medium">Curated Matches</div>
                                 <div className="text-base sm:text-lg font-bold text-emerald-400">{allMatchedJobs.length}</div>
+                            </button>
+
+                            <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
+
+                            <button
+                                type="button"
+                                onClick={() => setJobScope("applied")}
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${jobScope === "applied"
+                                        ? "bg-emerald-600/30 border-emerald-400 shadow-sm ring-1 ring-emerald-500/50"
+                                        : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
+                                    }`}
+                            >
+                                <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                                    <span className="text-emerald-400">✓</span> Applied Tracker
+                                </div>
+                                <div className="text-base sm:text-lg font-bold text-emerald-300">{appliedJobs.length}</div>
                             </button>
 
                             <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
@@ -1938,6 +2021,22 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                                 </div>
                                                 <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
                                                     {allMatchedJobs.length}
+                                                </span>
+                                            </button>
+
+                                            <button
+                                                onClick={() => exportJobsToCSV("applied")}
+                                                className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-emerald-400">✓</span>
+                                                    <div>
+                                                        <div className="font-semibold text-emerald-300">Applied Jobs CSV</div>
+                                                        <div className="text-[10px] text-slate-400">All positions you marked as applied</div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                                                    {appliedJobs.length}
                                                 </span>
                                             </button>
 
@@ -2287,6 +2386,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     key={job.id || idx}
                                     job={job}
                                     jobScope={jobScope}
+                                    isApplied={appliedJobKeys.has(getJobKey(job))}
+                                    onToggleApplied={toggleJobApplied}
                                     onViewDetails={() => setSelectedJob(job)}
                                     onQueryAI={() => {
                                         setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
@@ -2306,6 +2407,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     user={user}
                     token={token}
                     resumeSkills={resumeProfile?.skills || []}
+                    isApplied={appliedJobKeys.has(getJobKey(selectedJob))}
+                    onToggleApplied={toggleJobApplied}
                     onClose={() => setSelectedJob(null)}
                     onUpdateJob={handleUpdateJobContacts}
                     onOpenCookieModal={onOpenCookieModal}
@@ -2359,7 +2462,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 // ==========================================
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
-function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
+function JobCard({ job, jobScope = "curated", isApplied = false, onToggleApplied, onViewDetails, onQueryAI }) {
     const score = Math.round(job.match_score || 0);
     let badgeText = `${score}% Match`;
     let scoreColor = "bg-slate-800 text-slate-300 border-slate-700";
@@ -2370,6 +2473,9 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
     } else if (jobScope === "unique") {
         badgeText = "🧬 Unique Role";
         scoreColor = "bg-indigo-950/60 text-indigo-300 border-indigo-500/30";
+    } else if (jobScope === "applied") {
+        badgeText = "✓ Applied";
+        scoreColor = "bg-emerald-950/90 text-emerald-300 border-emerald-500/50";
     } else {
         if (score >= 80) scoreColor = "bg-emerald-950/60 text-emerald-300 border-emerald-500/30";
         else if (score >= 65) scoreColor = "bg-amber-950/60 text-amber-300 border-amber-500/30";
@@ -2398,20 +2504,50 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
             <div className="space-y-2.5">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-2.5">
-                    <div>
+                    <div className="min-w-0 flex-1">
                         <h4 className="font-bold text-white text-sm leading-snug line-clamp-2">
                             {job.title}
                         </h4>
-                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                             <span className="font-semibold text-slate-200">🏢 {job.company || 'Company'}</span>
                             <span>•</span>
                             <span>📍 {job.location || 'Remote'}</span>
+                            {isApplied && (
+                                <>
+                                    <span>•</span>
+                                    <span className="text-emerald-400 font-bold text-[11px] flex items-center gap-0.5">
+                                        <span>✓</span> Applied
+                                    </span>
+                                </>
+                            )}
                         </p>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-md border font-bold text-xs shrink-0 ${scoreColor}`}>
-                        {badgeText}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Applied Toggle Checkmark */}
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleApplied?.(job);
+                            }}
+                            title={isApplied ? "Marked as Applied! Click to unmark" : "Click to mark as Applied"}
+                            className={`px-2 py-1 rounded-md border text-xs font-bold transition-all flex items-center gap-1 ${
+                                isApplied
+                                    ? "bg-emerald-950/90 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/80 shadow-sm"
+                                    : "bg-slate-900/80 text-slate-400 border-white/10 hover:text-emerald-300 hover:border-emerald-500/40 hover:bg-slate-800"
+                            }`}
+                        >
+                            <span className={isApplied ? "text-emerald-400 font-extrabold text-xs" : "text-slate-500 text-xs"}>
+                                {isApplied ? "✓" : "○"}
+                            </span>
+                            <span className="text-[10px]">{isApplied ? "Applied" : "Apply"}</span>
+                        </button>
+
+                        <span className={`px-2 py-0.5 rounded-md border font-bold text-xs shrink-0 ${scoreColor}`}>
+                            {badgeText}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Metadata Pills */}
@@ -2493,7 +2629,7 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
 // ==========================================
 // Component: Interactive Job Details Modal
 // ==========================================
-function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, onOpenCookieModal, showToast }) {
+function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onToggleApplied, onClose, onUpdateJob, onOpenCookieModal, showToast }) {
     const [fetchingContacts, setFetchingContacts] = useState(false);
     const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'contacts' | 'outreach'
 
@@ -2570,10 +2706,34 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                 <span>📍 {job.location || 'Remote'}</span>
                                 <span>•</span>
                                 <span className="text-slate-400">📅 {job.posted_date || 'Recent'}</span>
+                                {isApplied && (
+                                    <>
+                                        <span>•</span>
+                                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                            <span>✓</span> Marked as Applied {job.applied_at ? `(${new Date(job.applied_at).toLocaleDateString()})` : ''}
+                                        </span>
+                                    </>
+                                )}
                             </div>
                         </div>
 
                         <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onToggleApplied?.(job)}
+                                title={isApplied ? "Marked as Applied! Click to unmark" : "Click to mark as Applied"}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                                    isApplied
+                                        ? "bg-emerald-950/90 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/80 shadow-sm"
+                                        : "bg-slate-800 text-slate-300 border-white/10 hover:border-emerald-500/50 hover:text-emerald-300"
+                                }`}
+                            >
+                                <span className={isApplied ? "text-emerald-400 font-extrabold text-sm" : "text-slate-400 text-xs"}>
+                                    {isApplied ? "✓" : "○"}
+                                </span>
+                                <span>{isApplied ? "Applied" : "Mark Applied"}</span>
+                            </button>
+
                             <span className="px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-bold text-xs shrink-0">
                                 {score}% Fit
                             </span>
@@ -2908,7 +3068,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                 </div>
 
                 {/* Footer Action Bar */}
-                <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
+                <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3 flex-wrap">
                     <button
                         onClick={handleFetchContacts}
                         disabled={fetchingContacts}
@@ -2920,6 +3080,21 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
 
                     <div className="flex items-center gap-2">
                         <button
+                            type="button"
+                            onClick={() => onToggleApplied?.(job)}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                                isApplied
+                                    ? "bg-emerald-950/90 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/80 shadow-sm"
+                                    : "bg-slate-800 text-slate-200 border-white/10 hover:border-emerald-500/40 hover:text-emerald-300"
+                            }`}
+                        >
+                            <span className={isApplied ? "text-emerald-400 font-extrabold text-sm" : "text-slate-400 text-xs"}>
+                                {isApplied ? "✓" : "○"}
+                            </span>
+                            <span>{isApplied ? "Marked as Applied" : "Mark as Applied"}</span>
+                        </button>
+
+                        <button
                             onClick={onClose}
                             className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs"
                         >
@@ -2930,9 +3105,14 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                 href={job.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all shadow-sm"
+                                onClick={() => {
+                                    if (!isApplied && onToggleApplied) {
+                                        onToggleApplied(job);
+                                    }
+                                }}
+                                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all shadow-sm flex items-center gap-1"
                             >
-                                Apply on Career Page ↗
+                                <span>Apply on Career Page ↗</span>
                             </a>
                         )}
                     </div>
