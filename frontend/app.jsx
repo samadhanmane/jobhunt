@@ -14,7 +14,16 @@ const API_BASE_URL = getApiBaseUrl();
 // Helper Functions
 // ==========================================
 function isWithinDays(dateStr, days) {
-    if (!dateStr || days === 0) return true;
+    if (!dateStr || days === 0 || days === 'all') return true;
+    const str = String(dateStr).toLowerCase().trim();
+    if (str.includes("today") || str.includes("just") || str.includes("hour") || str.includes("minute")) return true;
+    if (days >= 1 && str.includes("yesterday")) return true;
+    if (str.includes("day ago") || str.includes("days ago")) {
+        const match = str.match(/(\d+)\s*day/);
+        if (match) {
+            return parseInt(match[1]) <= days;
+        }
+    }
     try {
         let jobDate;
         if (!isNaN(dateStr) && String(dateStr).length >= 10) {
@@ -25,7 +34,7 @@ function isWithinDays(dateStr, days) {
         }
         if (isNaN(jobDate.getTime())) return true;
         const diffMs = new Date().getTime() - jobDate.getTime();
-        return (diffMs / (1000 * 60 * 60 * 24)) <= days;
+        return (diffMs / (1000 * 60 * 60 * 24)) <= (days + 0.5);
     } catch {
         return true;
     }
@@ -1262,12 +1271,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     if (!isRemote) return false;
                 } else if (LOCATION_ALIASES[locQuery]) {
                     const aliases = LOCATION_ALIASES[locQuery];
-                    const matchesAlias = aliases.some(alias => jobLoc.includes(alias));
+                    const matchesAlias = aliases.some(alias => jobLoc.includes(alias)) || jobLoc.includes(locQuery) || jobLoc.includes('remote') || jobLoc.includes('anywhere');
                     if (!matchesAlias) return false;
                 } else {
                     const tokens = locQuery.split(/[,\s/]+/).filter(t => t.length >= 2);
                     const matchesTokens = tokens.length > 0 ? tokens.some(t => jobLoc.includes(t)) : jobLoc.includes(locQuery);
-                    if (!matchesTokens && !jobLoc.includes(locQuery)) return false;
+                    if (!matchesTokens && !jobLoc.includes(locQuery) && !jobLoc.includes('remote') && !jobLoc.includes('anywhere')) return false;
                 }
             }
 
@@ -1285,15 +1294,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterExpYears !== 'all' || filterSeniority !== 'all') {
                 const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
                 const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year') || minYears >= 4;
-                const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee') || expReq.includes('intern') || expReq.includes('0 yr') || minYears === 0;
-                const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears === 1 || minYears === 2 || isInternRole) && !isSeniorRole;
+                const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || title.includes('graduate') || title.includes('entry') || title.includes('junior') || title.includes('associate') || fit.includes('intern') || fit.includes('trainee') || fit.includes('entry') || fit.includes('junior') || expReq.includes('intern') || expReq.includes('0') || expReq.includes('1') || minYears <= 1 || minYears === -1;
+                const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears <= 2 || isInternRole) && !isSeniorRole;
 
                 if (filterExpYears === '0' && (!isInternRole || isSeniorRole)) return false;
-                if (filterExpYears === '1' && (minYears > 1 || isSeniorRole)) return false;
-                if (filterExpYears === '2' && (minYears > 2 || isSeniorRole)) return false;
-                if (filterExpYears === '3-5' && (minYears < 3 || minYears > 5 || isInternRole)) return false;
-                if (filterExpYears === '5+' && !isSeniorRole && minYears < 5) return false;
-                if (filterExpYears === '8+' && minYears < 8 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
+                if (filterExpYears === '1' && (minYears > 2 || isSeniorRole)) return false;
+                if (filterExpYears === '2' && (minYears > 3 || isSeniorRole)) return false;
+                if (filterExpYears === '3-5' && (minYears < 2 || minYears > 6 || isInternRole)) return false;
+                if (filterExpYears === '5+' && !isSeniorRole && minYears < 4) return false;
+                if (filterExpYears === '8+' && minYears < 7 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
 
                 // Seniority dropdown fallback
                 if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
@@ -1923,24 +1932,40 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                     {/* Job Cards Grid */}
                     {filteredJobs.length === 0 ? (
-                        <div className="minimal-card rounded-xl p-10 text-center border border-white/[0.08] space-y-2.5">
+                        <div className="minimal-card rounded-xl p-8 sm:p-10 text-center border border-white/[0.08] space-y-4 shadow-xl">
                             <div className="text-3xl">🔍</div>
-                            <h3 className="text-base font-bold text-white">No jobs match your filter criteria</h3>
-                            <p className="text-xs text-slate-400">Try resetting filters to show all gathered postings.</p>
-                            <button 
-                                onClick={() => {
-                                    setFilterKeyword("");
-                                    setFilterLocation("all");
-                                    setFilterWorkMode("all");
-                                    setMinScore(0);
-                                    setFilterSeniority("all");
-                                    setFilterDate("all");
-                                    setFilterSource("all");
-                                }}
-                                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium"
-                            >
-                                Reset All Filters
-                            </button>
+                            <div>
+                                <h3 className="text-base font-bold text-white">No jobs in local dataset match current filter combination</h3>
+                                <p className="text-xs text-slate-400 mt-1">
+                                    {filterLocationInput ? `Looking for roles in "${filterLocationInput}"? Click below to launch a live multi-platform harvest specifically for ${filterLocationInput}.` : 'Try resetting filters or click below to trigger a live multi-board search.'}
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                                <button 
+                                    onClick={() => executeSearch(null, null, filterLocationInput)}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
+                                >
+                                    <span>⚡</span>
+                                    <span>Live-Harvest "{role}" {filterLocationInput ? `in ${filterLocationInput}` : 'Worldwide'} Now</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setFilterKeyword("");
+                                        setFilterLocationInput("");
+                                        setFilterExpYears("all");
+                                        setFilterWorkMode("all");
+                                        setMinScore(0);
+                                        setFilterSeniority("all");
+                                        setFilterDate("all");
+                                        setFilterSource("all");
+                                    }}
+                                    className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-white/[0.08] transition-all"
+                                >
+                                    ↺ Reset All Filters
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2764,6 +2789,9 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             const data = await res.json();
             if (res.ok) {
                 showToast(`Daily job automation scheduled for ${email}!`);
+                if (data.alert) {
+                    setActiveAlerts(prev => [data.alert, ...prev.filter(a => a.id !== data.alert.id)]);
+                }
                 fetchAlerts();
             } else {
                 showToast(data.detail || "Failed to schedule alert.", "error");
@@ -2809,18 +2837,20 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     };
 
     const handleDeleteAlert = async (alertId) => {
+        // Instant optimistic UI update
+        setActiveAlerts(prev => prev.filter(a => a.id !== alertId));
+        showToast("Alert automation removed.");
+
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/alerts/${alertId}`, {
                 method: "DELETE",
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.ok) {
-                showToast("Alert automation removed.");
-                fetchAlerts();
-            } else {
-                showToast("Failed to delete alert.", "error");
+            if (!res.ok) {
+                fetchAlerts(); // rollback if server error
             }
         } catch (err) {
+            fetchAlerts();
             showToast(err.message, "error");
         }
     };

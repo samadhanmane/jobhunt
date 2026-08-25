@@ -108,28 +108,13 @@ def init_and_migrate_db():
 def get_db():
     """
     Yields a database session.
-    Fails over to SQLite if the primary database connection fails on initial checkout.
+    SQLAlchemy pool_pre_ping=True automatically handles reconnection.
     """
-    db = None
-    use_sqlite = False
-    try:
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-    except Exception as e:
-        print(f"Notice: Primary DB connection check failed ({e}). Using local SQLite.")
-        if db:
-            try:
-                db.close()
-            except Exception:
-                pass
-        db = SqliteSession()
-        use_sqlite = True
-
+    db = SessionLocal()
     try:
         yield db
     finally:
-        if db:
-            try:
-                db.close()
-            except Exception:
-                pass
+        try:
+            db.close()
+        except Exception:
+            pass

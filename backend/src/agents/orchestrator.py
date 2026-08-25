@@ -82,6 +82,8 @@ Candidate Background:
             if not user_loc or user_loc.lower() in ["remote", "worldwide", "global", "any", "all", ""]:
                 plan["location"] = ""
                 plan["remote_only"] = False
+            else:
+                plan["location"] = user_loc
             
             return plan
         except Exception as e:
@@ -90,12 +92,12 @@ Candidate Background:
             domain_kws = [w.lower() for w in anchor_role.split() if len(w) > 2] + [s.lower() for s in skills[:6]]
             return {
                 "primary_query": anchor_role,
-                "secondary_queries": [f"{anchor_role} Remote", f"{anchor_role} Engineer"],
+                "secondary_queries": [f"{anchor_role} Remote", f"{anchor_role} Engineer", f"{anchor_role} {user_loc}"],
                 "domain_keywords": list(set(domain_kws)),
                 "skills_filter": skills[:6],
-                "seniority": "intern" if "intern" in anchor_role.lower() else "mid",
-                "location": user_loc or "",
-                "remote_only": False
+                "experience_level": preferences.get("experience_level", "Mid"),
+                "location": "" if (not user_loc or user_loc.lower() in ["remote", "worldwide", "global", "any", "all", ""]) else user_loc,
+                "remote_only": user_remote
             }
 
     async def orchestrate_search(self, candidate_profile: Dict[str, Any], preferences: dict) -> List[Dict[str, Any]]:
