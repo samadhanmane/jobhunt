@@ -1282,8 +1282,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
             // 3. Work Mode
             const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere');
+            const isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid') || desc.includes('days in office') || desc.includes('days a week in office') || desc.includes('days per week in office');
+            const isOnsite = !isRemote && !isHybrid;
+
             if (filterWorkMode === 'remote' && !isRemote) return false;
-            if (filterWorkMode === 'onsite' && isRemote) return false;
+            if (filterWorkMode === 'hybrid' && !isHybrid) return false;
+            if (filterWorkMode === 'onsite' && !isOnsite) return false;
 
             // 4. Min Score (Only apply score cutoff in 'curated' matches mode, never in raw or unique scopes)
             if (jobScope === 'curated' && minScore > 0 && (job.match_score || 0) < minScore) {
@@ -1757,7 +1761,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             </div>
 
                             {/* Job Pool / Scope Filter */}
-                            <div className="lg:col-span-2">
+                            <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
                                     📦 Job Pool / Scope
                                 </label>
@@ -1766,9 +1770,28 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     onChange={(e) => setJobScope(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-emerald-300"
                                 >
-                                    <option value="curated">🎯 Curated Matches ({allMatchedJobs.length || 0})</option>
-                                    <option value="unique">🧬 Unique Roles ({allUniqueJobs.length || searchStats.unique_count})</option>
-                                    <option value="raw">🌐 Raw Harvested ({allRawJobs.length || searchStats.total_found})</option>
+                                    <option value="curated">🎯 Curated ({allMatchedJobs.length || 0})</option>
+                                    <option value="unique">🧬 Unique ({allUniqueJobs.length || searchStats.unique_count})</option>
+                                    <option value="raw">🌐 Raw ({allRawJobs.length || searchStats.total_found})</option>
+                                </select>
+                            </div>
+
+                            {/* Work Mode / Workplace Filter */}
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
+                                    💼 Work Mode
+                                </label>
+                                <select 
+                                    value={filterWorkMode}
+                                    onChange={(e) => {
+                                        setFilterWorkMode(e.target.value);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-cyan-300"
+                                >
+                                    <option value="all">🌐 All Modes</option>
+                                    <option value="remote">🏠 Remote (WFH)</option>
+                                    <option value="hybrid">🔄 Hybrid</option>
+                                    <option value="onsite">🏢 Onsite / Office</option>
                                 </select>
                             </div>
 
@@ -1780,7 +1803,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     onChange={(e) => setSortBy(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-indigo-300"
                                 >
-                                    <option value="score">⭐ Highest Match Score</option>
+                                    <option value="score">⭐ Highest Match</option>
                                     <option value="date">📅 Most Recent</option>
                                 </select>
                             </div>
