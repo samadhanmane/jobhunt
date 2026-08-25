@@ -200,7 +200,7 @@ class LinkedInService:
                     return parts[-1].strip().rstrip('.')
         return ""
 
-    async def _multi_engine_search(self, queries: List[str], limit: int = 6) -> List[Dict[str, Any]]:
+    async def _multi_engine_search(self, company: str, queries: List[str], limit: int = 6) -> List[Dict[str, Any]]:
         """
         High-performance multi-engine search scraper using Brave, Bing, and DuckDuckGo with BeautifulSoup.
         Extracts verified LinkedIn profiles, names, titles, and usernames.
@@ -245,48 +245,96 @@ class LinkedInService:
 
                             soup = BeautifulSoup(resp.text, "html.parser")
 
-                            # Parse result blocks
-                            result_blocks = soup.select(".snippet") or soup.select("li.b_algo") or soup.select("div[data-type='web']") or soup.find_all("div", class_=re.compile("result|snippet"))
+                            # Parse snippet result blocks first for highest quality title/name/snippet extraction
+                            snippets = soup.select(".snippet") or soup.select("div[data-type='web']") or soup.find_all("div", class_=re.compile("result|snippet"))
                             
-                            # Also check all links in page
-                            all_anchors = soup.find_all("a", href=True)
+                            for s in snippets:
+                                title_el = s.select_one(".title") or s.select_one("h2") or s.select_one("a")
+                                link_el = s.select_one("a[href]")
+                                snip_el = s.select_one(".snippet-description") or s.select_one("p")
 
-                            for a in all_anchors:
-                                raw_href = a["href"]
+                                raw_title = title_el.get_text(strip=True) if title_el else ""
+                                raw_href = link_el.get("href", "") if link_el else ""
+                                raw_snip = snip_el.get_text(strip=True) if snip_el else ""
+
                                 decoded_href = decode_bing_redirect(raw_href) if "bing.com/ck/a" in raw_href else urllib.parse.unquote(raw_href)
-                                
                                 match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]{3,50})", decoded_href)
+                                if not match:
+                                    match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]{3,50})", raw_title)
+
                                 if match:
                                     username = match.group(1).lower().strip()
                                     if username in ["in", "pub", "feed", "search", "login", "signup", "pulse", "jobs"] or username in seen_usernames:
                                         continue
                                     seen_usernames.add(username)
 
-                                    raw_text = a.get_text(strip=True)
-                                    clean_text = raw_text.replace(" | LinkedIn", "").replace(" - LinkedIn", "")
-
-                                    if " - " in clean_text:
-                                        parts = clean_text.split(" - ")
+                                    clean_title = raw_title.replace(" | LinkedIn", "").replace(" - LinkedIn", "")
+                                    if " - " in clean_title:
+                                        parts = clean_title.split(" - ")
                                         name = parts[0].strip()
                                         headline = " - ".join(parts[1:]).strip()
-                                    elif " | " in clean_text:
-                                        parts = clean_text.split(" | ")
+                                    elif " | " in clean_title:
+                                        parts = clean_title.split(" | ")
                                         name = parts[0].strip()
                                         headline = " | ".join(parts[1:]).strip()
+                                    elif " at " in clean_title:
+                                        parts = clean_title.split(" at ")
+                                        name = parts[0].strip()
+                                        headline = f"Team at {parts[1].strip()}"
                                     else:
                                         name = username.replace("-", " ").title()
-                                        headline = "Team Member"
+                                        headline = f"Talent / Leadership at {company}"
 
                                     found_profiles.append({
                                         "full_name": name,
                                         "headline": headline,
                                         "profile_url": f"https://www.linkedin.com/in/{username}/",
                                         "username": username,
-                                        "bio": clean_text
+                                        "bio": raw_snip or clean_title,
+                                        "search_url": f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(company)}%20{urllib.parse.quote(headline)}&origin=SWITCH_SEARCH_VERTICAL"
                                     })
 
                                     if len(found_profiles) >= limit:
                                         break
+
+                            # Secondary check: loop all anchors if snippets didn't reach limit
+                            if len(found_profiles) < limit:
+                                all_anchors = soup.find_all("a", href=True)
+                                for a in all_anchors:
+                                    raw_href = a["href"]
+                                    decoded_href = decode_bing_redirect(raw_href) if "bing.com/ck/a" in raw_href else urllib.parse.unquote(raw_href)
+                                    match = re.search(r"linkedin\.com/in/([a-zA-Z0-9_-]{3,50})", decoded_href)
+                                    if match:
+                                        username = match.group(1).lower().strip()
+                                        if username in ["in", "pub", "feed", "search", "login", "signup", "pulse", "jobs"] or username in seen_usernames:
+                                            continue
+                                        seen_usernames.add(username)
+
+                                        raw_text = a.get_text(strip=True)
+                                        clean_text = raw_text.replace(" | LinkedIn", "").replace(" - LinkedIn", "")
+                                        if " - " in clean_text:
+                                            parts = clean_text.split(" - ")
+                                            name = parts[0].strip()
+                                            headline = " - ".join(parts[1:]).strip()
+                                        elif " | " in clean_text:
+                                            parts = clean_text.split(" | ")
+                                            name = parts[0].strip()
+                                            headline = " | ".join(parts[1:]).strip()
+                                        else:
+                                            name = username.replace("-", " ").title()
+                                            headline = f"Team at {company}"
+
+                                        found_profiles.append({
+                                            "full_name": name,
+                                            "headline": headline,
+                                            "profile_url": f"https://www.linkedin.com/in/{username}/",
+                                            "username": username,
+                                            "bio": clean_text,
+                                            "search_url": f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(company)}&origin=SWITCH_SEARCH_VERTICAL"
+                                        })
+
+                                        if len(found_profiles) >= limit:
+                                            break
 
                         except Exception as err:
                             logger.debug(f"Multi-engine search notice for {s_url}: {err}")
@@ -296,12 +344,12 @@ class LinkedInService:
     async def search_company_hr_dorking(self, company_name: str, limit: int = 5) -> List[Dict[str, Any]]:
         clean_company = company_name.strip()
         queries = [
-            f'site:linkedin.com/in {clean_company} recruiter',
-            f'site:linkedin.com/in {clean_company} talent acquisition',
-            f'site:linkedin.com/in {clean_company} technical recruiter'
+            f'site:linkedin.com/in "{clean_company}" recruiter',
+            f'site:linkedin.com/in "{clean_company}" talent acquisition',
+            f'site:linkedin.com/in "{clean_company}" technical recruiter'
         ]
         
-        found_recruiters = await self._multi_engine_search(queries, limit=limit)
+        found_recruiters = await self._multi_engine_search(clean_company, queries, limit=limit)
         
         for r in found_recruiters:
             r["company"] = clean_company
@@ -311,11 +359,13 @@ class LinkedInService:
 
         if not found_recruiters:
             slug = re.sub(r'[^a-z0-9]', '', clean_company.lower())
+            encoded_company = urllib.parse.quote(clean_company)
             found_recruiters.append({
                 "full_name": f"{clean_company} Talent Team",
                 "headline": f"Talent Acquisition & Recruiting Team at {clean_company}",
                 "company": clean_company,
-                "profile_url": f"https://www.linkedin.com/company/{slug}/people/",
+                "profile_url": f"https://www.linkedin.com/search/results/people/?keywords={encoded_company}%20talent&origin=SWITCH_SEARCH_VERTICAL",
+                "search_url": f"https://www.linkedin.com/search/results/people/?keywords={encoded_company}%20recruiter&origin=SWITCH_SEARCH_VERTICAL",
                 "username": f"{slug}-talent",
                 "bio": f"Official Recruiting and Talent Acquisition department at {clean_company}",
                 "contact_type": "hr"
@@ -326,12 +376,12 @@ class LinkedInService:
     async def search_company_tech_team(self, company_name: str, limit: int = 5) -> List[Dict[str, Any]]:
         clean_company = company_name.strip()
         queries = [
-            f'site:linkedin.com/in {clean_company} tech lead',
-            f'site:linkedin.com/in {clean_company} engineering manager',
-            f'site:linkedin.com/in {clean_company} VP engineering'
+            f'site:linkedin.com/in "{clean_company}" "engineering manager"',
+            f'site:linkedin.com/in "{clean_company}" "tech lead"',
+            f'site:linkedin.com/in "{clean_company}" "VP engineering"'
         ]
         
-        found_tech = await self._multi_engine_search(queries, limit=limit)
+        found_tech = await self._multi_engine_search(clean_company, queries, limit=limit)
         
         for r in found_tech:
             r["company"] = clean_company

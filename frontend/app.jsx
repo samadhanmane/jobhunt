@@ -2460,17 +2460,30 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                 )
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-xs font-semibold text-slate-300">
                                             Found {hrContacts.length} HR Contacts + {techContacts.length} Tech Leads
                                         </span>
-                                        <button 
-                                            onClick={handleFetchContacts}
-                                            disabled={fetchingContacts}
-                                            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] disabled:opacity-50"
-                                        >
-                                            {fetchingContacts ? "Refreshing..." : "↻ Refresh Contacts"}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <a 
+                                                href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(job.company + ' talent')}&origin=SWITCH_SEARCH_VERTICAL`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="px-2.5 py-1 rounded-md bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/30 text-indigo-300 text-[11px] font-medium flex items-center gap-1 shadow-sm"
+                                                title={`Search all ${job.company} employees on LinkedIn`}
+                                            >
+                                                <span>👥</span>
+                                                <span>View All on LinkedIn</span>
+                                            </a>
+                                            <button 
+                                                onClick={handleFetchContacts}
+                                                disabled={fetchingContacts}
+                                                className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] disabled:opacity-50 flex items-center gap-1"
+                                            >
+                                                <span>↻</span>
+                                                <span>{fetchingContacts ? "Refreshing..." : "Refresh"}</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* HR Contacts List */}
@@ -2560,23 +2573,21 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                                     </div>
                                                 </div>
 
-                                                {/* LinkedIn Note */}
-                                                {draft.linkedin_note && (
-                                                    <div className="space-y-1 pt-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">LinkedIn Connection Note (&lt;280 chars):</span>
-                                                            <button 
-                                                                onClick={() => copyToClipboard(draft.linkedin_note, "Copied LinkedIn Note!")}
-                                                                className="text-indigo-400 hover:underline text-[11px]"
-                                                            >
-                                                                📋 Copy Note
-                                                            </button>
-                                                        </div>
-                                                        <div className="bg-slate-950 p-2 rounded-lg border border-white/[0.04] text-slate-300 italic">
-                                                            "{draft.linkedin_note}"
-                                                        </div>
+                                                {/* WhatsApp / InMail Draft */}
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">WhatsApp / InMail Quick Pitch:</span>
+                                                        <button 
+                                                            onClick={() => copyToClipboard(draft.inmail_message || '', "Copied InMail Pitch!")}
+                                                            className="text-indigo-400 hover:underline text-[11px]"
+                                                        >
+                                                            📋 Copy Pitch
+                                                        </button>
                                                     </div>
-                                                )}
+                                                    <div className="bg-slate-950 p-2.5 rounded-lg border border-white/[0.04] text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                                        {draft.inmail_message || "Message draft will appear here."}
+                                                    </div>
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -2629,6 +2640,8 @@ function ContactCard({ contact, onCopy }) {
     let confBadge = "bg-slate-800 text-slate-300";
     if (conf >= 85) confBadge = "bg-emerald-950 text-emerald-300 border border-emerald-500/30";
     else if (conf >= 60) confBadge = "bg-amber-950 text-amber-300 border border-amber-500/30";
+
+    const isSearchUrl = (contact.profile_url || "").includes("/search/results/people");
 
     return (
         <div className="p-3 rounded-xl bg-slate-900/90 border border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -2685,8 +2698,8 @@ function ContactCard({ contact, onCopy }) {
                     rel="noopener noreferrer"
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium shrink-0 flex items-center justify-center gap-1"
                 >
-                    <span>🔗</span>
-                    <span>LinkedIn Profile</span>
+                    <span>{isSearchUrl ? "👥" : "🔗"}</span>
+                    <span>{isSearchUrl ? "Search People on LinkedIn" : "LinkedIn Profile"}</span>
                 </a>
             )}
         </div>
