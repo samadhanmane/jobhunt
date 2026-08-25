@@ -733,7 +733,7 @@ function App() {
                         setActiveTab('search');
                     }}
                     onClose={() => setAppliedTrackerOpen(false)}
-                    onExportCSV={() => exportJobsToCSV("applied", appliedJobs)}
+                    onExportCSV={() => generateJobsCSV(appliedJobs, "Applied Tracker", "jobhunt_applied_jobs")}
                     onViewInDashboard={() => {
                         setActiveTab('search');
                     }}
@@ -2979,7 +2979,7 @@ function JobSearchDashboard({
                                     job={job}
                                     jobScope={jobScope}
                                     isApplied={appliedJobKeys.has(getJobKey(job))}
-                                    onToggleApplied={toggleJobApplied}
+                                    onToggleApplied={onToggleApplied}
                                     onViewDetails={() => setSelectedJob(job)}
                                     onQueryAI={() => {
                                         setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
@@ -3000,7 +3000,7 @@ function JobSearchDashboard({
                     token={token}
                     resumeSkills={resumeProfile?.skills || []}
                     isApplied={appliedJobKeys.has(getJobKey(selectedJob))}
-                    onToggleApplied={toggleJobApplied}
+                    onToggleApplied={onToggleApplied}
                     onClose={() => setSelectedJob(null)}
                     onUpdateJob={handleUpdateJobContacts}
                     onOpenCookieModal={onOpenCookieModal}
