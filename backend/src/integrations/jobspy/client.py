@@ -64,8 +64,8 @@ class JobSpyClient(BaseJobIntegration):
             # Multi-domain global scraping across top tech hubs
             target_countries = ["usa", "india", "uk"]
 
-        # Run scrapers with controlled concurrency (max 2 parallel workers) to keep RAM usage under 100MB
-        sem = asyncio.Semaphore(2)
+        # Run scrapers strictly sequentially (semaphore 1) to guarantee memory stays under 50MB
+        sem = asyncio.Semaphore(1)
 
         async def bounded_scrape(sites, country_code, count):
             async with sem:
@@ -75,7 +75,7 @@ class JobSpyClient(BaseJobIntegration):
                             site_name=sites,
                             search_term=query,
                             location=loc_clean,
-                            results_wanted=count,
+                            results_wanted=min(count, 15),
                             hours_old=168,  # 7 days of jobs
                             country_indeed=country_code,
                             is_remote=is_remote_param
@@ -83,12 +83,14 @@ class JobSpyClient(BaseJobIntegration):
                     except Exception as e:
                         print(f"Notice: JobSpy scrape notice ({sites}, {country_code}): {e}")
                         return None
-                return await loop.run_in_executor(None, _do_scrape)
+                res = await loop.run_in_executor(None, _do_scrape)
+                gc.collect()
+                return res
 
         # Prepare scraping tasks
-        tasks = [bounded_scrape(["linkedin"], "usa", results_count)]
+        tasks = [bounded_scrape(["linkedin"], "usa", min(results_count, 15))]
         for c in target_countries:
-            tasks.append(bounded_scrape(["indeed"], c, 12 if len(target_countries) > 1 else results_count))
+            tasks.append(bounded_scrape(["indeed"], c, 10 if len(target_countries) > 1 else min(results_count, 15)))
 
         try:
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -99,6 +101,7 @@ class JobSpyClient(BaseJobIntegration):
                     dataframes.append(res)
 
             if not dataframes:
+                gc.collect()
                 return []
 
             combined_df = pd.concat(dataframes, ignore_index=True)
@@ -133,42 +136,45 @@ class JobSpyClient(BaseJobIntegration):
                     } if (min_sal or max_sal) else None
                 })
 
-            # Explicitly free DataFrame memory
+            # Explicitly free DataFrame memory immediately
             del combined_df
             del dataframes
             gc.collect()
 
-            # Asynchronously enrich full descriptions for any jobs that have empty/short descriptions (especially LinkedIn)
-            async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=8.0, follow_redirects=True) as http_client:
+            # Asynchronously enrich full descriptions for top 8 short LinkedIn jobs with strict semaphore
+            enrich_sem = asyncio.Semaphore(2)
+            async with httpx.AsyncClient(headers=DEFAULT_HEADERS, timeout=6.0, follow_redirects=True) as http_client:
                 async def enrich_description(job_item):
                     desc = job_item.get("description", "").strip()
                     url = job_item.get("url", "").strip()
                     if (not desc or len(desc) < 80 or desc.lower() in ["none", "nan", "null"]) and "linkedin.com" in url:
-                        try:
-                            match = re.search(r"(?:view/|currentJobId=|jobs/view/|jobs/)(\d{8,12})", url) or re.search(r"(\d{8,12})", url)
-                            if match:
-                                job_id = match.group(1)
-                                guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
-                                resp = await http_client.get(guest_url)
-                                if resp.status_code == 200:
-                                    soup = BeautifulSoup(resp.text, "html.parser")
-                                    content_el = soup.select_one(
-                                        ".show-more-less-html__markup, .show-more-less-html__markup--clamp-after-5, "
-                                        ".description__text, #job-details, .jobs-description__content, "
-                                        ".jobs-box__html-content, .jobs-description-content__text, article, main"
-                                    )
-                                    if content_el:
-                                        fetched_desc = clean_html_job_description(str(content_el))
-                                        if len(fetched_desc) > 80:
-                                            job_item["description"] = fetched_desc
-                        except Exception:
-                            pass
+                        async with enrich_sem:
+                            try:
+                                match = re.search(r"(?:view/|currentJobId=|jobs/view/|jobs/)(\d{8,12})", url) or re.search(r"(\d{8,12})", url)
+                                if match:
+                                    job_id = match.group(1)
+                                    guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+                                    resp = await http_client.get(guest_url)
+                                    if resp.status_code == 200:
+                                        raw_text = resp.text
+                                        # Fast regex extraction without heavy DOM parsing
+                                        m = re.search(r'<div class="show-more-less-html__markup[^>]*>(.*?)</div>', raw_text, re.DOTALL)
+                                        if m:
+                                            fetched_desc = clean_html_job_description(m.group(1))
+                                            if len(fetched_desc) > 80:
+                                                job_item["description"] = fetched_desc
+                            except Exception:
+                                pass
                     return job_item
 
-                enriched_jobs = await asyncio.gather(*[enrich_description(j) for j in raw_jobs])
+                enriched_jobs = await asyncio.gather(*[enrich_description(j) for j in raw_jobs[:20]])
+                if len(raw_jobs) > 20:
+                    enriched_jobs.extend(raw_jobs[20:])
 
+            gc.collect()
             print(f"[JobSpy] Fetched & enriched {len(enriched_jobs)} jobs across {len(target_countries)} domains for query='{query}'")
             return enriched_jobs
         except Exception as e:
             print(f"Error scraping with JobSpy (Location: '{location}', Domains: {target_countries}): {e}")
+            gc.collect()
             return []

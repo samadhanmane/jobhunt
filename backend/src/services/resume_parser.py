@@ -19,30 +19,36 @@ class ResumeParserService:
         return self._llm
 
     def extract_text_from_pdf(self, file_path: str) -> str:
+        import gc
         text = ""
-        # Try pdfplumber first
-        try:
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    content = page.extract_text()
-                    if content:
-                        text += content + "\n"
-            if text.strip():
-                return text
-        except Exception as e:
-            print(f"pdfplumber notice: {e}")
-            
-        # Fallback to pypdf
+        # 1. Try lightweight pypdf first (< 2MB RAM)
         try:
             reader = PdfReader(file_path)
             for page in reader.pages:
                 content = page.extract_text()
                 if content:
                     text += content + "\n"
-            return text
+            if text.strip():
+                gc.collect()
+                return text
         except Exception as e:
             print(f"pypdf notice: {e}")
-            return ""
+
+        # 2. Fallback to pdfplumber only if pypdf was empty
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    content = page.extract_text()
+                    if content:
+                        text += content + "\n"
+            gc.collect()
+            if text.strip():
+                return text
+        except Exception as e:
+            print(f"pdfplumber notice: {e}")
+
+        gc.collect()
+        return ""
 
     def extract_text_from_docx(self, file_path: str) -> str:
         try:

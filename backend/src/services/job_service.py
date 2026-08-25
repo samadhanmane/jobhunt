@@ -26,6 +26,14 @@ from src.utils.date_utils import format_posted_date_for_csv
 # Global In-Memory Cache for Live Streaming Search Sessions
 ACTIVE_SEARCH_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
+def _prune_active_sessions():
+    """Keep at most 2 active search sessions in memory to prevent RAM accumulation."""
+    import gc
+    while len(ACTIVE_SEARCH_SESSIONS) > 2:
+        oldest_key = next(iter(ACTIVE_SEARCH_SESSIONS))
+        ACTIVE_SEARCH_SESSIONS.pop(oldest_key, None)
+    gc.collect()
+
 class JobService:
     def __init__(self, db: Session):
         self.db = db
@@ -371,7 +379,8 @@ class JobService:
                     "tech_contacts": []
                 })
 
-            # Initialize active streaming search session
+            # Initialize active streaming search session with pruning
+            _prune_active_sessions()
             curated_jobs = self.get_results(search_id)
             ACTIVE_SEARCH_SESSIONS[search_id] = {
                 "status": "harvesting",
@@ -543,7 +552,6 @@ class JobService:
 
                 tasks = []
                 for q_title in q_batch:
-                    tasks.append(self.orchestrator.jobspy.search(query=q_title, location=location, remote=remote))
                     tasks.append(self.orchestrator.himalayas.search(query=q_title, location=location, remote=remote))
                     tasks.append(self.orchestrator.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords))
                     tasks.append(self.orchestrator.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority))
@@ -566,12 +574,13 @@ class JobService:
                             new_raw_batch.append(j)
 
                 if not new_raw_batch or search_id not in ACTIVE_SEARCH_SESSIONS:
+                    gc.collect()
                     continue
 
                 new_raw_payload = []
                 for raw_j in new_raw_batch:
                     raw_title = raw_j.get("title", "Unknown Role")
-                    raw_desc = raw_j.get("description", "")
+                    raw_desc = (raw_j.get("description") or "")[:1000]
                     raw_exp = extract_job_experience_metadata(raw_title, raw_desc, raw_j.get("experience_fit", ""))
                     raw_date = raw_j.get("posted_date")
                     formatted_date = format_posted_date_for_csv(raw_date)
@@ -616,7 +625,7 @@ class JobService:
                 new_unique_payload = []
                 for rj in new_ranked:
                     rtitle = rj.get("title", "Unknown Role")
-                    rdesc = rj.get("description", "")
+                    rdesc = (rj.get("description") or "")[:1000]
                     rexp = extract_job_experience_metadata(rtitle, rdesc, rj.get("experience_fit", ""))
                     rdate = rj.get("posted_date")
                     fdate = format_posted_date_for_csv(rdate)
@@ -648,8 +657,8 @@ class JobService:
 
                 if search_id in ACTIVE_SEARCH_SESSIONS:
                     sess = ACTIVE_SEARCH_SESSIONS[search_id]
-                    sess["raw_jobs"].extend(new_raw_payload)
-                    sess["unique_jobs"].extend(new_unique_payload)
+                    sess["raw_jobs"] = (sess["raw_jobs"] + new_raw_payload)[-600:]
+                    sess["unique_jobs"] = (sess["unique_jobs"] + new_unique_payload)[-400:]
 
                     all_curated = sess["jobs"] + new_unique_payload
                     all_curated.sort(key=lambda x: x.get("match_score", 0), reverse=True)
@@ -666,6 +675,11 @@ class JobService:
                             )
                     except Exception:
                         pass
+
+                del new_raw_batch
+                del new_unique_batch
+                del results
+                gc.collect()
 
             if search_id in ACTIVE_SEARCH_SESSIONS:
                 ACTIVE_SEARCH_SESSIONS[search_id]["status"] = "completed"

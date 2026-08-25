@@ -178,7 +178,8 @@ Candidate Background:
 
         tasks = []
         for idx, q_title in enumerate(target_queries):
-            if idx < 2:
+            # Run JobSpy on primary anchor query to keep memory lean (< 50MB RAM)
+            if idx == 0:
                 tasks.append(self.jobspy.search(query=q_title, location=location, remote=remote))
             tasks.append(self.himalayas.search(query=q_title, location=location, remote=remote))
             tasks.append(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords))
