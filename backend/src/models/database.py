@@ -109,11 +109,17 @@ def init_and_migrate_db():
 def get_db():
     """
     Yields a database session.
-    SQLAlchemy pool_pre_ping=True automatically handles reconnection.
+    Automatically handles rollback on error and cleans up session connection.
     """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         try:
             db.close()

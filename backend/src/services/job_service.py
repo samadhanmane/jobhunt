@@ -655,29 +655,31 @@ class JobService:
                     all_curated.sort(key=lambda x: x.get("match_score", 0), reverse=True)
                     sess["jobs"] = all_curated[:50]
 
-                    db = SessionLocal()
                     try:
-                        self.search_repo.update_search_status(
-                            search_id, 
-                            "harvesting", 
-                            total_found=len(sess["raw_jobs"]), 
-                            unique_count=len(sess["unique_jobs"])
-                        )
-                    finally:
-                        db.close()
+                        with SessionLocal() as stream_db:
+                            from src.repositories.search_repository import SearchRepository
+                            SearchRepository(stream_db).update_search_status(
+                                search_id, 
+                                "harvesting", 
+                                total_found=len(sess["raw_jobs"]), 
+                                unique_count=len(sess["unique_jobs"])
+                            )
+                    except Exception:
+                        pass
 
             if search_id in ACTIVE_SEARCH_SESSIONS:
                 ACTIVE_SEARCH_SESSIONS[search_id]["status"] = "completed"
-                db = SessionLocal()
                 try:
-                    self.search_repo.update_search_status(
-                        search_id, 
-                        "completed", 
-                        total_found=len(ACTIVE_SEARCH_SESSIONS[search_id]["raw_jobs"]), 
-                        unique_count=len(ACTIVE_SEARCH_SESSIONS[search_id]["unique_jobs"])
-                    )
-                finally:
-                    db.close()
+                    with SessionLocal() as stream_db:
+                        from src.repositories.search_repository import SearchRepository
+                        SearchRepository(stream_db).update_search_status(
+                            search_id, 
+                            "completed", 
+                            total_found=len(ACTIVE_SEARCH_SESSIONS[search_id]["raw_jobs"]), 
+                            unique_count=len(ACTIVE_SEARCH_SESSIONS[search_id]["unique_jobs"])
+                        )
+                except Exception:
+                    pass
 
         except Exception as stream_err:
             print(f"Notice: Streaming harvest notice: {stream_err}")
@@ -850,101 +852,100 @@ Recruiter Details:
 
         await asyncio.sleep(0.5)
 
-        db = SessionLocal()
         try:
-            jobs = db.query(Job).filter(Job.search_id == search_id).all()
-            if not jobs:
-                return
+            with SessionLocal() as db:
+                jobs = db.query(Job).filter(Job.search_id == search_id).all()
+                job_list = [{"id": j.id, "company": j.company, "title": j.title, "matching_skills": j.matching_skills, "hr_contacts": j.hr_contacts, "tech_contacts": j.tech_contacts} for j in jobs]
+        except Exception as read_err:
+            print(f"Background contact enrichment read notice: {read_err}")
+            return
 
-            company_cache = {}
-            sem = asyncio.Semaphore(6)
+        if not job_list:
+            return
 
-            async def _enrich_job(job_id: str):
-                async with sem:
-                    try:
-                        inner_db = SessionLocal()
-                        try:
-                            job_rec = inner_db.query(Job).filter(Job.id == job_id).first()
-                            if not job_rec:
-                                return
-                            if job_rec.hr_contacts and job_rec.tech_contacts:
-                                return
+        company_cache = {}
+        sem = asyncio.Semaphore(5)
 
-                            comp_name = (job_rec.company or "").strip()
-                            if not comp_name or comp_name.lower() in ("unknown", "various", "confidential"):
-                                return
+        async def _enrich_job(job_info: Dict[str, Any]):
+            async with sem:
+                job_id = job_info["id"]
+                if job_info.get("hr_contacts") and job_info.get("tech_contacts"):
+                    return
 
-                            if comp_name in company_cache:
-                                hr_profiles, tech_profiles = company_cache[comp_name]
-                            else:
-                                all_contacts = await linkedin_service.search_company_all_contacts(
-                                    comp_name, hr_limit=3, tech_limit=3, custom_cookie=custom_cookie
-                                )
-                                hr_profiles = all_contacts.get("hr_contacts", [])
-                                tech_profiles = all_contacts.get("tech_contacts", [])
-                                company_cache[comp_name] = (hr_profiles, tech_profiles)
+                comp_name = (job_info.get("company") or "").strip()
+                if not comp_name or comp_name.lower() in ("unknown", "various", "confidential"):
+                    return
 
-                            cand_skills = candidate_skills or job_rec.matching_skills or []
-                            skills_str = ", ".join(cand_skills[:5]) if cand_skills else "Software Engineering"
+                try:
+                    if comp_name in company_cache:
+                        hr_profiles, tech_profiles = company_cache[comp_name]
+                    else:
+                        all_contacts = await linkedin_service.search_company_all_contacts(
+                            comp_name, hr_limit=3, tech_limit=3, custom_cookie=custom_cookie
+                        )
+                        hr_profiles = all_contacts.get("hr_contacts", [])
+                        tech_profiles = all_contacts.get("tech_contacts", [])
+                        company_cache[comp_name] = (hr_profiles, tech_profiles)
 
-                            async def _draft(contacts_list: List[Dict]) -> List[Dict]:
-                                enriched = []
-                                for r in contacts_list:
-                                    item = r.copy()
-                                    rec_name = r.get('full_name', '').split()[0] if r.get('full_name') else 'there'
-                                    prompt = f"""
+                    cand_skills = candidate_skills or job_info.get("matching_skills") or []
+                    skills_str = ", ".join(cand_skills[:5]) if cand_skills else "Software Engineering"
+
+                    async def _draft(contacts_list: List[Dict]) -> List[Dict]:
+                        enriched = []
+                        for r in contacts_list:
+                            item = r.copy()
+                            rec_name = r.get('full_name', '').split()[0] if r.get('full_name') else 'there'
+                            prompt = f"""
 Candidate Name: {candidate_name}
-Target Role: {job_rec.title}
+Target Role: {job_info.get('title')}
 Candidate Core Skills: {skills_str}
 
 Recruiter Details:
 - Name: {r.get('full_name', 'Recruiter')}
 - Title: {r.get('headline', 'Talent Acquisition')}
-- Company: {job_rec.company}
+- Company: {comp_name}
 """
-                                    try:
-                                        resp = await self.llm.ainvoke([
-                                            {"role": "system", "content": COLD_OUTREACH_SYSTEM_PROMPT},
-                                            {"role": "user", "content": prompt}
-                                        ])
-                                        raw_content = resp.content.strip()
-                                        if "```json" in raw_content:
-                                            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-                                        elif "```" in raw_content:
-                                            raw_content = raw_content.split("```")[1].split("```")[0].strip()
-                                        outreach_data = json.loads(raw_content)
-                                        item["outreach_draft"] = {
-                                            "email_subject": outreach_data.get("email_subject", f"Application for {job_rec.title} - {candidate_name}"),
-                                            "email_body": outreach_data.get("email_body", ""),
-                                            "linkedin_note": outreach_data.get("linkedin_connection_note", "")
-                                        }
-                                    except Exception:
-                                        item["outreach_draft"] = {
-                                            "email_subject": f"Application for {job_rec.title} - {candidate_name}",
-                                            "email_body": f"Hi {rec_name},\n\nI noticed {job_rec.company} is hiring for a {job_rec.title} and wanted to reach out directly given my background in {skills_str}.\n\nBest regards,\n{candidate_name}",
-                                            "linkedin_note": f"Hi {rec_name}, I'd love to connect regarding {job_rec.title} opportunities at {job_rec.company}!"
-                                        }
-                                    enriched.append(item)
-                                return enriched
+                            try:
+                                resp = await self.llm.ainvoke([
+                                    {"role": "system", "content": COLD_OUTREACH_SYSTEM_PROMPT},
+                                    {"role": "user", "content": prompt}
+                                ])
+                                raw_content = resp.content.strip()
+                                if "```json" in raw_content:
+                                    raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+                                elif "```" in raw_content:
+                                    raw_content = raw_content.split("```")[1].split("```")[0].strip()
+                                outreach_data = json.loads(raw_content)
+                                item["outreach_draft"] = {
+                                    "email_subject": outreach_data.get("email_subject", f"Application for {job_info.get('title')} - {candidate_name}"),
+                                    "email_body": outreach_data.get("email_body", ""),
+                                    "linkedin_note": outreach_data.get("linkedin_connection_note", "")
+                                }
+                            except Exception:
+                                item["outreach_draft"] = {
+                                    "email_subject": f"Application for {job_info.get('title')} - {candidate_name}",
+                                    "email_body": f"Hi {rec_name},\n\nI noticed {comp_name} is hiring for a {job_info.get('title')} and wanted to reach out directly given my background in {skills_str}.\n\nBest regards,\n{candidate_name}",
+                                    "linkedin_note": f"Hi {rec_name}, I'd love to connect regarding {job_info.get('title')} opportunities at {comp_name}!"
+                                }
+                            enriched.append(item)
+                        return enriched
 
-                            enriched_hr = await _draft(hr_profiles)
-                            enriched_tech = await _draft(tech_profiles)
+                    enriched_hr = await _draft(hr_profiles)
+                    enriched_tech = await _draft(tech_profiles)
 
+                    with SessionLocal() as inner_db:
+                        job_rec = inner_db.query(Job).filter(Job.id == job_id).first()
+                        if job_rec:
                             job_rec.hr_contacts = enriched_hr
                             job_rec.tech_contacts = enriched_tech
                             inner_db.commit()
-                        finally:
-                            inner_db.close()
-                    except Exception as err:
-                        print(f"Notice: Background job contact enrichment error for {job_id}: {err}")
+                except Exception as err:
+                    print(f"Notice: Background job contact enrichment error for {job_id}: {err}")
 
-            job_ids = [j.id for j in jobs]
-            await asyncio.gather(*[_enrich_job(jid) for jid in job_ids], return_exceptions=True)
-
+        try:
+            await asyncio.gather(*[_enrich_job(j_info) for j_info in job_list], return_exceptions=True)
         except Exception as e:
             print(f"Background contact enrichment notice: {e}")
-        finally:
-            db.close()
 
     async def query_jobs_rag(self, search_id: str, query_text: str) -> str:
         """

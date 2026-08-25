@@ -195,47 +195,41 @@ class SchedulerService:
 
             # 7. Update Database with sent hashes and last_sent_at
             try:
-                db_alert = db.query(EmailAlert).filter(EmailAlert.id == alert.id).first()
-                if db_alert:
-                    db_alert.sent_job_hashes = new_hashes[-300:]
-                    db_alert.last_sent_at = datetime.utcnow()
-                    db.commit()
+                with SessionLocal() as fresh_db:
+                    db_alert = fresh_db.query(EmailAlert).filter(EmailAlert.id == alert_id).first()
+                    if db_alert:
+                        db_alert.sent_job_hashes = new_hashes[-300:]
+                        db_alert.last_sent_at = datetime.utcnow()
+                        fresh_db.commit()
             except Exception as db_err:
                 print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
 
             # 8. Record in AutomationHistory for interactive website inspection
             try:
                 from src.models.automation_history import AutomationHistory
-                history_record = AutomationHistory(
-                    alert_id=alert.id,
-                    user_id=alert.user_id,
-                    recipient_email=alert.email,
-                    role=alert.role,
-                    location=alert.location or "Remote",
-                    work_mode=alert.work_mode or "any",
-                    experience_years=alert.experience_years or 0.0,
-                    max_age_days=alert.max_age_days or 1,
-                    preferred_time=alert.preferred_time or "09:00",
-                    total_raw_found=len(raw_jobs),
-                    total_unique_found=len(unique_batch),
-                    total_curated_sent=len(ranked_jobs),
-                    curated_jobs=ranked_jobs,
-                    unique_jobs=unique_batch,
-                    raw_jobs=raw_jobs,
-                    sent_at=datetime.utcnow()
-                )
-                db.add(history_record)
-                db.commit()
+                with SessionLocal() as fresh_db:
+                    history_record = AutomationHistory(
+                        alert_id=alert_id,
+                        user_id=getattr(alert, "user_id", None),
+                        recipient_email=alert.email,
+                        role=alert.role,
+                        location=alert.location or "Remote",
+                        work_mode=alert.work_mode or "any",
+                        experience_years=alert.experience_years or 0.0,
+                        max_age_days=alert.max_age_days or 1,
+                        preferred_time=alert.preferred_time or "09:00",
+                        total_raw_found=len(raw_jobs),
+                        total_unique_found=len(unique_batch),
+                        total_curated_sent=len(ranked_jobs),
+                        curated_jobs=ranked_jobs,
+                        unique_jobs=unique_batch,
+                        raw_jobs=raw_jobs,
+                        sent_at=datetime.utcnow()
+                    )
+                    fresh_db.add(history_record)
+                    fresh_db.commit()
             except Exception as hist_err:
                 print(f"[Scheduler] Notice during automation history save: {hist_err}")
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
 
             return {
                 "status": "success" if sent_success else "partial",
@@ -320,8 +314,15 @@ class SchedulerService:
 
         except Exception as e:
             print(f"[Scheduler/Health] Cookie health check notice: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
         finally:
-            db.close()
+            try:
+                db.close()
+            except Exception:
+                pass
 
     async def check_and_trigger_due_alerts(self):
         """
@@ -349,8 +350,15 @@ class SchedulerService:
                     asyncio.create_task(self.execute_alert_run(alert.id))
         except Exception as e:
             print(f"[Scheduler] Background polling notice: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
         finally:
-            db.close()
+            try:
+                db.close()
+            except Exception:
+                pass
 
     async def start_background_scheduler(self):
         """

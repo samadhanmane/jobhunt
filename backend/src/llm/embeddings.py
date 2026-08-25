@@ -30,36 +30,35 @@ class LocalEmbeddingClient:
 
         model_slug = self.model_name if (self.model_name and "/" in self.model_name) else "BAAI/bge-small-en-v1.5"
         endpoints = [
+            f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_slug}",
             f"https://router.huggingface.co/hf-inference/models/{model_slug}",
-            f"https://api-inference.huggingface.co/models/{model_slug}",
-            "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
+            "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
         ]
         
         headers = {
             "Authorization": f"Bearer {hf_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "x-use-cache": "true"
         }
         
         for url in endpoints:
             try:
                 resp = httpx.post(
                     url, 
-                    json={"inputs": texts, "options": {"wait_for_model": True}}, 
+                    json={"inputs": texts, "options": {"wait_for_model": False}}, 
                     headers=headers, 
-                    timeout=15.0
+                    timeout=7.0
                 )
                 if resp.status_code == 200:
                     data = resp.json()
                     # Response format: [[f1, f2, ...], [f1, f2, ...]]
                     if isinstance(data, list) and len(data) > 0:
-                        if isinstance(data[0], list) and len(data[0]) > 0 and isinstance(data[0][0], float):
+                        if isinstance(data[0], list) and len(data[0]) > 0 and isinstance(data[0][0], (float, int)):
                             return data
-                        elif isinstance(data[0], float):
+                        elif isinstance(data[0], (float, int)):
                             return [data]
-                else:
-                    print(f"[HuggingFace API Notice ({url})]: {resp.status_code} - {resp.text[:120]}")
-            except Exception as e:
-                print(f"[HuggingFace API Exception]: {e}")
+            except Exception:
+                pass
 
         return []
 
