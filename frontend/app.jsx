@@ -822,17 +822,51 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [isHarvestingLive, setIsHarvestingLive] = useState(false);
     const [csvMenuOpen, setCsvMenuOpen] = useState(false);
 
+    // Helper to merge new incoming jobs with existing accumulated jobs without duplicates
+    const mergeJobList = (existingList = [], incomingList = []) => {
+        const map = new Map();
+        // Add newest incoming first
+        for (const item of (incomingList || [])) {
+            if (!item) continue;
+            const key = (item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
+            if (key && !map.has(key)) {
+                map.set(key, item);
+            }
+        }
+        // Then add existing items
+        for (const item of (existingList || [])) {
+            if (!item) continue;
+            const key = (item.job_url || `${item.title}-${item.company}-${item.location}`).toLowerCase().trim();
+            if (key && !map.has(key)) {
+                map.set(key, item);
+            }
+        }
+        return Array.from(map.values());
+    };
+
     // Helper to persist search results in localStorage so they never disappear
     const persistSearchData = (sId, matched, unique, raw, stats) => {
         try {
             localStorage.setItem("jobhunt_cached_search", JSON.stringify({
                 search_id: sId || "",
-                matched: (matched || []).slice(0, 100),
-                unique: (unique || []).slice(0, 400),
-                raw: (raw || []).slice(0, 800),
-                stats: stats || { total_found: 0, unique_count: 0 }
+                matched: (matched || []).slice(0, 300),
+                unique: (unique || []).slice(0, 800),
+                raw: (raw || []).slice(0, 1500),
+                stats: stats || { total_found: (raw || []).length, unique_count: (unique || []).length }
             }));
         } catch (e) {}
+    };
+
+    // Handler to clear accumulated job pool
+    const handleClearJobPool = () => {
+        if (window.confirm("Are you sure you want to clear your accumulated job pool?")) {
+            setAllMatchedJobs([]);
+            setAllUniqueJobs([]);
+            setAllRawJobs([]);
+            setSearchStats({ total_found: 0, unique_count: 0 });
+            localStorage.removeItem("jobhunt_cached_search");
+            showToast("Job pool cleared. Ready for fresh location harvests!");
+        }
     };
 
     // Keep-Alive Heartbeat: Send /health ping every 50 seconds to keep Render free backend awake
@@ -953,26 +987,40 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             const data = await res.json();
             if (res.ok && data.status === 'success') {
                 setCurrentSearchId(data.search_id);
+                const incomingMatched = data.jobs || [];
+                const incomingUnique = data.unique_jobs || data.all_jobs || incomingMatched;
+                const incomingRaw = data.raw_jobs || incomingUnique;
+                
+                let mergedMatched = [];
+                let mergedUnique = [];
+                let mergedRaw = [];
+
+                // Accumulate and combine with existing jobs on frontend
+                setAllMatchedJobs(prev => {
+                    mergedMatched = mergeJobList(prev, incomingMatched);
+                    return mergedMatched;
+                });
+                setAllUniqueJobs(prev => {
+                    mergedUnique = mergeJobList(prev, incomingUnique);
+                    return mergedUnique;
+                });
+                setAllRawJobs(prev => {
+                    mergedRaw = mergeJobList(prev, incomingRaw);
+                    return mergedRaw;
+                });
+
                 const newStats = {
-                    total_found: data.total_found || 0,
-                    unique_count: data.unique_count || 0
+                    total_found: mergedRaw.length,
+                    unique_count: mergedUnique.length
                 };
                 setSearchStats(newStats);
-                const matched = data.jobs || [];
-                const unique = data.unique_jobs || data.all_jobs || matched;
-                const raw = data.raw_jobs || unique;
-                
-                // Overwrite with fresh search results
-                setAllMatchedJobs(matched);
-                setAllUniqueJobs(unique);
-                setAllRawJobs(raw);
 
-                // Save to localStorage
-                persistSearchData(data.search_id, matched, unique, raw, newStats);
+                // Save combined pool to localStorage
+                persistSearchData(data.search_id, mergedMatched, mergedUnique, mergedRaw, newStats);
 
                 // Start continuous background harvesting
                 setIsHarvestingLive(true);
-                showToast(`Harvested initial ${data.total_found} postings -> streaming more in background!`);
+                showToast(`Harvested ${data.total_found || incomingRaw.length} postings for ${activeLocation} (Total pool: ${mergedRaw.length}) -> streaming more!`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
             }
@@ -1003,17 +1051,31 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 if (res.ok) {
                     const data = await res.json();
                     if (data.raw_jobs && data.raw_jobs.length > 0) {
+                        let streamMergedRaw = [];
+                        let streamMergedUnique = [];
+                        let streamMergedMatched = [];
+
+                        setAllRawJobs(prev => {
+                            streamMergedRaw = mergeJobList(prev, data.raw_jobs || []);
+                            return streamMergedRaw;
+                        });
+                        setAllUniqueJobs(prev => {
+                            streamMergedUnique = mergeJobList(prev, data.unique_jobs || []);
+                            return streamMergedUnique;
+                        });
+                        setAllMatchedJobs(prev => {
+                            streamMergedMatched = mergeJobList(prev, data.jobs || []);
+                            return streamMergedMatched;
+                        });
+
                         const updatedStats = {
-                            total_found: data.total_found || data.raw_jobs.length,
-                            unique_count: data.unique_count || data.unique_jobs.length
+                            total_found: streamMergedRaw.length,
+                            unique_count: streamMergedUnique.length
                         };
                         setSearchStats(updatedStats);
-                        setAllRawJobs(data.raw_jobs);
-                        setAllUniqueJobs(data.unique_jobs || []);
-                        setAllMatchedJobs(data.jobs || []);
 
-                        // Persist live streaming updates
-                        persistSearchData(currentSearchId, data.jobs, data.unique_jobs, data.raw_jobs, updatedStats);
+                        // Persist combined live streaming updates
+                        persistSearchData(currentSearchId, streamMergedMatched, streamMergedUnique, streamMergedRaw, updatedStats);
 
                         // Keep modal contacts synced
                         if (data.jobs && data.jobs.length > 0) {
@@ -1966,10 +2028,20 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 />
                             </div>
 
-                            {/* Reset Button */}
-                            <div className="flex justify-end pt-3 sm:pt-0">
+                            {/* Reset & Clear Buttons */}
+                            <div className="flex items-center justify-end gap-3 pt-3 sm:pt-0">
+                                {allRawJobs.length > 0 && (
+                                    <button 
+                                        type="button"
+                                        onClick={handleClearJobPool}
+                                        className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 hover:underline"
+                                    >
+                                        <span>🗑️</span> Clear Pool ({allRawJobs.length})
+                                    </button>
+                                )}
                                 {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
                                     <button 
+                                        type="button"
                                         onClick={() => {
                                             setFilterKeyword("");
                                             setFilterLocationInput("");
@@ -1982,7 +2054,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                         }}
                                         className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold underline flex items-center gap-1"
                                     >
-                                        <span>↺</span> Reset Active Filters
+                                        <span>↺</span> Reset Filters
                                     </button>
                                 )}
                             </div>
