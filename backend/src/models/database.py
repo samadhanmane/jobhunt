@@ -80,6 +80,10 @@ def init_and_migrate_db():
                 f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}linkedin_cookie_status VARCHAR(50) DEFAULT 'unconfigured'",
                 f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}linkedin_cookie_checked_at TIMESTAMP",
                 f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}linkedin_cookie_last_notified_at TIMESTAMP",
+                f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}reset_otp_hash VARCHAR(255)",
+                f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}reset_otp_expires_at TIMESTAMP",
+                f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}applied_jobs TEXT",
+                f"ALTER TABLE user_accounts ADD COLUMN {if_not_exists}synced_profile TEXT",
             ]
 
             for q in queries:

@@ -296,6 +296,184 @@ function generateJobsCSV(jobsList = [], scopeLabel = "Curated Matches", filename
 }
 
 // ==========================================
+// Component: Dedicated Applied Jobs Tracker Modal
+// ==========================================
+function AppliedJobsTrackerModal({
+    appliedJobs = [],
+    onToggleApplied,
+    onViewDetails,
+    onClose,
+    onExportCSV,
+    onViewInDashboard
+}) {
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const filtered = useMemo(() => {
+        if (!searchQuery.trim()) return appliedJobs;
+        const q = searchQuery.toLowerCase().trim();
+        return appliedJobs.filter(j =>
+            (j.title || "").toLowerCase().includes(q) ||
+            (j.company || "").toLowerCase().includes(q) ||
+            (j.location || "").toLowerCase().includes(q)
+        );
+    }, [appliedJobs, searchQuery]);
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="minimal-card rounded-2xl max-w-4xl w-full my-6 p-5 sm:p-6 border border-white/15 shadow-2xl space-y-4 text-xs max-h-[90vh] flex flex-col justify-between">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/[0.08]">
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                                <span>📋</span>
+                                <span>Applied Jobs Tracker</span>
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                {appliedJobs.length} Applications Saved
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                            Your tracked job submissions synced automatically across laptop and mobile devices.
+                        </p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* Search & Actions Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div className="relative flex-1">
+                        <input
+                            type="text"
+                            placeholder="Search applied roles, companies, or locations..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {appliedJobs.length > 0 && (
+                            <button
+                                onClick={onExportCSV}
+                                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
+                            >
+                                <span>📥</span>
+                                <span>Export CSV</span>
+                            </button>
+                        )}
+                        <button
+                            onClick={() => {
+                                onViewInDashboard?.();
+                                onClose();
+                            }}
+                            className="px-3 py-2 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold transition-all flex items-center gap-1.5"
+                        >
+                            <span>🎯</span>
+                            <span>Filter in Dashboard</span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Applied Jobs List */}
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3 max-h-[58vh]">
+                    {appliedJobs.length === 0 ? (
+                        <div className="p-10 rounded-xl bg-slate-900/40 border border-dashed border-slate-700 text-center space-y-2.5">
+                            <div className="text-3xl">🌱</div>
+                            <div className="font-bold text-white text-sm">No applications tracked yet</div>
+                            <p className="text-xs text-slate-400 max-w-md mx-auto">
+                                Click the <strong className="text-emerald-300">✓ Apply</strong> checkmark on any job card or inside job details to log your application. It will sync across all your devices in real-time!
+                            </p>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-slate-400">
+                            No applications matched your search query "{searchQuery}".
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {filtered.map((job, idx) => (
+                                <div
+                                    key={job.id || idx}
+                                    className="p-3.5 rounded-xl bg-slate-900/90 border border-emerald-500/20 hover:border-emerald-500/50 transition-all space-y-2.5 flex flex-col justify-between shadow-md"
+                                >
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <h4 className="font-bold text-white text-xs leading-snug line-clamp-2">
+                                                {job.title}
+                                            </h4>
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40 shrink-0">
+                                                ✓ Applied
+                                            </span>
+                                        </div>
+
+                                        <p className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-semibold text-slate-200">🏢 {job.company || 'Company'}</span>
+                                            <span>•</span>
+                                            <span>📍 {job.location || 'Remote'}</span>
+                                        </p>
+
+                                        <div className="text-[10px] text-emerald-400 font-medium">
+                                            🗓️ Applied: {job.applied_at ? new Date(job.applied_at).toLocaleString() : 'Recently'}
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                            {job.url && (
+                                                <a
+                                                    href={job.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="py-1 px-2 rounded bg-indigo-600/80 hover:bg-indigo-500 text-white font-medium text-[11px] transition-all flex items-center gap-1"
+                                                >
+                                                    <span>Link</span>
+                                                    <span>↗</span>
+                                                </a>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onViewDetails?.(job);
+                                                    onClose();
+                                                }}
+                                                className="py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] transition-all"
+                                            >
+                                                Details 🔍
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => onToggleApplied(job)}
+                                            className="text-rose-400 hover:text-rose-300 text-[11px] hover:underline"
+                                        >
+                                            ✕ Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
 // Main App Component
 // ==========================================
 function App() {
@@ -310,6 +488,17 @@ function App() {
 
     const [activeTab, setActiveTab] = useState('search');
     const [activeSnapshot, setActiveSnapshot] = useState(null);
+
+    // Applied Jobs State (Cross-Device Synchronized)
+    const [appliedJobs, setAppliedJobs] = useState(() => {
+        try {
+            const saved = localStorage.getItem("jobhunt_applied_jobs");
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [appliedTrackerOpen, setAppliedTrackerOpen] = useState(false);
 
     // LinkedIn Cookie State
     const [cookieModalOpen, setCookieModalOpen] = useState(false);
@@ -350,6 +539,7 @@ function App() {
             .catch(() => { });
     };
 
+    // Sync Applied Jobs and Profile from Database on Mount / Login
     useEffect(() => {
         if (token) {
             fetch(`${API_BASE_URL}/api/v1/auth/me`, {
@@ -367,8 +557,74 @@ function App() {
                 .catch(() => {
                     handleLogout();
                 });
+
+            // Bidirectional Cross-Device Sync
+            fetch(`${API_BASE_URL}/api/v1/auth/sync-data`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.applied_jobs && Array.isArray(data.applied_jobs)) {
+                        setAppliedJobs(prev => {
+                            const mergedMap = new Map();
+                            for (const j of prev) {
+                                const k = ((j.url || j.job_url || `${j.title}-${j.company}-${j.location}`) || "").toLowerCase().trim();
+                                if (k) mergedMap.set(k, j);
+                            }
+                            for (const j of data.applied_jobs) {
+                                const k = ((j.url || j.job_url || `${j.title}-${j.company}-${j.location}`) || "").toLowerCase().trim();
+                                if (k) mergedMap.set(k, j);
+                            }
+                            const merged = Array.from(mergedMap.values());
+                            try {
+                                localStorage.setItem("jobhunt_applied_jobs", JSON.stringify(merged));
+                            } catch (e) {}
+                            return merged;
+                        });
+                    }
+                })
+                .catch(() => {});
         }
     }, [token]);
+
+    const toggleJobApplied = (job) => {
+        if (!job) return;
+        const key = ((job.url || job.job_url || `${job.title}-${job.company}-${job.location}`) || "").toLowerCase().trim();
+        if (!key) return;
+
+        setAppliedJobs(prev => {
+            const exists = prev.some(item => ((item.url || item.job_url || `${item.title}-${item.company}-${item.location}`) || "").toLowerCase().trim() === key);
+            let updated;
+            if (exists) {
+                updated = prev.filter(item => ((item.url || item.job_url || `${item.title}-${item.company}-${item.location}`) || "").toLowerCase().trim() !== key);
+                showToast(`Removed "${job.title}" from Applied tracker.`);
+            } else {
+                const appliedEntry = {
+                    ...job,
+                    applied_at: new Date().toISOString()
+                };
+                updated = [appliedEntry, ...prev];
+                showToast(`✓ Marked "${job.title}" as Applied!`);
+            }
+            try {
+                localStorage.setItem("jobhunt_applied_jobs", JSON.stringify(updated.slice(0, 500)));
+            } catch (e) {}
+
+            // Persist to Server for Multi-Device Sync
+            if (token) {
+                fetch(`${API_BASE_URL}/api/v1/auth/sync-data`, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ applied_jobs: updated.slice(0, 500) })
+                }).catch(() => {});
+            }
+
+            return updated;
+        });
+    };
 
     const handleLoginSuccess = (newToken, user) => {
         setToken(newToken);
@@ -391,7 +647,7 @@ function App() {
     if (!token || !currentUser) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4">
-                <LoginScreen onLoginSuccess={handleLoginSuccess} />
+                <LoginScreen onLoginSuccess={handleLoginSuccess} showToast={showToast} />
             </div>
         );
     }
@@ -404,6 +660,8 @@ function App() {
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 cookieStatusInfo={cookieStatusInfo}
+                appliedJobsCount={appliedJobs.length}
+                onOpenAppliedModal={() => setAppliedTrackerOpen(true)}
                 onOpenCookieModal={() => setCookieModalOpen(true)}
                 onLogout={handleLogout}
             />
@@ -442,6 +700,9 @@ function App() {
                         token={token}
                         user={currentUser}
                         cookieStatusInfo={cookieStatusInfo}
+                        appliedJobs={appliedJobs}
+                        onToggleApplied={toggleJobApplied}
+                        onOpenAppliedModal={() => setAppliedTrackerOpen(true)}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
                         showToast={showToast}
                         activeSnapshot={activeSnapshot}
@@ -462,6 +723,22 @@ function App() {
                     <AdminPortal token={token} user={currentUser} showToast={showToast} />
                 )}
             </main>
+
+            {/* Applied Jobs Tracker Modal */}
+            {appliedTrackerOpen && (
+                <AppliedJobsTrackerModal
+                    appliedJobs={appliedJobs}
+                    onToggleApplied={toggleJobApplied}
+                    onViewDetails={(job) => {
+                        setActiveTab('search');
+                    }}
+                    onClose={() => setAppliedTrackerOpen(false)}
+                    onExportCSV={() => exportJobsToCSV("applied", appliedJobs)}
+                    onViewInDashboard={() => {
+                        setActiveTab('search');
+                    }}
+                />
+            )}
 
             {/* LinkedIn Cookie Modal */}
             {cookieModalOpen && (
@@ -493,7 +770,7 @@ function App() {
 // ==========================================
 // Component: Minimal Navigation Bar
 // ==========================================
-function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieModal, onLogout }) {
+function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, appliedJobsCount = 0, onOpenAppliedModal, onOpenCookieModal, onLogout }) {
     let cookieBadge = {
         label: "Add LinkedIn Cookie",
         color: "bg-slate-800 text-slate-400 border-white/10 hover:border-slate-500",
@@ -516,17 +793,17 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
 
     return (
         <header className="sticky top-0 z-40 minimal-nav">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
                 {/* Brand Logo */}
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('search')}>
+                <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0" onClick={() => setActiveTab('search')}>
                     <div className="w-8 h-8 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center text-sm font-bold text-indigo-400">
                         ⚡
                     </div>
                     <div>
-                        <div className="font-bold text-base text-slate-100 tracking-tight leading-none">
+                        <div className="font-bold text-sm sm:text-base text-slate-100 tracking-tight leading-none">
                             JobAgent <span className="text-indigo-400 font-semibold">AI</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-medium tracking-wide">Multi-Source ATS & Talent Discovery</div>
+                        <div className="text-[10px] text-slate-400 font-medium tracking-wide hidden sm:block">Multi-Source ATS & Talent Discovery</div>
                     </div>
                 </div>
 
@@ -534,54 +811,67 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
                 <nav className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-white/[0.08]">
                     <button
                         onClick={() => setActiveTab('search')}
-                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'search'
+                        className={`px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'search'
                                 ? 'bg-indigo-600/90 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                             }`}
                     >
                         <span>🔍</span>
-                        <span>Job Search</span>
+                        <span className="hidden xs:inline">Search</span>
                     </button>
 
                     <button
                         onClick={() => setActiveTab('alerts')}
-                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'alerts'
+                        className={`px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'alerts'
                                 ? 'bg-indigo-600/90 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                             }`}
                     >
                         <span>⏰</span>
-                        <span>Email Alerts</span>
+                        <span className="hidden xs:inline">Alerts</span>
                     </button>
 
                     {user.role === 'admin' && (
                         <button
                             onClick={() => setActiveTab('admin')}
-                            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'admin'
+                            className={`px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'admin'
                                     ? 'bg-slate-700 text-white shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                                 }`}
                         >
                             <span>🛡️</span>
-                            <span>Admin Portal</span>
+                            <span className="hidden sm:inline">Admin</span>
                         </button>
                     )}
                 </nav>
 
-                {/* User Menu, LinkedIn Cookie Button & Logout */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                {/* User Menu, Applied Corner Button, LinkedIn Cookie & Logout */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5">
+                    {/* Applied Jobs Corner Pill */}
+                    <button
+                        onClick={onOpenAppliedModal}
+                        title="Open your tracked Applied Jobs"
+                        className="px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900 hover:border-emerald-500 shadow-sm"
+                    >
+                        <span className="text-emerald-400 font-extrabold text-xs">✓</span>
+                        <span className="hidden sm:inline font-bold">Applied</span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-200 text-[10px] font-bold">
+                            {appliedJobsCount}
+                        </span>
+                    </button>
+
                     {/* LinkedIn Cookie Status Pill */}
                     <button
                         onClick={onOpenCookieModal}
                         title="Configure your LinkedIn session cookie for authenticated recruiter scraping"
-                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${cookieBadge.color}`}
+                        className={`px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${cookieBadge.color}`}
                     >
                         <span className={`w-1.5 h-1.5 rounded-full ${cookieBadge.dot}`}></span>
-                        <span className="hidden sm:inline">{cookieBadge.label}</span>
-                        <span className="sm:hidden">LinkedIn</span>
+                        <span className="hidden md:inline">{cookieBadge.label}</span>
+                        <span className="md:hidden">Cookie</span>
                     </button>
 
-                    <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs">
+                    <div className="hidden lg:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs">
                         <span className="text-slate-300 font-medium">{user.email}</span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${user.role === 'admin'
                                 ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
@@ -594,7 +884,7 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
                     <button
                         onClick={onLogout}
                         title="Sign Out"
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-xs font-medium transition-all"
+                        className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-xs font-medium transition-all"
                     >
                         Logout
                     </button>
@@ -759,13 +1049,11 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                         <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                             Paste <code>li_at</code> Cookie Value:
                         </label>
-                        <input
-                            type="password"
+                        <PasswordInput
                             required
                             placeholder="AQEDATxxxxxx..."
                             value={cookieInput}
                             onChange={(e) => setCookieInput(e.target.value)}
-                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
                         />
                     </div>
 
@@ -810,13 +1098,283 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
 }
 
 // ==========================================
+// Component: Password Input with Eye Toggle
+// ==========================================
+function PasswordInput({ value, onChange, placeholder, required, className, autoFocus }) {
+    const [showPassword, setShowPassword] = useState(false);
+
+    return (
+        <div className="relative w-full">
+            <input
+                type={showPassword ? "text" : "password"}
+                required={required}
+                value={value}
+                onChange={onChange}
+                placeholder={placeholder || "••••••••"}
+                autoFocus={autoFocus}
+                className={`w-full pr-10 ${className || "px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs transition-all"}`}
+            />
+            <button
+                type="button"
+                onClick={() => setShowPassword(prev => !prev)}
+                tabIndex="-1"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 rounded-md focus:outline-none"
+            >
+                {showPassword ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                    </svg>
+                ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                )}
+            </button>
+        </div>
+    );
+}
+
+// ==========================================
+// Component: Forgot / Reset Password Modal (Email OTP)
+// ==========================================
+function ForgotPasswordModal({ onClose, showToast }) {
+    const [step, setStep] = useState(1); // 1 = Request OTP, 2 = Verify OTP & Set Password, 3 = Success
+    const [email, setEmail] = useState("");
+    const [otp, setOtp] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
+
+    const handleSendOTP = async (e) => {
+        e.preventDefault();
+        setError("");
+        setLoading(true);
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: email.trim() })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setStep(2);
+                showToast("Verification OTP sent to your email!");
+            } else {
+                setError(data.detail || "Failed to send OTP code.");
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        setError("");
+
+        if (newPassword !== confirmPassword) {
+            setError("Passwords do not match. Please verify.");
+            return;
+        }
+        if (newPassword.length < 6) {
+            setError("Password must be at least 6 characters.");
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/auth/reset-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: email.trim(),
+                    otp: otp.trim(),
+                    new_password: newPassword.trim()
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setStep(3);
+                setSuccessMessage(data.message || "Password successfully reset!");
+                showToast("Password successfully reset! You can now log in.");
+            } else {
+                setError(data.detail || "Password reset failed. Please check the OTP.");
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="minimal-card rounded-2xl max-w-md w-full p-6 border border-white/15 shadow-2xl space-y-4 text-xs">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+                    <div className="flex items-center gap-2">
+                        <span className="text-lg">🔐</span>
+                        <h3 className="text-sm font-bold text-white">Reset Account Password</h3>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors">
+                        ✕
+                    </button>
+                </div>
+
+                {error && (
+                    <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                        {error}
+                    </div>
+                )}
+
+                {/* Step 1: Enter Email */}
+                {step === 1 && (
+                    <form onSubmit={handleSendOTP} className="space-y-3.5">
+                        <p className="text-slate-300 text-xs leading-relaxed">
+                            Enter the email address associated with your account. We will send you a <strong>6-digit OTP verification code</strong> valid for 15 minutes.
+                        </p>
+
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                Account Email
+                            </label>
+                            <input
+                                type="email"
+                                required
+                                autoFocus
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="name@example.com"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading || !email.trim()}
+                                className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                            >
+                                {loading ? "Sending OTP..." : "Send Verification OTP →"}
+                            </button>
+                        </div>
+                    </form>
+                )}
+
+                {/* Step 2: Enter OTP & New Password */}
+                {step === 2 && (
+                    <form onSubmit={handleResetPassword} className="space-y-3.5">
+                        <div className="p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-indigo-200 text-xs">
+                            ✉️ We sent a 6-digit OTP code to <strong>{email}</strong>. Please check your inbox and spam folder.
+                        </div>
+
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                6-Digit OTP Code
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                maxLength="6"
+                                autoFocus
+                                value={otp}
+                                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                                placeholder="123456"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-center tracking-[6px] text-base focus:outline-none focus:border-indigo-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                New Password
+                            </label>
+                            <PasswordInput
+                                required
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="At least 6 characters"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                Confirm New Password
+                            </label>
+                            <PasswordInput
+                                required
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="Re-enter new password"
+                            />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setStep(1)}
+                                className="px-3.5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all"
+                            >
+                                ← Back
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading || otp.length < 6 || !newPassword || !confirmPassword}
+                                className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
+                            >
+                                {loading ? "Resetting Password..." : "✓ Reset Password & Save"}
+                            </button>
+                        </div>
+                    </form>
+                )}
+
+                {/* Step 3: Success Banner */}
+                {step === 3 && (
+                    <div className="text-center py-4 space-y-4">
+                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 text-2xl border border-emerald-500/30">
+                            ✓
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-white text-sm">Password Reset Successful!</h4>
+                            <p className="text-slate-400 text-xs mt-1">
+                                {successMessage || "Your password has been securely updated. You can now log in with your new credentials."}
+                            </p>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all"
+                        >
+                            Proceed to Sign In →
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
 // Component: Minimal Login Screen
 // ==========================================
-function LoginScreen({ onLoginSuccess }) {
+function LoginScreen({ onLoginSuccess, showToast }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [forgotModalOpen, setForgotModalOpen] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -833,7 +1391,7 @@ function LoginScreen({ onLoginSuccess }) {
             const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ email: email.trim(), password })
             });
 
             const data = await res.json();
@@ -852,7 +1410,7 @@ function LoginScreen({ onLoginSuccess }) {
     return (
         <div className="w-full max-w-sm">
             <div className="text-center mb-6">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-800 border border-white/10 text-xl text-indigo-400 mb-3">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-800 border border-white/10 text-xl text-indigo-400 mb-3 shadow-lg">
                     ⚡
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-white">
@@ -870,7 +1428,9 @@ function LoginScreen({ onLoginSuccess }) {
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Email Address</label>
+                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                            Email Address
+                        </label>
                         <input
                             type="email"
                             required
@@ -882,31 +1442,59 @@ function LoginScreen({ onLoginSuccess }) {
                     </div>
 
                     <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Password</label>
-                        <input
-                            type="password"
+                        <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                                Password
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setForgotModalOpen(true)}
+                                className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+                            >
+                                Forgot password?
+                            </button>
+                        </div>
+                        <PasswordInput
                             required
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs transition-all"
                         />
                     </div>
 
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
+                        className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 shadow-md flex items-center justify-center gap-1.5"
                     >
                         {loading ? "Authenticating..." : "Sign In →"}
                     </button>
                 </form>
             </div>
+
+            {/* Forgot Password Modal */}
+            {forgotModalOpen && (
+                <ForgotPasswordModal
+                    onClose={() => setForgotModalOpen(false)}
+                    showToast={showToast || ((msg) => alert(msg))}
+                />
+            )}
         </div>
     );
 }
 
-function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast, activeSnapshot, onExitSnapshot }) {
+function JobSearchDashboard({
+    token,
+    user,
+    cookieStatusInfo,
+    appliedJobs = [],
+    onToggleApplied,
+    onOpenAppliedModal,
+    onOpenCookieModal,
+    showToast,
+    activeSnapshot,
+    onExitSnapshot
+}) {
     // Form Inputs
     const [role, setRole] = useState("AI ML Engineer");
 
@@ -956,9 +1544,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [jobScope, setJobScope] = useState("curated"); // 'curated' | 'unique' | 'raw' | 'applied'
     const [sortBy, setSortBy] = useState("score"); // 'score' | 'date'
 
-    // Applied Jobs Tracker State
-    const [appliedJobs, setAppliedJobs] = useState([]);
-
     const getJobKey = (job) => {
         if (!job) return "";
         return ((job.url || job.job_url || `${job.title}-${job.company}-${job.location}`) || "").toLowerCase().trim();
@@ -972,32 +1557,6 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         }
         return set;
     }, [appliedJobs]);
-
-    const toggleJobApplied = (job) => {
-        if (!job) return;
-        const key = getJobKey(job);
-        if (!key) return;
-
-        setAppliedJobs(prev => {
-            const exists = prev.some(item => getJobKey(item) === key);
-            let updated;
-            if (exists) {
-                updated = prev.filter(item => getJobKey(item) !== key);
-                showToast(`Removed "${job.title}" from Applied tracker.`);
-            } else {
-                const appliedEntry = {
-                    ...job,
-                    applied_at: new Date().toISOString()
-                };
-                updated = [appliedEntry, ...prev];
-                showToast(`✓ Marked "${job.title}" as Applied!`);
-            }
-            try {
-                localStorage.setItem("jobhunt_applied_jobs", JSON.stringify(updated.slice(0, 500)));
-            } catch (e) {}
-            return updated;
-        });
-    };
 
     // Listen for incoming historical automation snapshots to inspect
     useEffect(() => {
@@ -2488,6 +3047,16 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     </div>
                 </div>
             )}
+
+            {/* Floating Mobile Corner Button for Applied Jobs */}
+            <button
+                type="button"
+                onClick={onOpenAppliedModal}
+                className="fixed bottom-5 right-5 z-40 sm:hidden px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-2xl flex items-center gap-1.5 border border-emerald-300/40 backdrop-blur-md active:scale-95 transition-all shadow-emerald-950"
+            >
+                <span className="text-sm">✓</span>
+                <span>Applied ({appliedJobs.length})</span>
+            </button>
         </div>
     );
 }
@@ -3900,13 +4469,11 @@ function AdminPortal({ token, user, showToast }) {
                         onChange={(e) => setNewEmail(e.target.value)}
                         className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
                     />
-                    <input
-                        type="text"
+                    <PasswordInput
                         required
                         placeholder="Initial password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
                     />
                     <select
                         value={newRole}

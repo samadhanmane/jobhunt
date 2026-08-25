@@ -273,5 +273,56 @@ class EmailService:
         """
         return self._send_via_nodemailer(to_email, subject, html, [])
 
+    def send_password_reset_otp(self, to_email: str, otp_code: str) -> bool:
+        """
+        Sends a secure, 6-digit one-time password (OTP) verification email for password reset.
+        """
+        subject = f"🔐 Your Password Reset OTP: {otp_code} (JobHunt AI)"
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; margin: 0; padding: 24px 12px; }}
+                .container {{ max-width: 520px; margin: 0 auto; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }}
+                .header {{ background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 28px 24px; text-align: center; }}
+                .content {{ padding: 28px 24px; text-align: center; }}
+                .otp-box {{ background: #1e293b; border: 2px dashed #6366f1; border-radius: 12px; padding: 18px 24px; margin: 24px auto; display: inline-block; letter-spacing: 8px; font-size: 32px; font-weight: 800; color: #38bdf8; font-family: monospace; }}
+                .badge {{ display: inline-block; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 9999px; padding: 4px 14px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }}
+                .footer {{ background-color: #080c15; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid rgba(255, 255, 255, 0.05); }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff;">🔐 Password Reset Request</h1>
+                    <p style="margin: 6px 0 0 0; color: #e0e7ff; font-size: 13px;">JobHunt AI Authentication Sentinel</p>
+                </div>
+                
+                <div class="content">
+                    <span class="badge">⏰ Valid for 15 Minutes</span>
+                    <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin: 0 0 16px 0;">
+                        We received a request to reset your JobHunt AI account password. Use the single-use verification code below to complete your password reset:
+                    </p>
+                    
+                    <div class="otp-box">
+                        {otp_code}
+                    </div>
+                    
+                    <p style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin: 20px 0 0 0;">
+                        Enter this code on the password reset screen along with your new password. If you didn't request a password reset, you can safely disregard this email. Your password will remain unchanged.
+                    </p>
+                </div>
+                
+                <div class="footer">
+                    JobHunt AI Security Team • Automated Verification System
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return self._send_via_nodemailer(to_email, subject, html, [])
+
 email_service = EmailService()
 

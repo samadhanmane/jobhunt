@@ -21,6 +21,14 @@ class UserAccount(Base):
     linkedin_cookie_checked_at = Column(DateTime, nullable=True)
     linkedin_cookie_last_notified_at = Column(DateTime, nullable=True)
     
+    # Password Reset OTP Security Fields
+    reset_otp_hash = Column(String(255), nullable=True)
+    reset_otp_expires_at = Column(DateTime, nullable=True)
+
+    # Cross-Device Sync State (Applied jobs & profile preferences)
+    applied_jobs = Column(Text, nullable=True)
+    synced_profile = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

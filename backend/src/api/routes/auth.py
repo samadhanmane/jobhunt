@@ -191,3 +191,158 @@ def delete_linkedin_cookie(
         "status": "success",
         "message": "LinkedIn cookie removed. System will use public stealth dorking."
     }
+
+# ==========================================
+# Password Reset via Email OTP
+# ==========================================
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
+@router.post("/forgot-password")
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Generates a secure 6-digit OTP and sends it to the user's registered email.
+    """
+    import random
+    from src.services.email_service import email_service
+    from src.services.auth_service import hash_password
+
+    email_clean = request.email.strip().lower()
+    if not email_clean:
+        raise HTTPException(status_code=400, detail="Email is required.")
+
+    user = db.query(UserAccount).filter(UserAccount.email == email_clean).first()
+    if not user:
+        # Generic response to prevent email enumeration
+        return {
+            "status": "success",
+            "message": "If an account exists with this email, a 6-digit OTP has been sent."
+        }
+
+    # Generate 6-digit numeric OTP
+    otp_code = f"{random.randint(100000, 999999)}"
+    user.reset_otp_hash = hash_password(otp_code)
+    user.reset_otp_expires_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+    db.commit()
+
+    # Dispatch OTP email
+    sent = email_service.send_password_reset_otp(user.email, otp_code)
+    if not sent:
+        print(f"[Auth] Warning: Could not send OTP to {user.email}")
+
+    return {
+        "status": "success",
+        "message": "If an account exists with this email, a 6-digit OTP has been sent."
+    }
+
+@router.post("/reset-password")
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Verifies 6-digit OTP and updates user's password.
+    """
+    from src.services.auth_service import verify_password, hash_password
+
+    email_clean = request.email.strip().lower()
+    otp_clean = request.otp.strip()
+    new_pass = request.new_password.strip()
+
+    if not email_clean or not otp_clean or not new_pass:
+        raise HTTPException(status_code=400, detail="Email, OTP, and new password are required.")
+
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+
+    user = db.query(UserAccount).filter(UserAccount.email == email_clean).first()
+    if not user or not user.reset_otp_hash or not user.reset_otp_expires_at:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset request. Please request a new OTP.")
+
+    # Check expiration
+    if datetime.datetime.utcnow() > user.reset_otp_expires_at:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a fresh OTP.")
+
+    # Verify OTP
+    if not verify_password(otp_clean, user.reset_otp_hash):
+        raise HTTPException(status_code=400, detail="Incorrect OTP code. Please check your email and try again.")
+
+    # Update password and invalidate OTP
+    user.password_hash = hash_password(new_pass)
+    user.reset_otp_hash = None
+    user.reset_otp_expires_at = None
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Your password has been successfully reset! You can now log in."
+    }
+
+# ==========================================
+# Cross-Device Sync (Applied Jobs & Profile)
+# ==========================================
+
+class SyncDataRequest(BaseModel):
+    applied_jobs: list = None
+    resume_profile: dict = None
+
+@router.get("/sync-data")
+def get_sync_data(
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetches the user's synced applied jobs and profile preferences across devices.
+    """
+    import json
+    if current_user.id == STATIC_ADMIN_ID:
+        return {"applied_jobs": [], "resume_profile": None}
+
+    user = db.query(UserAccount).filter(UserAccount.id == current_user.id).first()
+    if not user:
+        return {"applied_jobs": [], "resume_profile": None}
+
+    applied = []
+    if user.applied_jobs:
+        try:
+            applied = json.loads(user.applied_jobs)
+        except Exception:
+            applied = []
+
+    profile = None
+    if user.synced_profile:
+        try:
+            profile = json.loads(user.synced_profile)
+        except Exception:
+            profile = None
+
+    return {
+        "applied_jobs": applied,
+        "resume_profile": profile
+    }
+
+@router.post("/sync-data")
+def update_sync_data(
+    request: SyncDataRequest,
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Persists the user's applied jobs and profile preferences to the database for instant multi-device sync.
+    """
+    import json
+    if current_user.id == STATIC_ADMIN_ID:
+        return {"status": "success"}
+
+    user = db.query(UserAccount).filter(UserAccount.id == current_user.id).first()
+    if user:
+        if request.applied_jobs is not None:
+            user.applied_jobs = json.dumps(request.applied_jobs)
+        if request.resume_profile is not None:
+            user.synced_profile = json.dumps(request.resume_profile)
+        db.commit()
+
+    return {"status": "success"}
