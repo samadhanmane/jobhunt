@@ -172,6 +172,124 @@ const LOCATION_ALIASES = {
 };
 
 // ==========================================
+// Reusable CSV Export Utility
+// ==========================================
+function generateJobsCSV(jobsList = [], scopeLabel = "Curated Matches", filenamePrefix = "jobhunt_jobs") {
+    if (!jobsList || jobsList.length === 0) {
+        return false;
+    }
+
+    const headers = [
+        "Job ID",
+        "Scope",
+        "Job Title",
+        "Company Name",
+        "Location",
+        "Work Mode",
+        "Date Posted",
+        "Source Platform",
+        "Application URL",
+        "Match Score (%)",
+        "Experience Required",
+        "Min Experience Years",
+        "Seniority Level",
+        "Experience Fit",
+        "Matching Skills",
+        "Missing Skills",
+        "Salary Min",
+        "Salary Max",
+        "Salary Currency",
+        "Key Requirements",
+        "HR Contacts Found",
+        "HR Emails",
+        "Tech Contacts Found",
+        "Tech Emails",
+        "Cold Outreach Email Draft",
+        "LinkedIn Connection Note Draft",
+        "Company Insights JSON",
+        "Full Job Description"
+    ];
+
+    const escapeCSV = (field) => {
+        if (field === null || field === undefined) return '""';
+        const str = String(field);
+        return `"${str.replace(/"/g, '""')}"`;
+    };
+
+    const rows = jobsList.map(j => {
+        const loc = (j.location || "").toLowerCase();
+        let workMode = "Onsite";
+        if (loc.includes("remote") || loc.includes("wfh") || loc.includes("work from home") || j.source === "himalayas" || j.source === "jobicy" || j.source === "remoteok") {
+            workMode = "Remote";
+        } else if (loc.includes("hybrid") || (j.description || "").toLowerCase().includes("hybrid")) {
+            workMode = "Hybrid";
+        }
+
+        const matchingSkillsStr = (j.matching_skills || []).join(", ");
+        const missingSkillsStr = (j.missing_skills || []).join(", ");
+
+        const hrContacts = (j.hr_contacts || []).map(c => `${c.full_name} (${c.headline || 'HR/Talent'})`).join(" | ");
+        const hrEmails = (j.hr_contacts || []).map(c => c.email).filter(Boolean).join(" | ");
+        const techContacts = (j.tech_contacts || []).map(c => `${c.full_name} (${c.headline || 'Engineering'})`).join(" | ");
+        const techEmails = (j.tech_contacts || []).map(c => c.email).filter(Boolean).join(" | ");
+
+        let coldEmail = "";
+        let linkedinNote = "";
+        const sampleContact = (j.hr_contacts && j.hr_contacts[0]) || (j.tech_contacts && j.tech_contacts[0]);
+        if (sampleContact && sampleContact.outreach_draft) {
+            coldEmail = `Subject: ${sampleContact.outreach_draft.email_subject || ''}\n\n${sampleContact.outreach_draft.email_body || ''}`;
+            linkedinNote = sampleContact.outreach_draft.inmail_message || "";
+        }
+
+        const insights = j.company_insights ? JSON.stringify(j.company_insights) : "";
+
+        return [
+            escapeCSV(j.id || ""),
+            escapeCSV(scopeLabel),
+            escapeCSV(j.title || ""),
+            escapeCSV(j.company || ""),
+            escapeCSV(j.location || "Remote"),
+            escapeCSV(workMode),
+            escapeCSV(j.posted_date || ""),
+            escapeCSV(j.source || ""),
+            escapeCSV(j.url || ""),
+            escapeCSV(j.match_score != null ? `${Math.round(j.match_score)}%` : "50%"),
+            escapeCSV(j.experience_required || "Standard Fit"),
+            escapeCSV(j.min_experience_years ?? ""),
+            escapeCSV(j.seniority_level || ""),
+            escapeCSV(j.experience_fit || ""),
+            escapeCSV(matchingSkillsStr),
+            escapeCSV(missingSkillsStr),
+            escapeCSV(j.salary_range?.min ?? ""),
+            escapeCSV(j.salary_range?.max ?? ""),
+            escapeCSV(j.salary_range?.currency || "USD"),
+            escapeCSV(j.key_requirements || ""),
+            escapeCSV(hrContacts),
+            escapeCSV(hrEmails),
+            escapeCSV(techContacts),
+            escapeCSV(techEmails),
+            escapeCSV(coldEmail),
+            escapeCSV(linkedinNote),
+            escapeCSV(insights),
+            escapeCSV(j.description || "")
+        ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.map(h => `"${h}"`).join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const timestamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `${filenamePrefix}_${timestamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+}
+
+// ==========================================
 // Main App Component
 // ==========================================
 function App() {
@@ -185,6 +303,7 @@ function App() {
     });
 
     const [activeTab, setActiveTab] = useState('search');
+    const [activeSnapshot, setActiveSnapshot] = useState(null);
 
     // LinkedIn Cookie State
     const [cookieModalOpen, setCookieModalOpen] = useState(false);
@@ -199,6 +318,11 @@ function App() {
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 4000);
+    };
+
+    const handleInspectSnapshot = (snapshotData) => {
+        setActiveSnapshot(snapshotData);
+        setActiveTab('search');
     };
 
     // Check cookie status on login / session load
@@ -254,19 +378,20 @@ function App() {
         setCurrentUser(null);
         localStorage.removeItem("jobagent_auth_token");
         localStorage.removeItem("jobagent_user");
+        showToast("Signed out successfully.");
         setActiveTab('search');
     };
 
     if (!token || !currentUser) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4">
+            <div className="min-h-screen flex items-center justify-center p-4">
                 <LoginScreen onLoginSuccess={handleLoginSuccess} />
             </div>
         );
     }
 
     return (
-        <div className="flex-1 flex flex-col min-h-screen">
+        <div className="min-h-screen flex flex-col">
             {/* Minimal Nav Header */}
             <Navbar
                 user={currentUser}
@@ -313,6 +438,8 @@ function App() {
                         cookieStatusInfo={cookieStatusInfo}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
                         showToast={showToast}
+                        activeSnapshot={activeSnapshot}
+                        onExitSnapshot={() => setActiveSnapshot(null)}
                     />
                 )}
                 {activeTab === 'alerts' && (
@@ -322,6 +449,7 @@ function App() {
                         cookieStatusInfo={cookieStatusInfo}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
                         showToast={showToast}
+                        onInspectSnapshot={handleInspectSnapshot}
                     />
                 )}
                 {activeTab === 'admin' && currentUser.role === 'admin' && (
@@ -772,7 +900,7 @@ function LoginScreen({ onLoginSuccess }) {
     );
 }
 
-function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
+function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, showToast, activeSnapshot, onExitSnapshot }) {
     // Form Inputs
     const [role, setRole] = useState("AI ML Engineer");
 
@@ -804,6 +932,25 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [filterSource, setFilterSource] = useState("all");
     const [jobScope, setJobScope] = useState("curated"); // 'curated' | 'unique' | 'raw'
     const [sortBy, setSortBy] = useState("score"); // 'score' | 'date'
+
+    // Listen for incoming historical automation snapshots to inspect
+    useEffect(() => {
+        if (activeSnapshot) {
+            setAllMatchedJobs(activeSnapshot.curated_jobs || []);
+            setAllUniqueJobs(activeSnapshot.unique_jobs || []);
+            setAllRawJobs(activeSnapshot.raw_jobs || []);
+            setSearchStats({
+                total_found: activeSnapshot.total_raw_found || (activeSnapshot.raw_jobs || []).length,
+                unique_count: activeSnapshot.total_unique_found || (activeSnapshot.unique_jobs || []).length
+            });
+            setJobScope("curated");
+            if (activeSnapshot.role) setRole(activeSnapshot.role);
+            setFilterKeyword("");
+            if (activeSnapshot.location && activeSnapshot.location !== 'Remote' && activeSnapshot.location !== 'Worldwide') {
+                setFilterLocationInput(activeSnapshot.location);
+            }
+        }
+    }, [activeSnapshot]);
 
     // RAG AI Query State
     const [ragModalOpen, setRagModalOpen] = useState(false);
@@ -1274,110 +1421,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             return;
         }
 
-        const headers = [
-            "Job ID",
-            "Scope",
-            "Job Title",
-            "Company Name",
-            "Location",
-            "Work Mode",
-            "Date Posted",
-            "Source Platform",
-            "Application URL",
-            "Match Score (%)",
-            "Experience Required",
-            "Min Experience Years",
-            "Seniority Level",
-            "Experience Fit",
-            "Matching Skills",
-            "Missing Skills",
-            "Salary Min",
-            "Salary Max",
-            "Salary Currency",
-            "Key Requirements",
-            "HR Contacts",
-            "HR Emails",
-            "Tech Contacts",
-            "Tech Emails",
-            "AI Cold Email Draft",
-            "AI LinkedIn Note Draft",
-            "Company Insights",
-            "Full Job Description"
-        ];
-
-        const escapeCSV = (val) => {
-            if (val === null || val === undefined) return '""';
-            let str = String(val);
-            str = str.replace(/"/g, '""');
-            return `"${str}"`;
-        };
-
-        const rows = jobsList.map(j => {
-            const matchingSkillsStr = Array.isArray(j.matching_skills) ? j.matching_skills.join(", ") : "";
-            const missingSkillsStr = Array.isArray(j.missing_skills) ? j.missing_skills.join(", ") : "";
-
-            const locLower = (j.location || "").toLowerCase();
-            const workMode = locLower.includes("remote") ? "Remote" : (locLower.includes("hybrid") ? "Hybrid" : "Onsite");
-
-            // Format HR Contacts
-            const hrContacts = (j.hr_contacts || []).map(c => `${c.full_name || c.name || 'HR'} (${c.title || c.headline || 'Recruiter'}) [${c.email || 'N/A'}]`).join("; ");
-            const hrEmails = (j.hr_contacts || []).map(c => c.email).filter(Boolean).join(", ");
-
-            // Format Tech Contacts
-            const techContacts = (j.tech_contacts || []).map(c => `${c.full_name || c.name || 'Lead'} (${c.title || c.headline || 'Tech Lead'}) [${c.email || 'N/A'}]`).join("; ");
-            const techEmails = (j.tech_contacts || []).map(c => c.email).filter(Boolean).join(", ");
-
-            // AI Outreach drafts
-            const coldEmail = (j.hr_contacts && j.hr_contacts[0]?.outreach_draft?.email_body) || (j.tech_contacts && j.tech_contacts[0]?.outreach_draft?.email_body) || "";
-            const linkedinNote = (j.hr_contacts && j.hr_contacts[0]?.outreach_draft?.linkedin_note) || (j.tech_contacts && j.tech_contacts[0]?.outreach_draft?.linkedin_note) || "";
-
-            // Company insights
-            const insights = j.company_insights ? JSON.stringify(j.company_insights) : "";
-
-            return [
-                escapeCSV(j.id || ""),
-                escapeCSV(scopeLabel),
-                escapeCSV(j.title || ""),
-                escapeCSV(j.company || ""),
-                escapeCSV(j.location || "Remote"),
-                escapeCSV(workMode),
-                escapeCSV(j.posted_date || ""),
-                escapeCSV(j.source || ""),
-                escapeCSV(j.url || ""),
-                escapeCSV(j.match_score != null ? `${Math.round(j.match_score)}%` : "50%"),
-                escapeCSV(j.experience_required || "Standard Fit"),
-                escapeCSV(j.min_experience_years ?? ""),
-                escapeCSV(j.seniority_level || ""),
-                escapeCSV(j.experience_fit || ""),
-                escapeCSV(matchingSkillsStr),
-                escapeCSV(missingSkillsStr),
-                escapeCSV(j.salary_range?.min ?? ""),
-                escapeCSV(j.salary_range?.max ?? ""),
-                escapeCSV(j.salary_range?.currency || "USD"),
-                escapeCSV(j.key_requirements || ""),
-                escapeCSV(hrContacts),
-                escapeCSV(hrEmails),
-                escapeCSV(techContacts),
-                escapeCSV(techEmails),
-                escapeCSV(coldEmail),
-                escapeCSV(linkedinNote),
-                escapeCSV(insights),
-                escapeCSV(j.description || "")
-            ].join(",");
-        });
-
-        const csvContent = "\uFEFF" + [headers.map(h => `"${h}"`).join(","), ...rows].join("\r\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        const timestamp = new Date().toISOString().slice(0, 10);
-        a.href = url;
-        a.download = `${filenamePrefix}_${timestamp}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        showToast(`Downloaded ${jobsList.length} ${scopeLabel} jobs to CSV with full data!`);
+        generateJobsCSV(jobsList, scopeLabel, filenamePrefix);
+        showToast(`Exported ${jobsList.length} ${scopeLabel} jobs to CSV!`);
         setCsvMenuOpen(false);
     };
 
@@ -1555,6 +1600,49 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
     return (
         <div className="space-y-6">
+            {/* Historical Automation Snapshot Banner */}
+            {activeSnapshot && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-indigo-950 via-slate-900 to-purple-950 border border-indigo-500/40 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xl shrink-0">
+                            📜
+                        </div>
+                        <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                                    Historical Automation Digest Snapshot
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                    Offline Interactive View
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                                Viewing digest for <strong className="text-white font-semibold">"{activeSnapshot.role}"</strong> in <span className="text-indigo-300 font-medium">{activeSnapshot.location || 'Remote'}</span> sent on {activeSnapshot.sent_at ? new Date(activeSnapshot.sent_at).toLocaleString() : 'Recent'} ({allMatchedJobs.length} Curated / {allRawJobs.length} Raw). All filters and contacts work interactively without re-scraping!
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onExitSnapshot?.();
+                            JobDB.loadPool().then(saved => {
+                                if (saved) {
+                                    setAllMatchedJobs(saved.matched || []);
+                                    setAllUniqueJobs(saved.unique || []);
+                                    setAllRawJobs(saved.raw || []);
+                                    setSearchStats(saved.stats || { total_found: (saved.raw || []).length, unique_count: (saved.unique || []).length });
+                                }
+                            });
+                            showToast("Exited historical snapshot. Restored live pool.");
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/15 text-xs font-bold shrink-0 transition-all flex items-center gap-2 shadow-sm"
+                    >
+                        <span>✕</span>
+                        <span>Exit Snapshot</span>
+                    </button>
+                </div>
+            )}
             {/* Search Input & Resume Header */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Simplified Search Form */}
@@ -2931,7 +3019,7 @@ function ContactCard({ contact, onCopy }) {
 // ==========================================
 // Component: Email Automation & Live Alerts
 // ==========================================
-function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, showToast }) {
+function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, showToast, onInspectSnapshot }) {
     const [email, setEmail] = useState(user.email || "");
     const [role, setRole] = useState("AI ML Intern");
     const [location, setLocation] = useState("Pune");
@@ -2948,6 +3036,10 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     const [testing, setTesting] = useState(false);
     const [activeAlerts, setActiveAlerts] = useState([]);
     const [loadingAlerts, setLoadingAlerts] = useState(true);
+
+    const [historyList, setHistoryList] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(true);
+    const [inspectingId, setInspectingId] = useState(null);
 
     const fetchAlerts = async () => {
         try {
@@ -2966,8 +3058,26 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         }
     };
 
+    const fetchHistory = async () => {
+        try {
+            setLoadingHistory(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/alerts/history`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.history) {
+                setHistoryList(data.history || []);
+            }
+        } catch (err) {
+            console.error("Fetch history error:", err);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
     useEffect(() => {
         fetchAlerts();
+        fetchHistory();
     }, []);
 
     const handleResumeChange = async (e) => {
@@ -3028,6 +3138,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                     setActiveAlerts(prev => [data.alert, ...prev.filter(a => a.id !== data.alert.id)]);
                 }
                 fetchAlerts();
+                fetchHistory();
             } else {
                 showToast(data.detail || "Failed to schedule alert.", "error");
             }
@@ -3061,6 +3172,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             const data = await res.json();
             if (res.ok && (data.status === 'success' || data.status === 'partial')) {
                 showToast(`Sent ${data.jobs_sent || 0} Jobs + CSV to ${email}!`);
+                fetchHistory();
             } else {
                 showToast(data.detail || data.message || "Failed to send test email.", "error");
             }
@@ -3072,7 +3184,6 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     };
 
     const handleDeleteAlert = async (alertId) => {
-        // Instant optimistic UI update
         setActiveAlerts(prev => prev.filter(a => a.id !== alertId));
         showToast("Alert automation removed.");
 
@@ -3082,7 +3193,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) {
-                fetchAlerts(); // rollback if server error
+                fetchAlerts();
             }
         } catch (err) {
             fetchAlerts();
@@ -3090,178 +3201,362 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         }
     };
 
+    const handleDeleteHistory = async (historyId) => {
+        setHistoryList(prev => prev.filter(h => h.id !== historyId));
+        showToast("Automation digest history snapshot removed.");
+
+        try {
+            await fetch(`${API_BASE_URL}/api/v1/alerts/history/${historyId}`, {
+                method: "DELETE",
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        } catch (err) {
+            fetchHistory();
+        }
+    };
+
+    const handleInspectClick = async (historyId) => {
+        try {
+            setInspectingId(historyId);
+            const res = await fetch(`${API_BASE_URL}/api/v1/alerts/history/${historyId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.history) {
+                if (onInspectSnapshot) {
+                    onInspectSnapshot(data.history);
+                }
+                showToast(`Loaded snapshot for "${data.history.role}" (${data.history.curated_jobs?.length || 0} curated jobs)!`);
+            } else {
+                showToast("Failed to load historical snapshot.", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setInspectingId(null);
+        }
+    };
+
+    const handleDownloadHistoryCSV = async (historyId, type = 'curated') => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/alerts/history/${historyId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.history) {
+                const list = type === 'raw' ? (data.history.raw_jobs || []) : (data.history.curated_jobs || []);
+                const label = type === 'raw' ? "Raw Harvested" : "Curated Matches";
+                const prefix = `${type}_digest_${(data.history.role || 'jobs').replace(/[^a-zA-Z0-9]/g, '_')}`;
+                generateJobsCSV(list, label, prefix);
+                showToast(`Downloaded ${label} CSV (${list.length} jobs)`);
+            } else {
+                showToast("Failed to export historical CSV.", "error");
+            }
+        } catch (err) {
+            showToast("Error generating CSV: " + err.message, "error");
+        }
+    };
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-5">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h2 className="text-base font-bold text-white flex items-center gap-2">
-                            <span>⏰</span> Automated Daily Job Digest
-                        </h2>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                            Runs scheduled multi-board scrapers with deduplication and delivers matching roles with curated CSV directly to your inbox.
-                        </p>
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-base font-bold text-white flex items-center gap-2">
+                                <span>⏰</span> Automated Daily Job Digest
+                            </h2>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                                Runs scheduled multi-board scrapers with deduplication and delivers matching roles with curated CSV directly to your inbox.
+                            </p>
+                        </div>
+
+                        {/* Cookie Health Pill inside Alerts */}
+                        <button
+                            onClick={onOpenCookieModal}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-300 hover:text-white transition-all shrink-0"
+                        >
+                            {cookieStatusInfo?.cookie_status === 'active' ? '🟢 Cookie Active' : (cookieStatusInfo?.cookie_status === 'expired' ? '🔴 Cookie Expired' : '⚪ Add Cookie')}
+                        </button>
                     </div>
 
-                    {/* Cookie Health Pill inside Alerts */}
+                    <form onSubmit={handleSaveAlert} className="space-y-4">
+                        <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                Destination Email Address <span className="text-indigo-400">*</span>
+                            </label>
+                            <input
+                                type="email"
+                                required
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="e.g. xyz@gmail.com"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                    Target Role / Title <span className="text-indigo-400">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={role}
+                                    onChange={(e) => setRole(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                                    Preferred Location
+                                </label>
+                                <input
+                                    type="text"
+                                    value={location}
+                                    onChange={(e) => setLocation(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
+                                <select
+                                    value={workMode}
+                                    onChange={(e) => setWorkMode(e.target.value)}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value="any">🌐 Any</option>
+                                    <option value="remote">🏠 Remote</option>
+                                    <option value="onsite">🏢 Onsite</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Level</label>
+                                <select
+                                    value={experienceLevel}
+                                    onChange={(e) => setExperienceLevel(e.target.value)}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value="intern">🌱 Internship / Fresher (0 Yrs)</option>
+                                    <option value="entry">🚀 0–1 Yr (Entry Level)</option>
+                                    <option value="junior">⚡ 1–2 Yrs (Junior)</option>
+                                    <option value="mid">💼 3–5 Yrs (Mid-Level)</option>
+                                    <option value="senior">👑 5+ Yrs (Senior)</option>
+                                    <option value="lead">🏆 8+ Yrs (Lead / Staff)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Posted Window</label>
+                                <select
+                                    value={maxAgeDays}
+                                    onChange={(e) => setMaxAgeDays(Number(e.target.value))}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                >
+                                    <option value={1}>⏱️ 24h</option>
+                                    <option value={3}>📅 3 Days</option>
+                                    <option value={7}>🗓️ 7 Days</option>
+                                    <option value={0}>🌐 All Dates</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Time (24h)</label>
+                                <input
+                                    type="time"
+                                    value={preferredTime}
+                                    onChange={(e) => setPreferredTime(e.target.value)}
+                                    className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
+                            >
+                                {saving ? "Saving Schedule..." : "💾 Save Daily Automation"}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleSendTestEmail}
+                                disabled={testing}
+                                className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
+                            >
+                                {testing ? "Sending..." : "⚡ Send Live Test Digest Now"}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                {/* Active Automations List */}
+                <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-3">
+                    <h3 className="font-bold text-white text-xs flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
+                        <span>📋 Active Automations</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                            {activeAlerts.length} Active
+                        </span>
+                    </h3>
+
+                    {loadingAlerts ? (
+                        <div className="text-center py-6 text-xs text-slate-500">Loading schedules...</div>
+                    ) : activeAlerts.length === 0 ? (
+                        <div className="p-4 rounded-lg bg-slate-900/40 border border-dashed border-slate-700 text-center text-xs text-slate-400">
+                            No active schedules.
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                            {activeAlerts.map((alert) => (
+                                <div key={alert.id} className="p-3 rounded-lg bg-slate-900 border border-white/[0.04] space-y-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="font-bold text-white text-xs">{alert.role}</div>
+                                            <div className="text-[11px] text-slate-400">
+                                                📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time}
+                                            </div>
+                                            <div className="text-[10px] text-indigo-400">✉️ {alert.email}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteAlert(alert.id)}
+                                            className="text-slate-500 hover:text-rose-400 text-xs p-1"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Automation Digest History & Sent Job Snapshots */}
+            <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+                    <div>
+                        <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                            <span>📜</span>
+                            <span>Sent Automation History & Job Snapshots</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                            Every email digest sent to your inbox is saved here. Inspect curated matches and raw databases interactively on the website with complete search and filter capabilities.
+                        </p>
+                    </div>
                     <button
-                        onClick={onOpenCookieModal}
-                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-300 hover:text-white transition-all shrink-0"
+                        onClick={fetchHistory}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 text-xs text-slate-300 hover:text-white transition-all flex items-center gap-1.5 self-start sm:self-auto"
                     >
-                        {cookieStatusInfo?.cookie_status === 'active' ? '🟢 Cookie Active' : (cookieStatusInfo?.cookie_status === 'expired' ? '🔴 Cookie Expired' : '⚪ Add Cookie')}
+                        <span>↻</span>
+                        <span>Refresh History</span>
                     </button>
                 </div>
 
-                <form onSubmit={handleSaveAlert} className="space-y-4">
-                    <div>
-                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                            Destination Email Address <span className="text-indigo-400">*</span>
-                        </label>
-                        <input
-                            type="email"
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="e.g. xyz@gmail.com"
-                            className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                Target Role / Title <span className="text-indigo-400">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={role}
-                                onChange={(e) => setRole(e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                                Preferred Location
-                            </label>
-                            <input
-                                type="text"
-                                value={location}
-                                onChange={(e) => setLocation(e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
-                            <select
-                                value={workMode}
-                                onChange={(e) => setWorkMode(e.target.value)}
-                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            >
-                                <option value="any">🌐 Any</option>
-                                <option value="remote">🏠 Remote</option>
-                                <option value="onsite">🏢 Onsite</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Level</label>
-                            <select
-                                value={experienceLevel}
-                                onChange={(e) => setExperienceLevel(e.target.value)}
-                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            >
-                                <option value="intern">🌱 Internship / Fresher (0 Yrs)</option>
-                                <option value="entry">🚀 0–1 Yr (Entry Level)</option>
-                                <option value="junior">⚡ 1–2 Yrs (Junior)</option>
-                                <option value="mid">💼 3–5 Yrs (Mid-Level)</option>
-                                <option value="senior">👑 5+ Yrs (Senior)</option>
-                                <option value="lead">🏆 8+ Yrs (Lead / Staff)</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Posted Window</label>
-                            <select
-                                value={maxAgeDays}
-                                onChange={(e) => setMaxAgeDays(Number(e.target.value))}
-                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            >
-                                <option value={1}>⏱️ 24h</option>
-                                <option value={3}>📅 3 Days</option>
-                                <option value={7}>🗓️ 7 Days</option>
-                                <option value={0}>🌐 All Dates</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Time (24h)</label>
-                            <input
-                                type="time"
-                                value={preferredTime}
-                                onChange={(e) => setPreferredTime(e.target.value)}
-                                className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
-                        >
-                            {saving ? "Saving Schedule..." : "💾 Save Daily Automation"}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={handleSendTestEmail}
-                            disabled={testing}
-                            className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
-                        >
-                            {testing ? "Sending..." : "⚡ Send Live Test Digest Now"}
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {/* Active Automations List */}
-            <div className="minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] space-y-3">
-                <h3 className="font-bold text-white text-xs flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
-                    <span>📋 Active Automations</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                        {activeAlerts.length} Active
-                    </span>
-                </h3>
-
-                {loadingAlerts ? (
-                    <div className="text-center py-6 text-xs text-slate-500">Loading schedules...</div>
-                ) : activeAlerts.length === 0 ? (
-                    <div className="p-4 rounded-lg bg-slate-900/40 border border-dashed border-slate-700 text-center text-xs text-slate-400">
-                        No active schedules.
+                {loadingHistory ? (
+                    <div className="text-center py-10 text-xs text-slate-500">Loading automation history...</div>
+                ) : historyList.length === 0 ? (
+                    <div className="p-8 rounded-xl bg-slate-900/40 border border-dashed border-slate-700 text-center space-y-2">
+                        <div className="text-2xl">📬</div>
+                        <div className="text-xs font-semibold text-slate-300">No automation digests sent yet</div>
+                        <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                            Save an automation or click "Send Live Test Digest Now" above. When digests are dispatched, complete interactive snapshots will appear here for instant filtering and CSV export.
+                        </p>
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                        {activeAlerts.map((alert) => (
-                            <div key={alert.id} className="p-3 rounded-lg bg-slate-900 border border-white/[0.04] space-y-1">
-                                <div className="flex items-start justify-between gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {historyList.map((item) => (
+                            <div
+                                key={item.id}
+                                className="p-4 rounded-xl bg-slate-900/90 border border-white/[0.06] hover:border-indigo-500/30 transition-all space-y-3 shadow-md"
+                            >
+                                <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <div className="font-bold text-white text-xs">{alert.role}</div>
-                                        <div className="text-[11px] text-slate-400">
-                                            📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-white text-sm">{item.role}</span>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                📍 {item.location || 'Remote'}
+                                            </span>
                                         </div>
-                                        <div className="text-[10px] text-indigo-400">✉️ {alert.email}</div>
+                                        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                                            <span>🗓️ {item.sent_at ? new Date(item.sent_at).toLocaleString() : 'Recent'}</span>
+                                            <span>•</span>
+                                            <span className="text-slate-300">✉️ {item.recipient_email}</span>
+                                        </div>
                                     </div>
+
                                     <button
-                                        onClick={() => handleDeleteAlert(alert.id)}
+                                        onClick={() => handleDeleteHistory(item.id)}
+                                        title="Delete snapshot"
                                         className="text-slate-500 hover:text-rose-400 text-xs p-1"
                                     >
                                         🗑️
+                                    </button>
+                                </div>
+
+                                {/* Filter parameters used during run */}
+                                <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400">
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                        Mode: {item.work_mode || 'any'}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                        Exp: {item.experience_level || `${item.experience_years || 0} Yrs`}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                        Window: {item.max_age_days ? `${item.max_age_days}d` : '24h'}
+                                    </span>
+                                    {item.preferred_time && (
+                                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                            Time: {item.preferred_time}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Job Counts Badges */}
+                                <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+                                    <span className="px-2 py-0.5 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
+                                        🎯 {item.total_curated_sent || 0} Curated
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-lg bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-[11px] font-semibold">
+                                        🧬 {item.total_unique_found || 0} Unique
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-white/5 text-slate-300 text-[11px] font-semibold">
+                                        🌐 {item.total_raw_found || 0} Raw
+                                    </span>
+                                </div>
+
+                                {/* Interactive Website Inspection & Direct CSV Download Actions */}
+                                <div className="pt-2 flex flex-wrap items-center gap-2">
+                                    <button
+                                        onClick={() => handleInspectClick(item.id)}
+                                        disabled={inspectingId === item.id}
+                                        className="flex-1 py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                                    >
+                                        <span>🔍</span>
+                                        <span>{inspectingId === item.id ? "Loading Snapshot..." : "Inspect & Filter on Website"}</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleDownloadHistoryCSV(item.id, 'curated')}
+                                        className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
+                                        title="Download Curated CSV"
+                                    >
+                                        📥 Curated CSV
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleDownloadHistoryCSV(item.id, 'raw')}
+                                        className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
+                                        title="Download Raw CSV"
+                                    >
+                                        📥 Raw CSV
                                     </button>
                                 </div>
                             </div>

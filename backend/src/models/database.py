@@ -49,6 +49,7 @@ def init_and_migrate_db():
     from src.models.user import UserProfile
     from src.models.search_history import SearchHistory
     from src.models.email_alert import EmailAlert
+    from src.models.automation_history import AutomationHistory
     from src.services.auth_service import hash_password
     
     # Initialize both engines to guarantee SQLite is ready as fallback

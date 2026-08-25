@@ -289,6 +289,35 @@ async def test_send_alert(
             raw_total_count=len(raw_jobs)
         )
 
+        # Record in AutomationHistory for website inspection
+        try:
+            from src.models.automation_history import AutomationHistory
+            history_record = AutomationHistory(
+                user_id=current_user.id if current_user else None,
+                recipient_email=to_email,
+                role=role,
+                location=location or "Remote",
+                work_mode=work_mode or "any",
+                experience_level=experience_level or "all",
+                experience_years=exp_yrs,
+                max_age_days=max_age_days or 1,
+                total_raw_found=len(raw_jobs),
+                total_unique_found=len(unique_jobs),
+                total_curated_sent=len(ranked_jobs),
+                curated_jobs=ranked_jobs,
+                unique_jobs=unique_jobs,
+                raw_jobs=raw_jobs,
+                sent_at=datetime.datetime.utcnow()
+            )
+            db.add(history_record)
+            db.commit()
+        except Exception as hist_err:
+            print(f"Notice: AutomationHistory save in test-send: {hist_err}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
         return {
             "status": "success" if sent else "error",
             "email": to_email,
@@ -299,6 +328,94 @@ async def test_send_alert(
     except Exception as e:
         print(f"Error in direct test email: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/history")
+def get_automation_history(
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns list of sent automation digest runs for the authenticated user.
+    """
+    from src.models.automation_history import AutomationHistory
+    query = db.query(AutomationHistory)
+    if current_user.role != "admin":
+        query = query.filter((AutomationHistory.user_id == current_user.id) | (AutomationHistory.recipient_email == current_user.email))
+    
+    records = query.order_by(AutomationHistory.sent_at.desc()).limit(50).all()
+    
+    return {
+        "status": "success",
+        "history": [{
+            "id": r.id,
+            "alert_id": r.alert_id,
+            "role": r.role,
+            "location": r.location,
+            "work_mode": r.work_mode,
+            "experience_level": r.experience_level,
+            "experience_years": r.experience_years,
+            "max_age_days": r.max_age_days,
+            "preferred_time": r.preferred_time,
+            "recipient_email": r.recipient_email,
+            "total_raw_found": r.total_raw_found,
+            "total_unique_found": r.total_unique_found,
+            "total_curated_sent": r.total_curated_sent,
+            "sent_at": r.sent_at.isoformat() if r.sent_at else None
+        } for r in records]
+    }
+
+@router.get("/history/{history_id}")
+def get_automation_history_detail(
+    history_id: str,
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves the complete historical snapshot (curated, unique, and raw jobs) of an automated run.
+    """
+    from src.models.automation_history import AutomationHistory
+    record = db.query(AutomationHistory).filter(AutomationHistory.id == history_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Automation history record not found")
+        
+    return {
+        "status": "success",
+        "history": {
+            "id": record.id,
+            "alert_id": record.alert_id,
+            "role": record.role,
+            "location": record.location,
+            "work_mode": record.work_mode,
+            "experience_level": record.experience_level,
+            "experience_years": record.experience_years,
+            "max_age_days": record.max_age_days,
+            "preferred_time": record.preferred_time,
+            "recipient_email": record.recipient_email,
+            "total_raw_found": record.total_raw_found,
+            "total_unique_found": record.total_unique_found,
+            "total_curated_sent": record.total_curated_sent,
+            "curated_jobs": record.curated_jobs or [],
+            "unique_jobs": record.unique_jobs or [],
+            "raw_jobs": record.raw_jobs or [],
+            "sent_at": record.sent_at.isoformat() if record.sent_at else None
+        }
+    }
+
+@router.delete("/history/{history_id}")
+def delete_automation_history(
+    history_id: str,
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Deletes an automation history snapshot."""
+    from src.models.automation_history import AutomationHistory
+    record = db.query(AutomationHistory).filter(AutomationHistory.id == history_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Automation history record not found")
+        
+    db.delete(record)
+    db.commit()
+    return {"status": "success", "message": "History snapshot deleted"}
 
 @router.post("/{alert_id}/send-now")
 async def trigger_alert_now(
