@@ -1276,28 +1276,30 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'onsite' && isRemote) return false;
 
-            // 4. Min Score (only applies when slider is active > 0 and not in raw scope)
-            if (minScore > 0 && jobScope !== 'raw' && (job.match_score || 0) < minScore) {
+            // 4. Min Score (Only apply score cutoff in 'curated' matches mode, never in raw or unique scopes)
+            if (jobScope === 'curated' && minScore > 0 && (job.match_score || 0) < minScore) {
                 return false;
             }
 
-            // 5. Granular Experience Level & Seniority Fit
-            const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
-            const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year') || minYears >= 4;
-            const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee') || expReq.includes('intern') || expReq.includes('0 yr') || minYears === 0;
-            const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears === 1 || minYears === 2 || isInternRole) && !isSeniorRole;
+            // 5. Granular Experience Level & Seniority Fit (Only apply if explicitly selected by user)
+            if (filterExpYears !== 'all' || filterSeniority !== 'all') {
+                const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
+                const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year') || minYears >= 4;
+                const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || fit.includes('intern') || fit.includes('trainee') || expReq.includes('intern') || expReq.includes('0 yr') || minYears === 0;
+                const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears === 1 || minYears === 2 || isInternRole) && !isSeniorRole;
 
-            if (filterExpYears === '0' && (!isInternRole || isSeniorRole)) return false;
-            if (filterExpYears === '1' && (minYears > 1 || isSeniorRole)) return false;
-            if (filterExpYears === '2' && (minYears > 2 || isSeniorRole)) return false;
-            if (filterExpYears === '3-5' && (minYears < 3 || minYears > 5 || isInternRole)) return false;
-            if (filterExpYears === '5+' && !isSeniorRole && minYears < 5) return false;
-            if (filterExpYears === '8+' && minYears < 8 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
+                if (filterExpYears === '0' && (!isInternRole || isSeniorRole)) return false;
+                if (filterExpYears === '1' && (minYears > 1 || isSeniorRole)) return false;
+                if (filterExpYears === '2' && (minYears > 2 || isSeniorRole)) return false;
+                if (filterExpYears === '3-5' && (minYears < 3 || minYears > 5 || isInternRole)) return false;
+                if (filterExpYears === '5+' && !isSeniorRole && minYears < 5) return false;
+                if (filterExpYears === '8+' && minYears < 8 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
 
-            // Seniority dropdown fallback
-            if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
-            if (filterSeniority === 'junior' && (!isJuniorRole || isSeniorRole)) return false;
-            if (filterSeniority === 'senior' && !isSeniorRole) return false;
+                // Seniority dropdown fallback
+                if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
+                if (filterSeniority === 'junior' && (!isJuniorRole || isSeniorRole)) return false;
+                if (filterSeniority === 'senior' && !isSeniorRole) return false;
+            }
 
             // 6. Freshness Date
             if (filterDate === '24h' && !isWithinDays(job.posted_date, 1)) return false;
@@ -1946,6 +1948,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <JobCard 
                                     key={job.id || idx} 
                                     job={job} 
+                                    jobScope={jobScope}
                                     onViewDetails={() => setSelectedJob(job)}
                                     onQueryAI={() => {
                                         setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
@@ -1978,24 +1981,20 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     <div className="minimal-card rounded-xl max-w-2xl w-full p-5 border border-white/15 shadow-2xl space-y-4">
                         <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.08]">
                             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                <span>🤖</span> RAG Job Intelligence Assistant
+                                <span>🤖</span>
+                                <span>AI Job Assistant (RAG)</span>
                             </h3>
-                            <button 
-                                onClick={() => setRagModalOpen(false)}
-                                className="text-slate-400 hover:text-white text-lg leading-none"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={() => setRagModalOpen(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
                         </div>
 
                         <form onSubmit={handleAskAI} className="space-y-3">
                             <div className="relative">
                                 <input 
                                     type="text"
+                                    placeholder="Ask anything about the requirements, tech stack, or hiring..."
                                     value={ragQuery}
                                     onChange={(e) => setRagQuery(e.target.value)}
-                                    placeholder="Ask anything (e.g. Which roles require Python and offer remote?)"
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none pr-20"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none pr-20"
                                 />
                                 <button 
                                     type="submit"
@@ -2022,11 +2021,21 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 // ==========================================
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
-function JobCard({ job, onViewDetails, onQueryAI }) {
+function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
     const score = Math.round(job.match_score || 0);
+    let badgeText = `${score}% Match`;
     let scoreColor = "bg-slate-800 text-slate-300 border-slate-700";
-    if (score >= 80) scoreColor = "bg-emerald-950/60 text-emerald-300 border-emerald-500/30";
-    else if (score >= 65) scoreColor = "bg-amber-950/60 text-amber-300 border-amber-500/30";
+
+    if (jobScope === "raw") {
+        badgeText = "🌐 Raw Listing";
+        scoreColor = "bg-slate-900 text-slate-300 border-slate-700";
+    } else if (jobScope === "unique") {
+        badgeText = "🧬 Unique Role";
+        scoreColor = "bg-indigo-950/60 text-indigo-300 border-indigo-500/30";
+    } else {
+        if (score >= 80) scoreColor = "bg-emerald-950/60 text-emerald-300 border-emerald-500/30";
+        else if (score >= 65) scoreColor = "bg-amber-950/60 text-amber-300 border-amber-500/30";
+    }
 
     // Salary formatting
     let salaryDisplay = "Salary: N/A";
@@ -2063,7 +2072,7 @@ function JobCard({ job, onViewDetails, onQueryAI }) {
                     </div>
 
                     <span className={`px-2 py-0.5 rounded-md border font-bold text-xs shrink-0 ${scoreColor}`}>
-                        {score}% Match
+                        {badgeText}
                     </span>
                 </div>
 
