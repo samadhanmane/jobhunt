@@ -75,13 +75,37 @@ Candidate Background:
             ])
             plan = self._extract_json(response.content)
             
-            if raw_user_role and len(raw_user_role) > 2:
-                if "intern" in raw_user_role.lower() and "intern" not in plan.get("primary_query", "").lower():
-                    plan["primary_query"] = f"{plan.get('primary_query', anchor_role)} Intern"
+            exp_lvl = str(preferences.get("experience_level", "")).lower().strip()
             
+            if exp_lvl in ["intern", "0", "internship"] or "intern" in raw_user_role.lower():
+                if "intern" not in plan.get("primary_query", "").lower():
+                    plan["primary_query"] = f"{plan.get('primary_query', anchor_role)} Intern"
+                plan["secondary_queries"] = [
+                    f"{anchor_role} Intern",
+                    f"{anchor_role} Internship",
+                    f"{anchor_role} Trainee",
+                    f"{anchor_role} Apprentice"
+                ]
+            elif exp_lvl in ["entry", "1", "junior", "0-1", "entry_level"] or "junior" in raw_user_role.lower():
+                if "junior" not in plan.get("primary_query", "").lower() and "entry" not in plan.get("primary_query", "").lower():
+                    plan["primary_query"] = f"Junior {plan.get('primary_query', anchor_role)}"
+                plan["secondary_queries"] = [
+                    f"Junior {anchor_role}",
+                    f"Entry Level {anchor_role}",
+                    f"Associate {anchor_role}"
+                ]
+            elif exp_lvl in ["senior", "5+", "8+", "lead"] or "senior" in raw_user_role.lower():
+                if "senior" not in plan.get("primary_query", "").lower():
+                    plan["primary_query"] = f"Senior {plan.get('primary_query', anchor_role)}"
+                plan["secondary_queries"] = [
+                    f"Senior {anchor_role}",
+                    f"Lead {anchor_role}",
+                    f"Staff {anchor_role}"
+                ]
+
             if not user_loc or user_loc.lower() in ["remote", "worldwide", "global", "any", "all", ""]:
                 plan["location"] = ""
-                plan["remote_only"] = False
+                plan["remote_only"] = preferences.get("remote_preference") == "remote"
             else:
                 plan["location"] = user_loc
             
@@ -90,9 +114,21 @@ Candidate Background:
             print(f"Notice: Query planner fallback ({e})")
             skills = candidate_profile.get("skills", [])
             domain_kws = [w.lower() for w in anchor_role.split() if len(w) > 2] + [s.lower() for s in skills[:6]]
+            
+            exp_lvl = str(preferences.get("experience_level", "")).lower().strip()
+            if exp_lvl in ["intern", "0", "internship"] or "intern" in anchor_role.lower():
+                primary_q = f"{anchor_role} Intern" if "intern" not in anchor_role.lower() else anchor_role
+                sec_q = [f"{anchor_role} Intern", f"{anchor_role} Internship", f"{anchor_role} Trainee"]
+            elif exp_lvl in ["entry", "1", "junior"]:
+                primary_q = f"Junior {anchor_role}"
+                sec_q = [f"Junior {anchor_role}", f"Entry Level {anchor_role}", f"Associate {anchor_role}"]
+            else:
+                primary_q = anchor_role
+                sec_q = [f"{anchor_role} Remote", f"{anchor_role} Engineer", f"{anchor_role} {user_loc}"]
+
             return {
-                "primary_query": anchor_role,
-                "secondary_queries": [f"{anchor_role} Remote", f"{anchor_role} Engineer", f"{anchor_role} {user_loc}"],
+                "primary_query": primary_q,
+                "secondary_queries": sec_q,
                 "domain_keywords": list(set(domain_kws)),
                 "skills_filter": skills[:6],
                 "experience_level": preferences.get("experience_level", "Mid"),

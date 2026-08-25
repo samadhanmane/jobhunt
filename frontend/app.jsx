@@ -40,6 +40,45 @@ function isWithinDays(dateStr, days) {
     }
 }
 
+function getJobExperienceBadge(job) {
+    if (!job) return "🌱 Internship (0 Yrs)";
+    const title = (job.title || "").toLowerCase();
+    const desc = (job.description || "").toLowerCase();
+    const fit = (job.experience_fit || "").toLowerCase();
+    const req = (job.experience_required || "").toLowerCase();
+    const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
+
+    // 1. True Intern
+    if (title.includes('intern') || title.includes('internship') || title.includes('trainee') || title.includes('apprentice') || title.includes('co-op') || title.includes('student') || fit.includes('intern') || req.includes('intern')) {
+        return "🌱 Internship (0 Yrs)";
+    }
+
+    // 2. Senior / Lead / Principal
+    if (title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || minYears >= 8 || req.includes('8+')) {
+        return "🏆 Lead / Principal (8+ Yrs)";
+    }
+    if (title.includes('senior') || title.includes('sr.') || title.includes('sr ') || title.includes('lead') || minYears >= 5 || req.includes('5+') || fit.includes('senior')) {
+        return "👑 Senior (5+ Yrs)";
+    }
+
+    // 3. Entry / Fresher
+    if (title.includes('entry level') || title.includes('fresher') || title.includes('new grad') || title.includes('graduate') || req.includes('0-1') || minYears === 0 || minYears === 1) {
+        return "🚀 Entry Level (0–1 Yr)";
+    }
+
+    // 4. Junior
+    if (title.includes('junior') || title.includes('jr.') || title.includes('associate') || req.includes('1-2') || minYears === 2 || fit.includes('junior')) {
+        return "⚡ Junior (1–2 Yrs)";
+    }
+
+    // 5. Mid Level
+    if (minYears >= 3 && minYears <= 5) {
+        return `💼 Mid-Level (${minYears} Yrs)`;
+    }
+
+    return job.experience_required || "💼 Mid-Level (2–4 Yrs)";
+}
+
 function cleanHtmlJobDescription(rawHtml) {
     if (!rawHtml) return "No full description available.";
     if (typeof rawHtml !== 'string') return String(rawHtml);
@@ -872,13 +911,22 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         const activeLocation = (overrideLocation !== null ? overrideLocation : filterLocationInput).trim() || "Worldwide";
         
         let activeSeniority = "mid";
+        let searchRole = activeRole;
         if (filterSeniority !== "all") {
             activeSeniority = filterSeniority;
         } else if (filterExpYears !== "all") {
-            if (filterExpYears === "0") activeSeniority = "intern";
-            else if (filterExpYears === "1" || filterExpYears === "2") activeSeniority = "entry_level";
-            else if (filterExpYears === "3-5") activeSeniority = "mid";
-            else if (filterExpYears === "5+" || filterExpYears === "8+") activeSeniority = "senior";
+            if (filterExpYears === "0") {
+                activeSeniority = "intern";
+                if (!searchRole.toLowerCase().includes("intern")) searchRole = `${searchRole} Intern`;
+            } else if (filterExpYears === "1" || filterExpYears === "2") {
+                activeSeniority = "entry_level";
+                if (!searchRole.toLowerCase().includes("junior") && !searchRole.toLowerCase().includes("entry")) searchRole = `Junior ${searchRole}`;
+            } else if (filterExpYears === "3-5") {
+                activeSeniority = "mid";
+            } else if (filterExpYears === "5+" || filterExpYears === "8+") {
+                activeSeniority = "senior";
+                if (!searchRole.toLowerCase().includes("senior")) searchRole = `Senior ${searchRole}`;
+            }
         } else if (resumeProfile?.seniority) {
             activeSeniority = resumeProfile.seniority.toLowerCase();
         }
@@ -886,7 +934,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         const activeRemote = filterWorkMode !== "all" ? filterWorkMode : "any";
 
         const formData = new FormData();
-        formData.append("role", activeRole);
+        formData.append("role", searchRole);
         formData.append("location", activeLocation);
         formData.append("experience_level", activeSeniority);
         formData.append("remote_preference", activeRemote);
@@ -1297,20 +1345,22 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             // 5. Granular Experience Level & Seniority Fit (Only apply if explicitly selected by user)
             if (filterExpYears !== 'all' || filterSeniority !== 'all') {
                 const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
-                const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || desc.includes('5+ year') || desc.includes('6+ year') || desc.includes('7+ year') || desc.includes('8+ year') || desc.includes('4+ year') || minYears >= 4;
-                const isInternRole = title.includes('intern') || title.includes('trainee') || title.includes('apprentice') || title.includes('fresher') || title.includes('student') || title.includes('co-op') || title.includes('graduate') || title.includes('entry') || title.includes('junior') || title.includes('associate') || fit.includes('intern') || fit.includes('trainee') || fit.includes('entry') || fit.includes('junior') || expReq.includes('intern') || expReq.includes('0') || expReq.includes('1') || minYears <= 1 || minYears === -1;
-                const isJuniorRole = (title.includes('junior') || title.includes('entry') || title.includes('associate') || title.includes('graduate') || fit.includes('entry') || fit.includes('junior') || fit.includes('graduate') || expReq.includes('1 yr') || expReq.includes('2 yr') || minYears <= 2 || isInternRole) && !isSeniorRole;
+                const isTrueIntern = title.includes('intern') || title.includes('internship') || title.includes('trainee') || title.includes('apprentice') || title.includes('co-op') || title.includes('student') || fit.includes('intern') || expReq.includes('intern');
+                const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('sr ') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fit.includes('senior') || fit.includes('lead') || minYears >= 5;
+                const isEntryRole = (title.includes('entry') || title.includes('fresher') || title.includes('graduate') || title.includes('new grad') || expReq.includes('0-1') || expReq.includes('1 yr') || minYears === 0 || minYears === 1) && !isSeniorRole;
+                const isJuniorRole = (title.includes('junior') || title.includes('jr.') || title.includes('associate') || expReq.includes('1-2') || expReq.includes('2 yr') || minYears === 2) && !isSeniorRole;
+                const requiresYears = minYears >= 2 || desc.includes('2+ year') || desc.includes('3+ year') || desc.includes('4+ year') || desc.includes('5+ year') || desc.includes('2-4 year') || desc.includes('3-5 year');
 
-                if (filterExpYears === '0' && (!isInternRole || isSeniorRole)) return false;
-                if (filterExpYears === '1' && (minYears > 2 || isSeniorRole)) return false;
-                if (filterExpYears === '2' && (minYears > 3 || isSeniorRole)) return false;
-                if (filterExpYears === '3-5' && (minYears < 2 || minYears > 6 || isInternRole)) return false;
-                if (filterExpYears === '5+' && !isSeniorRole && minYears < 4) return false;
-                if (filterExpYears === '8+' && minYears < 7 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff')) return false;
+                if (filterExpYears === '0' && (!isTrueIntern || requiresYears || isSeniorRole)) return false;
+                if (filterExpYears === '1' && (!isEntryRole || isTrueIntern || isSeniorRole || minYears > 1)) return false;
+                if (filterExpYears === '2' && (!isJuniorRole || isTrueIntern || isSeniorRole || minYears > 2)) return false;
+                if (filterExpYears === '3-5' && (minYears < 2 || minYears > 5 || isTrueIntern || title.includes('principal') || title.includes('staff'))) return false;
+                if (filterExpYears === '5+' && (!isSeniorRole && minYears < 4)) return false;
+                if (filterExpYears === '8+' && (minYears < 7 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff'))) return false;
 
                 // Seniority dropdown fallback
-                if (filterSeniority === 'intern' && (!isInternRole || isSeniorRole)) return false;
-                if (filterSeniority === 'junior' && (!isJuniorRole || isSeniorRole)) return false;
+                if (filterSeniority === 'intern' && (!isTrueIntern || requiresYears || isSeniorRole)) return false;
+                if (filterSeniority === 'junior' && (!isJuniorRole && !isEntryRole || isSeniorRole)) return false;
                 if (filterSeniority === 'senior' && !isSeniorRole) return false;
             }
 
@@ -2128,7 +2178,7 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                     {/* Exact Required Experience Badge */}
                     <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
-                        ⏳ Exp: {job.experience_required || job.experience_fit || '🌱 Internship (0 Yrs)'}
+                        ⏳ Exp: {getJobExperienceBadge(job)}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
                         🔗 {job.source || 'Direct'}
@@ -2344,11 +2394,11 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                 <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
                                     <span>⏳ Experience & Seniority Requirements</span>
                                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold shadow-sm">
-                                        {job.experience_required || job.experience_fit || '🌱 Internship (0 Yrs)'}
+                                        {getJobExperienceBadge(job)}
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
-                                    <div><strong className="text-slate-400">Experience Needed:</strong> <span className="text-white font-semibold">{job.experience_required || '0–1 Yrs (Entry Level)'}</span></div>
+                                    <div><strong className="text-slate-400">Experience Needed:</strong> <span className="text-white font-semibold">{getJobExperienceBadge(job)}</span></div>
                                     <div><strong className="text-slate-400">AI Seniority Fit:</strong> <span className="text-indigo-300 font-semibold">{job.experience_fit || 'Good Fit'}</span></div>
                                 </div>
                             </div>

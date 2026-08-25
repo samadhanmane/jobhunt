@@ -59,46 +59,58 @@ def extract_job_experience_metadata(title: str, description: str, experience_fit
     """
     Extracts the exact required experience string, numeric minimum years, and seniority level.
     """
-    title_l = (title or "").lower()
+    title_l = (title or "").lower().strip()
     desc_l = (description or "").lower()
     fit_l = (experience_fit or "").lower()
 
+    # 1. Direct Title & Role Classification (Highest Accuracy)
     if any(w in title_l for w in ["intern", "internship", "trainee", "apprentice", "student", "co-op"]) or "intern" in fit_l:
         return {"experience_required": "🌱 Internship (0 Yrs)", "min_experience_years": 0, "seniority_level": "intern"}
 
-    plus_matches = re.findall(r'(\d+)\s*\+\s*(?:years?|yrs?)\b', desc_l)
-    min_matches = re.findall(r'(?:minimum|min\.?|at\s+least|requires?|require|with)\s*(\d+)\s*\+?\s*(?:years?|yrs?)\b', desc_l)
-    range_matches = re.findall(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:years?|yrs?)\b', desc_l)
+    if any(w in title_l for w in ["senior", "sr.", "sr ", "lead", "staff", "principal", "architect", "director", "head of", "vp "]) or "senior" in fit_l or "lead" in fit_l:
+        is_lead = any(w in title_l for w in ["lead", "principal", "staff", "architect", "director", "head of"])
+        min_y = 8 if is_lead else 5
+        label = "🏆 8+ Yrs (Lead / Principal)" if is_lead else "👑 5+ Yrs (Senior)"
+        return {"experience_required": label, "min_experience_years": min_y, "seniority_level": "lead" if is_lead else "senior"}
 
-    found_years = []
-    for m in plus_matches:
-        val = int(m)
-        if 1 <= val <= 25: found_years.append(val)
-    for m in min_matches:
-        val = int(m)
-        if 1 <= val <= 25: found_years.append(val)
-    for m in range_matches:
-        val = int(m[0])
-        if 1 <= val <= 25: found_years.append(val)
+    if any(w in title_l for w in ["entry level", "fresher", "new grad", "graduate", "junior", "jr.", "associate 1"]) or "entry" in fit_l:
+        return {"experience_required": "🚀 0–1 Yr (Entry Level)", "min_experience_years": 1, "seniority_level": "entry"}
 
-    if found_years:
-        req = max(found_years)
-        if req == 0:
-            return {"experience_required": "🌱 0 Yrs (Fresher)", "min_experience_years": 0, "seniority_level": "intern"}
-        elif req == 1:
-            return {"experience_required": "🚀 1 Yr (Entry Level)", "min_experience_years": 1, "seniority_level": "entry"}
-        elif req == 2:
-            return {"experience_required": "⚡ 2 Yrs (Junior)", "min_experience_years": 2, "seniority_level": "junior"}
-        elif req <= 5:
-            return {"experience_required": f"💼 {req}+ Yrs (Mid-Level)", "min_experience_years": req, "seniority_level": "mid"}
-        elif req <= 8:
-            return {"experience_required": f"👑 {req}+ Yrs (Senior)", "min_experience_years": req, "seniority_level": "senior"}
-        else:
-            return {"experience_required": f"🏆 {req}+ Yrs (Lead / Principal)", "min_experience_years": req, "seniority_level": "lead"}
+    # 2. Targeted Requirement Pattern Extraction from Description
+    req_patterns = [
+        r'(?:require[sd]?|requirement[s]?|qualification[s]?|experience|minimum|at\s+least|with)\s*(?:of)?\s*(\d+)(?:\s*(?:to|-)\s*(\d+))?\s*\+?\s*(?:years?|yrs?)\b',
+        r'(\d+)\s*\+\s*(?:years?|yrs?)\s*(?:of)?\s*(?:relevant|hands-on|industry|work)?\s*experience\b',
+        r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:years?|yrs?)\s*(?:of)?\s*(?:relevant|hands-on|industry|work)?\s*experience\b'
+    ]
 
-    if any(w in title_l for w in ["entry", "junior", "associate", "graduate"]) or "junior" in fit_l or "entry" in fit_l:
-        return {"experience_required": "🚀 0–2 Yrs (Junior)", "min_experience_years": 1, "seniority_level": "junior"}
-    if any(w in title_l for w in ["senior", "sr.", "sr ", "lead", "staff", "principal", "architect", "director", "head of"]) or "senior" in fit_l or "lead" in fit_l:
-        return {"experience_required": "👑 5+ Yrs (Senior)", "min_experience_years": 5, "seniority_level": "senior"}
+    found_min_years = []
+    for pat in req_patterns:
+        matches = re.findall(pat, desc_l)
+        for m in matches:
+            if isinstance(m, tuple):
+                val_str = m[0]
+            else:
+                val_str = m
+            try:
+                val = int(val_str)
+                if 0 <= val <= 20:
+                    found_min_years.append(val)
+            except Exception:
+                pass
 
-    return {"experience_required": "💼 1–3 Yrs (Mid-Level)", "min_experience_years": 2, "seniority_level": "mid"}
+    if found_min_years:
+        min_y = min(found_min_years)
+        if min_y == 0:
+            return {"experience_required": "🌱 0 Yrs (Fresher / Intern)", "min_experience_years": 0, "seniority_level": "intern"}
+        elif min_y == 1:
+            return {"experience_required": "🚀 0–1 Yr (Entry Level)", "min_experience_years": 1, "seniority_level": "entry"}
+        elif min_y == 2:
+            return {"experience_required": "⚡ 1–2 Yrs (Junior)", "min_experience_years": 2, "seniority_level": "junior"}
+        elif 3 <= min_y <= 5:
+            return {"experience_required": f"💼 {min_y}–5 Yrs (Mid-Level)", "min_experience_years": min_y, "seniority_level": "mid"}
+        elif 6 <= min_y <= 7:
+            return {"experience_required": f"👑 {min_y}+ Yrs (Senior)", "min_experience_years": min_y, "seniority_level": "senior"}
+        elif min_y >= 8:
+            return {"experience_required": f"🏆 {min_y}+ Yrs (Lead / Principal)", "min_experience_years": min_y, "seniority_level": "lead"}
+
+    return {"experience_required": "💼 2–4 Yrs (Mid-Level)", "min_experience_years": 2, "seniority_level": "mid"}

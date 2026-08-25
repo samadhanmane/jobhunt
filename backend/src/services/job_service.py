@@ -508,9 +508,19 @@ class JobService:
             domain_keywords = plan.get("domain_keywords", []) or []
             secondary_queries = plan.get("secondary_queries", [])
             raw_user_role = preferences.get("role", "").strip()
+            exp_lvl = str(preferences.get("experience_level", "")).lower().strip()
+
+            if exp_lvl in ["intern", "0", "internship"] or "intern" in raw_user_role.lower():
+                extra_variants = [f"{raw_user_role} Intern", f"{primary_query} Remote", f"{raw_user_role} Internship", f"{raw_user_role} Trainee", f"{primary_query} 2026"]
+            elif exp_lvl in ["entry", "1", "junior", "0-1", "entry_level"] or "junior" in raw_user_role.lower():
+                extra_variants = [f"Junior {raw_user_role}", f"Entry Level {raw_user_role}", f"Associate {raw_user_role}", f"{primary_query} Remote"]
+            elif exp_lvl in ["senior", "5+", "8+", "lead"] or "senior" in raw_user_role.lower():
+                extra_variants = [f"Senior {raw_user_role}", f"Lead {raw_user_role}", f"Staff {raw_user_role}", f"{primary_query} Remote"]
+            else:
+                extra_variants = [f"{raw_user_role} Specialist", f"{primary_query} Remote", f"{primary_query} Worldwide", f"{raw_user_role} Developer"]
 
             additional_queries = []
-            for q in secondary_queries + [f"{raw_user_role} Specialist", f"{primary_query} Remote", f"{primary_query} Worldwide", f"{raw_user_role} Developer", f"{primary_query} Associate"]:
+            for q in secondary_queries + extra_variants:
                 if q and isinstance(q, str):
                     cleaned_q = q.strip()
                     if cleaned_q and len(cleaned_q) > 2 and cleaned_q.lower() not in [sq.lower() for sq in additional_queries]:
@@ -519,7 +529,7 @@ class JobService:
             query_batches = [
                 additional_queries[:2],
                 additional_queries[2:5],
-                [f"{raw_user_role} Engineer", f"{primary_query}"]
+                [primary_query, f"{raw_user_role} Remote"]
             ]
 
             seen_urls = set(initial_seen_urls)
