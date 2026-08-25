@@ -924,6 +924,23 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const [allRawJobs, setAllRawJobs] = useState([]);
     const [searchStats, setSearchStats] = useState({ total_found: 0, unique_count: 0 });
 
+    // Mutable refs to prevent asynchronous batching loss in merge operations
+    const allMatchedJobsRef = useRef([]);
+    const allUniqueJobsRef = useRef([]);
+    const allRawJobsRef = useRef([]);
+
+    useEffect(() => {
+        allMatchedJobsRef.current = allMatchedJobs;
+    }, [allMatchedJobs]);
+
+    useEffect(() => {
+        allUniqueJobsRef.current = allUniqueJobs;
+    }, [allUniqueJobs]);
+
+    useEffect(() => {
+        allRawJobsRef.current = allRawJobs;
+    }, [allRawJobs]);
+
     // Selected Job for Detailed Modal
     const [selectedJob, setSelectedJob] = useState(null);
 
@@ -1143,8 +1160,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             setAllMatchedJobs([]);
             setAllUniqueJobs([]);
             setAllRawJobs([]);
+            allMatchedJobsRef.current = [];
+            allUniqueJobsRef.current = [];
+            allRawJobsRef.current = [];
+            setCurrentSearchId("");
             setSearchStats({ total_found: 0, unique_count: 0 });
             JobDB.clearPool();
+            try {
+                localStorage.removeItem("jobhunt_active_search_id");
+            } catch (e) {}
             showToast("Job pool cleared. Ready for fresh location harvests!");
         }
     };
@@ -1174,12 +1198,27 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             // Load full accumulated pool from IndexedDB
             JobDB.loadPool().then((savedSearch) => {
                 if (savedSearch) {
-                    if (savedSearch.matched?.length) setAllMatchedJobs(savedSearch.matched);
-                    if (savedSearch.unique?.length) setAllUniqueJobs(savedSearch.unique);
-                    if (savedSearch.raw?.length) setAllRawJobs(savedSearch.raw);
+                    if (savedSearch.matched?.length) {
+                        setAllMatchedJobs(savedSearch.matched);
+                        allMatchedJobsRef.current = savedSearch.matched;
+                    }
+                    if (savedSearch.unique?.length) {
+                        setAllUniqueJobs(savedSearch.unique);
+                        allUniqueJobsRef.current = savedSearch.unique;
+                    }
+                    if (savedSearch.raw?.length) {
+                        setAllRawJobs(savedSearch.raw);
+                        allRawJobsRef.current = savedSearch.raw;
+                    }
                     if (savedSearch.stats) setSearchStats(savedSearch.stats);
                 }
             });
+
+            // Restore active search ID for continuous live streaming if in-progress
+            const savedSearchId = localStorage.getItem("jobhunt_active_search_id");
+            if (savedSearchId) {
+                setCurrentSearchId(savedSearchId);
+            }
 
             // Load applied jobs tracker
             const savedApplied = localStorage.getItem("jobhunt_applied_jobs");
@@ -1276,27 +1315,26 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             const data = await res.json();
             if (res.ok && data.status === 'success') {
                 setCurrentSearchId(data.search_id);
+                try {
+                    localStorage.setItem("jobhunt_active_search_id", data.search_id);
+                } catch (e) {}
+
                 const incomingMatched = data.jobs || [];
                 const incomingUnique = data.unique_jobs || data.all_jobs || incomingMatched;
                 const incomingRaw = data.raw_jobs || incomingUnique;
 
-                let mergedMatched = [];
-                let mergedUnique = [];
-                let mergedRaw = [];
+                // Accumulate and combine with existing jobs using synchronous refs
+                const mergedMatched = mergeJobList(allMatchedJobsRef.current, incomingMatched);
+                const mergedUnique = mergeJobList(allUniqueJobsRef.current, incomingUnique);
+                const mergedRaw = mergeJobList(allRawJobsRef.current, incomingRaw);
 
-                // Accumulate and combine with existing jobs on frontend
-                setAllMatchedJobs(prev => {
-                    mergedMatched = mergeJobList(prev, incomingMatched);
-                    return mergedMatched;
-                });
-                setAllUniqueJobs(prev => {
-                    mergedUnique = mergeJobList(prev, incomingUnique);
-                    return mergedUnique;
-                });
-                setAllRawJobs(prev => {
-                    mergedRaw = mergeJobList(prev, incomingRaw);
-                    return mergedRaw;
-                });
+                allMatchedJobsRef.current = mergedMatched;
+                allUniqueJobsRef.current = mergedUnique;
+                allRawJobsRef.current = mergedRaw;
+
+                setAllMatchedJobs(mergedMatched);
+                setAllUniqueJobs(mergedUnique);
+                setAllRawJobs(mergedRaw);
 
                 const newStats = {
                     total_found: mergedRaw.length,
@@ -1304,7 +1342,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 };
                 setSearchStats(newStats);
 
-                // Save combined pool to localStorage
+                // Save combined pool reliably to IndexedDB and localStorage
                 persistSearchData(data.search_id, mergedMatched, mergedUnique, mergedRaw, newStats);
 
                 // Start continuous background harvesting
@@ -1325,7 +1363,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         if (!currentSearchId) return;
 
         let pollCount = 0;
-        const maxPolls = 25; // 25 polls * 2.5s = ~62s of continuous streaming
+        const maxPolls = 35; // 35 polls * 2s = ~70s of continuous streaming
 
         const pollInterval = setInterval(async () => {
             pollCount++;
@@ -1340,22 +1378,17 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 if (res.ok) {
                     const data = await res.json();
                     if (data.raw_jobs && data.raw_jobs.length > 0) {
-                        let streamMergedRaw = [];
-                        let streamMergedUnique = [];
-                        let streamMergedMatched = [];
+                        const streamMergedRaw = mergeJobList(allRawJobsRef.current, data.raw_jobs || []);
+                        const streamMergedUnique = mergeJobList(allUniqueJobsRef.current, data.unique_jobs || []);
+                        const streamMergedMatched = mergeJobList(allMatchedJobsRef.current, data.jobs || []);
 
-                        setAllRawJobs(prev => {
-                            streamMergedRaw = mergeJobList(prev, data.raw_jobs || []);
-                            return streamMergedRaw;
-                        });
-                        setAllUniqueJobs(prev => {
-                            streamMergedUnique = mergeJobList(prev, data.unique_jobs || []);
-                            return streamMergedUnique;
-                        });
-                        setAllMatchedJobs(prev => {
-                            streamMergedMatched = mergeJobList(prev, data.jobs || []);
-                            return streamMergedMatched;
-                        });
+                        allRawJobsRef.current = streamMergedRaw;
+                        allUniqueJobsRef.current = streamMergedUnique;
+                        allMatchedJobsRef.current = streamMergedMatched;
+
+                        setAllRawJobs(streamMergedRaw);
+                        setAllUniqueJobs(streamMergedUnique);
+                        setAllMatchedJobs(streamMergedMatched);
 
                         const updatedStats = {
                             total_found: streamMergedRaw.length,
@@ -1363,7 +1396,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         };
                         setSearchStats(updatedStats);
 
-                        // Persist combined live streaming updates
+                        // Persist combined live streaming updates reliably
                         persistSearchData(currentSearchId, streamMergedMatched, streamMergedUnique, streamMergedRaw, updatedStats);
 
                         // Keep modal contacts synced
@@ -1376,13 +1409,13 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         }
                     }
 
-                    if (data.status === 'completed' && pollCount > 4) {
+                    if (data.status === 'completed' && pollCount > 6) {
                         setIsHarvestingLive(false);
                         clearInterval(pollInterval);
                     }
                 }
             } catch (err) { }
-        }, 2500);
+        }, 2000);
 
         return () => clearInterval(pollInterval);
     }, [currentSearchId]);
@@ -1537,15 +1570,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     const filteredJobs = useMemo(() => {
         let sourceList = [];
         if (jobScope === 'raw') {
-            sourceList = allRawJobs;
+            sourceList = (allRawJobs && allRawJobs.length > 0) ? allRawJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allMatchedJobs);
         } else if (jobScope === 'unique') {
-            sourceList = allUniqueJobs;
+            sourceList = (allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : ((allRawJobs && allRawJobs.length > 0) ? allRawJobs : allMatchedJobs);
         } else if (jobScope === 'curated') {
-            sourceList = allMatchedJobs;
+            sourceList = (allMatchedJobs && allMatchedJobs.length > 0) ? allMatchedJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allRawJobs);
         } else if (jobScope === 'applied') {
             sourceList = appliedJobs;
         } else {
-            sourceList = allMatchedJobs;
+            sourceList = (allMatchedJobs && allMatchedJobs.length > 0) ? allMatchedJobs : ((allUniqueJobs && allUniqueJobs.length > 0) ? allUniqueJobs : allRawJobs);
         }
 
         return (sourceList || []).filter(job => {
