@@ -19,6 +19,82 @@ MISMATCHED_DOMAINS = [
     "real estate", "property manager"
 ]
 
+INDIA_CITIES = {"pune", "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai", "noida", "gurgaon", "kolkata", "ahmedabad", "india"}
+US_TOKENS = ["united states", "usa", "u.s.", "san francisco", "new york", "austin", "seattle", "boston", "chicago", "california", "texas", ", ca", ", tx", ", ny", ", wa", ", ma", "us remote", "remote us", "remote, us", "us only"]
+EU_TOKENS = ["germany", "berlin", "munich", "london", "united kingdom", "uk", "france", "paris", "netherlands", "amsterdam", "poland"]
+
+def is_job_location_match(job_location: str, pref_location: str, pref_work_mode: str = "any", job_source: str = "") -> bool:
+    """Strictly evaluates if a job location is compatible with user's target location & work mode."""
+    job_loc = (job_location or "").lower().strip()
+    pref_loc = (pref_location or "").lower().strip()
+    work_mode = (pref_work_mode or "any").lower().strip()
+
+    # Normalize worldwide / empty
+    if not pref_loc or pref_loc in ["worldwide", "global", "all", "any"]:
+        if work_mode == "remote":
+            return "remote" in job_loc or "wfh" in job_loc or job_source in ["himalayas", "jobicy", "remoteok"] or "anywhere" in job_loc
+        elif work_mode == "onsite":
+            return not ("remote" in job_loc or "wfh" in job_loc or "anywhere" in job_loc)
+        return True
+
+    is_pref_india = any(c in pref_loc for c in INDIA_CITIES)
+    is_pref_us = any(u in pref_loc for u in ["united states", "usa", "us", "san francisco", "austin", "new york", "seattle", "california", "texas"])
+
+    is_job_remote = "remote" in job_loc or "wfh" in job_loc or "anywhere" in job_loc or "worldwide" in job_loc or job_source in ["himalayas", "jobicy", "remoteok"]
+    is_job_us_restricted = any(u in job_loc for u in US_TOKENS)
+
+    # 1. Target is an Indian location (e.g. Pune, Bangalore, India)
+    if is_pref_india:
+        # If job is explicitly US or European and not in India, REJECT
+        if (is_job_us_restricted or any(e in job_loc for e in EU_TOKENS)) and not any(c in job_loc for c in INDIA_CITIES):
+            return False
+
+        # Direct token match (e.g. "pune" in "pune, maharashtra")
+        pref_tokens = [t for t in pref_loc.replace(",", " ").split() if len(t) > 2]
+        matches_direct = any(t in job_loc for t in pref_tokens)
+        if matches_direct:
+            if work_mode == "remote" and not is_job_remote:
+                return False
+            if work_mode == "onsite" and is_job_remote and not matches_direct:
+                return False
+            return True
+
+        # If job is general remote
+        if is_job_remote:
+            if work_mode == "onsite":
+                return False
+            if is_job_us_restricted:
+                return False
+            return True
+
+        return False
+
+    # 2. Target is US location
+    if is_pref_us:
+        if any(c in job_loc for c in INDIA_CITIES) and not any(u in job_loc for u in US_TOKENS):
+            return False
+        pref_tokens = [t for t in pref_loc.replace(",", " ").split() if len(t) > 2]
+        matches_direct = any(t in job_loc for t in pref_tokens)
+        if matches_direct:
+            if work_mode == "remote" and not is_job_remote:
+                return False
+            return True
+        if is_job_remote and work_mode != "onsite":
+            return True
+        return False
+
+    # 3. Other specific location
+    pref_tokens = [t for t in pref_loc.replace(",", " ").split() if len(t) > 2]
+    matches_direct = any(t in job_loc for t in pref_tokens)
+    if matches_direct:
+        if work_mode == "remote" and not is_job_remote:
+            return False
+        return True
+    if is_job_remote and work_mode != "onsite":
+        return not is_job_us_restricted
+
+    return False
+
 class RankingAgent(BaseJobAgent):
     def __init__(self, llm=None):
         super().__init__(llm)
@@ -257,35 +333,14 @@ class RankingAgent(BaseJobAgent):
         loc_tokens = [w for w in pref_loc.replace(",", " ").split() if len(w) > 2 and w not in ["remote", "any", "worldwide", "all", "global"]]
         pref_work_mode = str(preferences.get("remote_preference", preferences.get("work_mode", "any"))).lower().strip()
 
-        # Step 1: Preference Pre-Filter (Location keywords & Work Mode)
+        # Step 1: Strict Preference Pre-Filter (Location & Work Mode)
         valid_candidates = []
         for job in jobs:
             job_loc = str(job.get("location", "")).lower()
-            is_job_remote = "remote" in job_loc or "wfh" in job_loc or "work from home" in job_loc or job.get("source") == "himalayas" or "anywhere" in job_loc or "worldwide" in job_loc
+            job_src = str(job.get("source", "")).lower()
             
-            # Location token matching
-            is_loc_match = any(t in job_loc for t in loc_tokens) if loc_tokens else True
-
-            if pref_work_mode == "remote":
-                # Accept if job is remote OR matches requested city
-                if not (is_job_remote or is_loc_match):
-                    continue
-            elif pref_work_mode == "onsite":
-                if is_job_remote:
-                    continue
-                if loc_tokens and not is_loc_match:
-                    continue
-            else:
-                # Any work mode: accept if matches location OR is remote OR location is general
-                if loc_tokens and not (is_loc_match or is_job_remote or not job_loc or job_loc == "n/a"):
-                    continue
-
-            valid_candidates.append(job)
-
-        # Fallback: If pre-filter yielded 0 candidates, fallback to all scraped jobs so search never returns 0 results
-        if not valid_candidates and jobs:
-            print("[RankingAgent] Notice: Pre-filter matched 0 candidates. Preserving all scraped jobs.")
-            valid_candidates = jobs
+            if is_job_location_match(job_loc, pref_loc, pref_work_mode, job_src):
+                valid_candidates.append(job)
 
         active_jobs = valid_candidates
             

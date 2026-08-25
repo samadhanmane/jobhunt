@@ -82,12 +82,12 @@ function getJobExperienceBadge(job) {
 function cleanHtmlJobDescription(rawHtml) {
     if (!rawHtml) return "No full description available.";
     if (typeof rawHtml !== 'string') return String(rawHtml);
-    
+
     // If no HTML tags present, return clean plain text
     if (!rawHtml.includes("<") && !rawHtml.includes(">")) {
         return rawHtml.trim();
     }
-    
+
     try {
         let text = rawHtml;
         // Strip dangerous / irrelevant tags
@@ -100,12 +100,12 @@ function cleanHtmlJobDescription(rawHtml) {
         text = text.replace(/<\/(h[1-6])>/gi, '\n');
         text = text.replace(/<\/(p|div|ul|ol|table|tr|section|article)>/gi, '\n\n');
         text = text.replace(/<(p|div|ul|ol|table|tr|section|article)[^>]*>/gi, '\n');
-        
+
         // Strip remaining HTML tags
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = text;
         let cleaned = tempDiv.textContent || tempDiv.innerText || '';
-        
+
         // Clean multiple blank lines
         const lines = cleaned.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim());
         const result = [];
@@ -207,17 +207,17 @@ function App() {
         fetch(`${API_BASE_URL}/api/v1/auth/linkedin-cookie-status`, {
             headers: { 'Authorization': `Bearer ${token}` }
         })
-        .then(res => res.json())
-        .then(data => {
-            if (data) {
-                setCookieStatusInfo(data);
-                // If cookie expired, trigger modal popup automatically
-                if (data.cookie_status === 'expired') {
-                    showToast("⚠️ Your LinkedIn cookie has expired. Please update it.", "error");
+            .then(res => res.json())
+            .then(data => {
+                if (data) {
+                    setCookieStatusInfo(data);
+                    // If cookie expired, trigger modal popup automatically
+                    if (data.cookie_status === 'expired') {
+                        showToast("⚠️ Your LinkedIn cookie has expired. Please update it.", "error");
+                    }
                 }
-            }
-        })
-        .catch(() => {});
+            })
+            .catch(() => { });
     };
 
     useEffect(() => {
@@ -225,18 +225,18 @@ function App() {
             fetch(`${API_BASE_URL}/api/v1/auth/me`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
-            .then(res => {
-                if (!res.ok) throw new Error("Invalid session");
-                return res.json();
-            })
-            .then(data => {
-                setCurrentUser(data.user);
-                localStorage.setItem("jobagent_user", JSON.stringify(data.user));
-                refreshCookieStatus();
-            })
-            .catch(() => {
-                handleLogout();
-            });
+                .then(res => {
+                    if (!res.ok) throw new Error("Invalid session");
+                    return res.json();
+                })
+                .then(data => {
+                    setCurrentUser(data.user);
+                    localStorage.setItem("jobagent_user", JSON.stringify(data.user));
+                    refreshCookieStatus();
+                })
+                .catch(() => {
+                    handleLogout();
+                });
         }
     }, [token]);
 
@@ -268,13 +268,13 @@ function App() {
     return (
         <div className="flex-1 flex flex-col min-h-screen">
             {/* Minimal Nav Header */}
-            <Navbar 
-                user={currentUser} 
-                activeTab={activeTab} 
-                setActiveTab={setActiveTab} 
+            <Navbar
+                user={currentUser}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
                 cookieStatusInfo={cookieStatusInfo}
                 onOpenCookieModal={() => setCookieModalOpen(true)}
-                onLogout={handleLogout} 
+                onLogout={handleLogout}
             />
 
             {/* Cookie Expiry Banner if Expired */}
@@ -282,7 +282,7 @@ function App() {
                 <div className="bg-rose-950/80 border-b border-rose-500/30 px-4 py-2 text-center text-xs text-rose-200 flex items-center justify-center gap-2">
                     <span>⚠️</span>
                     <span><strong>Action Required:</strong> Your LinkedIn session cookie has expired.</span>
-                    <button 
+                    <button
                         onClick={() => setCookieModalOpen(true)}
                         className="px-2 py-0.5 rounded bg-rose-900/60 hover:bg-rose-900 text-white font-semibold underline"
                     >
@@ -294,11 +294,10 @@ function App() {
             {/* Toast Notification */}
             {toast && (
                 <div className="fixed bottom-6 right-6 z-50 animate-fade-in">
-                    <div className={`px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md flex items-center gap-2.5 border text-xs font-medium ${
-                        toast.type === 'error' 
-                            ? 'bg-rose-950/90 border-rose-500/30 text-rose-200' 
+                    <div className={`px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md flex items-center gap-2.5 border text-xs font-medium ${toast.type === 'error'
+                            ? 'bg-rose-950/90 border-rose-500/30 text-rose-200'
                             : 'bg-emerald-950/90 border-emerald-500/30 text-emerald-200'
-                    }`}>
+                        }`}>
                         <span>{toast.type === 'error' ? '✕' : '✓'}</span>
                         <span>{toast.message}</span>
                     </div>
@@ -308,21 +307,21 @@ function App() {
             {/* Main Content Area */}
             <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {activeTab === 'search' && (
-                    <JobSearchDashboard 
-                        token={token} 
-                        user={currentUser} 
+                    <JobSearchDashboard
+                        token={token}
+                        user={currentUser}
                         cookieStatusInfo={cookieStatusInfo}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
-                        showToast={showToast} 
+                        showToast={showToast}
                     />
                 )}
                 {activeTab === 'alerts' && (
-                    <EmailAlertsView 
-                        token={token} 
-                        user={currentUser} 
+                    <EmailAlertsView
+                        token={token}
+                        user={currentUser}
                         cookieStatusInfo={cookieStatusInfo}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
-                        showToast={showToast} 
+                        showToast={showToast}
                     />
                 )}
                 {activeTab === 'admin' && currentUser.role === 'admin' && (
@@ -332,7 +331,7 @@ function App() {
 
             {/* LinkedIn Cookie Modal */}
             {cookieModalOpen && (
-                <LinkedInCookieModal 
+                <LinkedInCookieModal
                     token={token}
                     cookieStatusInfo={cookieStatusInfo}
                     onClose={() => setCookieModalOpen(false)}
@@ -399,38 +398,35 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
 
                 {/* Tab Navigation */}
                 <nav className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-white/[0.08]">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('search')}
-                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                            activeTab === 'search' 
-                                ? 'bg-indigo-600/90 text-white shadow-sm' 
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'search'
+                                ? 'bg-indigo-600/90 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-                        }`}
+                            }`}
                     >
                         <span>🔍</span>
                         <span>Job Search</span>
                     </button>
 
-                    <button 
+                    <button
                         onClick={() => setActiveTab('alerts')}
-                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                            activeTab === 'alerts' 
-                                ? 'bg-indigo-600/90 text-white shadow-sm' 
+                        className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'alerts'
+                                ? 'bg-indigo-600/90 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-                        }`}
+                            }`}
                     >
                         <span>⏰</span>
                         <span>Email Alerts</span>
                     </button>
 
                     {user.role === 'admin' && (
-                        <button 
+                        <button
                             onClick={() => setActiveTab('admin')}
-                            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                                activeTab === 'admin' 
-                                    ? 'bg-slate-700 text-white shadow-sm' 
+                            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'admin'
+                                    ? 'bg-slate-700 text-white shadow-sm'
                                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-                            }`}
+                                }`}
                         >
                             <span>🛡️</span>
                             <span>Admin Portal</span>
@@ -441,7 +437,7 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
                 {/* User Menu, LinkedIn Cookie Button & Logout */}
                 <div className="flex items-center gap-2 sm:gap-3">
                     {/* LinkedIn Cookie Status Pill */}
-                    <button 
+                    <button
                         onClick={onOpenCookieModal}
                         title="Configure your LinkedIn session cookie for authenticated recruiter scraping"
                         className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${cookieBadge.color}`}
@@ -453,16 +449,15 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, onOpenCookieM
 
                     <div className="hidden md:flex items-center gap-2 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs">
                         <span className="text-slate-300 font-medium">{user.email}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            user.role === 'admin' 
-                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' 
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${user.role === 'admin'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                 : 'bg-slate-800 text-slate-300 border border-white/10'
-                        }`}>
+                            }`}>
                             {user.role}
                         </span>
                     </div>
 
-                    <button 
+                    <button
                         onClick={onLogout}
                         title="Sign Out"
                         className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-xs font-medium transition-all"
@@ -592,21 +587,20 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                 </div>
 
                 {/* Status Callout Banner */}
-                <div className={`p-3 rounded-xl border flex items-start gap-2.5 ${
-                    currentStatus === 'active' 
-                        ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-200' 
-                        : currentStatus === 'expired' 
-                        ? 'bg-rose-950/80 border-rose-500/40 text-rose-200'
-                        : 'bg-slate-900 border-white/10 text-slate-300'
-                }`}>
+                <div className={`p-3 rounded-xl border flex items-start gap-2.5 ${currentStatus === 'active'
+                        ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-200'
+                        : currentStatus === 'expired'
+                            ? 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                            : 'bg-slate-900 border-white/10 text-slate-300'
+                    }`}>
                     <span className="text-base">{currentStatus === 'active' ? '✓' : (currentStatus === 'expired' ? '⚠️' : 'ℹ️')}</span>
                     <div className="flex-1 space-y-0.5">
                         <div className="font-bold text-xs capitalize">
                             Status: {currentStatus === 'active' ? 'Active & Authenticated' : (currentStatus === 'expired' ? 'Expired (Action Required)' : 'Unconfigured / Stealth Mode')}
                         </div>
                         <div className="text-[11px] opacity-90 leading-relaxed">
-                            {statusMsg || (currentStatus === 'active' 
-                                ? 'Your LinkedIn cookie is verified and active for live candidate searches.' 
+                            {statusMsg || (currentStatus === 'active'
+                                ? 'Your LinkedIn cookie is verified and active for live candidate searches.'
                                 : 'Without a cookie, the system uses public search dorking. Adding your cookie enables direct Voyager profile extraction.')}
                         </div>
                     </div>
@@ -631,7 +625,7 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                         <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                             Paste <code>li_at</code> Cookie Value:
                         </label>
-                        <input 
+                        <input
                             type="password"
                             required
                             placeholder="AQEDATxxxxxx..."
@@ -642,7 +636,7 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                        <button 
+                        <button
                             type="submit"
                             disabled={saving || !cookieInput.trim()}
                             className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
@@ -651,7 +645,7 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                         </button>
 
                         {currentStatus !== 'unconfigured' && (
-                            <button 
+                            <button
                                 type="button"
                                 onClick={handleCheckLive}
                                 disabled={testing}
@@ -667,8 +661,8 @@ function LinkedInCookieModal({ token, cookieStatusInfo, onClose, onStatusUpdated
                 {cookieStatusInfo?.has_cookie && (
                     <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-[11px]">
                         <span className="text-slate-500">Cookie is securely stored for your account.</span>
-                        <button 
-                            type="button" 
+                        <button
+                            type="button"
                             onClick={handleRemoveCookie}
                             className="text-rose-400 hover:text-rose-300 hover:underline font-medium"
                         >
@@ -743,8 +737,8 @@ function LoginScreen({ onLoginSuccess }) {
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Email Address</label>
-                        <input 
-                            type="email" 
+                        <input
+                            type="email"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -755,8 +749,8 @@ function LoginScreen({ onLoginSuccess }) {
 
                     <div>
                         <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Password</label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
                             required
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -765,8 +759,8 @@ function LoginScreen({ onLoginSuccess }) {
                         />
                     </div>
 
-                    <button 
-                        type="submit" 
+                    <button
+                        type="submit"
                         disabled={loading}
                         className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
                     >
@@ -854,7 +848,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 raw: (raw || []).slice(0, 1500),
                 stats: stats || { total_found: (raw || []).length, unique_count: (unique || []).length }
             }));
-        } catch (e) {}
+        } catch (e) { }
     };
 
     // Handler to clear accumulated job pool
@@ -872,7 +866,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
     // Keep-Alive Heartbeat: Send /health ping every 50 seconds to keep Render free backend awake
     useEffect(() => {
         const keepAlivePing = () => {
-            fetch(`${API_BASE_URL}/api/v1/health`, { cache: 'no-store' }).catch(() => {});
+            fetch(`${API_BASE_URL}/api/v1/health`, { cache: 'no-store' }).catch(() => { });
         };
         keepAlivePing();
         const pingInterval = setInterval(keepAlivePing, 50000);
@@ -915,7 +909,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 if (f.filterSource !== undefined) setFilterSource(f.filterSource);
                 if (f.sortBy !== undefined) setSortBy(f.sortBy);
             }
-        } catch (e) {}
+        } catch (e) { }
     }, []);
 
     // Automatically persist active filter settings whenever user changes any filter
@@ -933,7 +927,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 filterSource,
                 sortBy
             }));
-        } catch (e) {}
+        } catch (e) { }
     }, [jobScope, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // Execute Search across 9 platforms directly targeted to active user filters (retains previous results until fresh ones arrive)
@@ -943,7 +937,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
         const activeRole = (overrideRole || role || "Software Engineer").trim();
         const activeLocation = (overrideLocation !== null ? overrideLocation : filterLocationInput).trim() || "Worldwide";
-        
+
         let activeSeniority = "mid";
         let searchRole = activeRole;
         if (filterSeniority !== "all") {
@@ -972,7 +966,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         formData.append("location", activeLocation);
         formData.append("experience_level", activeSeniority);
         formData.append("remote_preference", activeRemote);
-        
+
         const fileToUpload = overrideFile || resumeFile;
         if (fileToUpload) {
             formData.append("resume", fileToUpload);
@@ -990,7 +984,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 const incomingMatched = data.jobs || [];
                 const incomingUnique = data.unique_jobs || data.all_jobs || incomingMatched;
                 const incomingRaw = data.raw_jobs || incomingUnique;
-                
+
                 let mergedMatched = [];
                 let mergedUnique = [];
                 let mergedRaw = [];
@@ -1092,7 +1086,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         clearInterval(pollInterval);
                     }
                 }
-            } catch (err) {}
+            } catch (err) { }
         }, 2500);
 
         return () => clearInterval(pollInterval);
@@ -1118,12 +1112,12 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                 setResumeProfile(data.profile);
                 try {
                     localStorage.setItem("jobhunt_resume_profile", JSON.stringify(data.profile));
-                } catch (err) {}
+                } catch (err) { }
 
                 const newRole = (data.profile.target_roles && data.profile.target_roles[0]) ? data.profile.target_roles[0] : role;
                 setRole(newRole);
                 showToast(`Resume parsed! Found ${data.profile.skills?.length || 0} skills. Fetching jobs...`);
-                
+
                 // Live fetch jobs matching the newly uploaded resume
                 executeSearch(file, newRole);
             } else {
@@ -1148,7 +1142,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         try {
             localStorage.removeItem("jobhunt_resume_profile");
             localStorage.removeItem("jobhunt_cached_search");
-        } catch (err) {}
+        } catch (err) { }
         if (resumeInputRef.current) {
             resumeInputRef.current.value = "";
         }
@@ -1304,9 +1298,9 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentSearchId}/export-insights`, {
                 method: "POST",
-                headers: { 
+                headers: {
                     "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json" 
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
                     candidate_name: user?.email ? user.email.split("@")[0] : "Candidate",
@@ -1375,7 +1369,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
             if (filterLocationInput && filterLocationInput.trim()) {
                 const locQuery = filterLocationInput.toLowerCase().trim();
                 const isPresetRemote = locQuery === 'remote';
-                
+
                 if (isPresetRemote) {
                     const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere') || jobLoc === '';
                     if (!isRemote) return false;
@@ -1497,8 +1491,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                         <span>🌍</span> Worldwide Multi-Board Search
                                     </span>
                                 </div>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     required
                                     value={role}
                                     onChange={(e) => setRole(e.target.value)}
@@ -1507,8 +1501,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 />
                             </div>
 
-                            <button 
-                                type="submit" 
+                            <button
+                                type="submit"
                                 disabled={searching}
                                 className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
                             >
@@ -1578,16 +1572,16 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <div className="pt-2 flex items-center gap-2">
                                     <label className="flex-1 text-center py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium border border-white/10 cursor-pointer transition-all">
                                         <span>🔄 Replace Resume</span>
-                                        <input 
+                                        <input
                                             ref={resumeInputRef}
-                                            type="file" 
+                                            type="file"
                                             accept=".pdf,.docx,.txt"
                                             onChange={handleResumeChange}
                                             className="hidden"
                                         />
                                     </label>
 
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={handleRemoveResume}
                                         className="py-1.5 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/30 text-[11px] font-medium transition-all flex items-center gap-1"
@@ -1605,9 +1599,9 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     <p className="text-[11px] text-slate-400 leading-relaxed">
                                         Upload PDF or DOCX to auto-extract 30+ skills, auto-fill target role, and calculate live compatibility scores.
                                     </p>
-                                    <input 
+                                    <input
                                         ref={resumeInputRef}
-                                        type="file" 
+                                        type="file"
                                         accept=".pdf,.docx,.txt"
                                         onChange={handleResumeChange}
                                         className="block w-full text-xs text-slate-400 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer pt-2"
@@ -1632,44 +1626,41 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     {/* Summary Stat Banner & Export Bar */}
                     <div className="minimal-card rounded-xl p-4 border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
                         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => setJobScope("raw")}
-                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
-                                    jobScope === "raw" 
-                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm" 
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${jobScope === "raw"
+                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm"
                                         : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
-                                }`}
+                                    }`}
                             >
                                 <div className="text-[10px] text-slate-400 font-medium">Raw Harvested</div>
                                 <div className="text-base sm:text-lg font-bold text-white">{searchStats.total_found || allRawJobs.length}</div>
                             </button>
-                            
+
                             <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
 
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => setJobScope("unique")}
-                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
-                                    jobScope === "unique" 
-                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm" 
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${jobScope === "unique"
+                                        ? "bg-indigo-600/25 border-indigo-500/70 shadow-sm"
                                         : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
-                                }`}
+                                    }`}
                             >
                                 <div className="text-[10px] text-slate-400 font-medium">Unique Roles</div>
                                 <div className="text-base sm:text-lg font-bold text-indigo-400">{searchStats.unique_count || allUniqueJobs.length}</div>
                             </button>
-                            
+
                             <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
 
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => setJobScope("curated")}
-                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${
-                                    jobScope === "curated" 
-                                        ? "bg-emerald-600/25 border-emerald-500/70 shadow-sm" 
+                                className={`text-left px-3 py-1.5 rounded-xl border transition-all ${jobScope === "curated"
+                                        ? "bg-emerald-600/25 border-emerald-500/70 shadow-sm"
                                         : "bg-slate-900/40 border-white/[0.04] hover:bg-slate-900/80"
-                                }`}
+                                    }`}
                             >
                                 <div className="text-[10px] text-slate-400 font-medium">Curated Matches</div>
                                 <div className="text-base sm:text-lg font-bold text-emerald-400">{allMatchedJobs.length}</div>
@@ -1694,7 +1685,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto relative">
-                            <button 
+                            <button
                                 onClick={() => setRagModalOpen(true)}
                                 className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
                             >
@@ -1704,7 +1695,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                             {/* CSV Export Dropdown Menu */}
                             <div className="relative flex-1 sm:flex-none">
-                                <button 
+                                <button
                                     onClick={() => setCsvMenuOpen(!csvMenuOpen)}
                                     className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-sm"
                                 >
@@ -1715,8 +1706,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                                 {csvMenuOpen && (
                                     <>
-                                        <div 
-                                            className="fixed inset-0 z-20" 
+                                        <div
+                                            className="fixed inset-0 z-20"
                                             onClick={() => setCsvMenuOpen(false)}
                                         ></div>
                                         <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl p-1.5 z-30 space-y-1 text-xs backdrop-blur-md">
@@ -1724,7 +1715,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                                 Download Datasets
                                             </div>
 
-                                            <button 
+                                            <button
                                                 onClick={() => exportJobsToCSV("raw")}
                                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
                                             >
@@ -1740,7 +1731,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                                 </span>
                                             </button>
 
-                                            <button 
+                                            <button
                                                 onClick={() => exportJobsToCSV("unique")}
                                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
                                             >
@@ -1756,7 +1747,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                                 </span>
                                             </button>
 
-                                            <button 
+                                            <button
                                                 onClick={() => exportJobsToCSV("curated")}
                                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
                                             >
@@ -1772,7 +1763,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                                 </span>
                                             </button>
 
-                                            <button 
+                                            <button
                                                 onClick={() => exportJobsToCSV("filtered")}
                                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all"
                                             >
@@ -1790,7 +1781,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                                             <div className="h-px bg-white/[0.08] my-1"></div>
 
-                                            <button 
+                                            <button
                                                 onClick={handleExportInsightsCSV}
                                                 disabled={exportingInsights}
                                                 className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-white/[0.08] text-slate-200 flex items-center justify-between group transition-all disabled:opacity-50"
@@ -1818,7 +1809,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
-                                <input 
+                                <input
                                     type="text"
                                     placeholder="Company, title, skill..."
                                     value={filterKeyword}
@@ -1844,7 +1835,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     )}
                                 </div>
                                 <div className="relative">
-                                    <input 
+                                    <input
                                         type="text"
                                         placeholder="e.g. Pune, Bangalore, SF, Bay Area, Remote..."
                                         value={filterLocationInput}
@@ -1858,7 +1849,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none pr-8"
                                     />
                                     {filterLocationInput && (
-                                        <button 
+                                        <button
                                             type="button"
                                             onClick={() => {
                                                 setFilterLocationInput("");
@@ -1877,7 +1868,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
                                     📦 Job Pool / Scope
                                 </label>
-                                <select 
+                                <select
                                     value={jobScope}
                                     onChange={(e) => setJobScope(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-emerald-300"
@@ -1893,7 +1884,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
                                     💼 Work Mode
                                 </label>
-                                <select 
+                                <select
                                     value={filterWorkMode}
                                     onChange={(e) => {
                                         setFilterWorkMode(e.target.value);
@@ -1910,7 +1901,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Sort By Filter */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Sort By</label>
-                                <select 
+                                <select
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-indigo-300"
@@ -1923,7 +1914,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Granular Experience Required Filter */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience</label>
-                                <select 
+                                <select
                                     value={filterExpYears}
                                     onChange={(e) => setFilterExpYears(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -1960,11 +1951,10 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                         setFilterLocationInput(hub.val);
                                         executeSearch(null, null, hub.val);
                                     }}
-                                    className={`px-2 py-0.5 rounded-md transition-all font-medium ${
-                                        (filterLocationInput.toLowerCase() === hub.val || (!filterLocationInput && hub.val === ""))
+                                    className={`px-2 py-0.5 rounded-md transition-all font-medium ${(filterLocationInput.toLowerCase() === hub.val || (!filterLocationInput && hub.val === ""))
                                             ? "bg-indigo-600 text-white border border-indigo-400 shadow-sm"
                                             : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]"
-                                    }`}
+                                        }`}
                                 >
                                     {hub.label}
                                 </button>
@@ -1976,7 +1966,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Date Posted (Freshness) Filter */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
-                                <select 
+                                <select
                                     value={filterDate}
                                     onChange={(e) => setFilterDate(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -1992,7 +1982,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Platform Source */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Platform Source</label>
-                                <select 
+                                <select
                                     value={filterSource}
                                     onChange={(e) => setFilterSource(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -2017,7 +2007,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     </span>
                                     <span className="text-xs font-bold text-indigo-400">{minScore}%</span>
                                 </div>
-                                <input 
+                                <input
                                     type="range"
                                     min="0"
                                     max="90"
@@ -2031,7 +2021,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             {/* Reset & Clear Buttons */}
                             <div className="flex items-center justify-end gap-3 pt-3 sm:pt-0">
                                 {allRawJobs.length > 0 && (
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={handleClearJobPool}
                                         className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 hover:underline"
@@ -2040,7 +2030,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     </button>
                                 )}
                                 {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => {
                                             setFilterKeyword("");
@@ -2087,7 +2077,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             </div>
 
                             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                                <button 
+                                <button
                                     onClick={() => executeSearch(null, null, filterLocationInput)}
                                     className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
                                 >
@@ -2095,7 +2085,7 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                     <span>Live-Harvest "{role}" {filterLocationInput ? `in ${filterLocationInput}` : 'Worldwide'} Now</span>
                                 </button>
 
-                                <button 
+                                <button
                                     onClick={() => {
                                         setFilterKeyword("");
                                         setFilterLocationInput("");
@@ -2115,15 +2105,15 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {filteredJobs.map((job, idx) => (
-                                <JobCard 
-                                    key={job.id || idx} 
-                                    job={job} 
+                                <JobCard
+                                    key={job.id || idx}
+                                    job={job}
                                     jobScope={jobScope}
                                     onViewDetails={() => setSelectedJob(job)}
                                     onQueryAI={() => {
                                         setRagQuery(`Tell me about the requirements and salary for ${job.title} at ${job.company}`);
                                         setRagModalOpen(true);
-                                    }} 
+                                    }}
                                 />
                             ))}
                         </div>
@@ -2133,8 +2123,8 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
             {/* Interactive Job Details Modal */}
             {selectedJob && (
-                <JobDetailModal 
-                    job={selectedJob} 
+                <JobDetailModal
+                    job={selectedJob}
                     user={user}
                     token={token}
                     resumeSkills={resumeProfile?.skills || []}
@@ -2159,14 +2149,14 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                         <form onSubmit={handleAskAI} className="space-y-3">
                             <div className="relative">
-                                <input 
+                                <input
                                     type="text"
                                     placeholder="Ask anything about the requirements, tech stack, or hiring..."
                                     value={ragQuery}
                                     onChange={(e) => setRagQuery(e.target.value)}
                                     className="w-full px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none pr-20"
                                 />
-                                <button 
+                                <button
                                     type="submit"
                                     disabled={ragLoading || !ragQuery.trim()}
                                     className="absolute right-1.5 top-1.5 px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-50"
@@ -2223,7 +2213,7 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
     const techCount = (job.tech_contacts || []).length;
 
     return (
-        <div 
+        <div
             onClick={onViewDetails}
             className="minimal-card rounded-xl p-4 border border-white/[0.08] hover:border-indigo-500/30 transition-all flex flex-col justify-between space-y-3 shadow-md hover:bg-slate-900/70 cursor-pointer"
         >
@@ -2309,8 +2299,8 @@ function JobCard({ job, jobScope = "curated", onViewDetails, onQueryAI }) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button 
-                        type="button" 
+                    <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); onViewDetails(); }}
                         className="py-1 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition-all"
                     >
@@ -2341,9 +2331,9 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${job.id}/fetch-hr-contacts`, {
                 method: "POST",
-                headers: { 
+                headers: {
                     "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json" 
+                    "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
                     candidate_name: user?.email ? user.email.split("@")[0] : "Candidate",
@@ -2409,7 +2399,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                             <span className="px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-bold text-xs shrink-0">
                                 {score}% Fit
                             </span>
-                            <button 
+                            <button
                                 onClick={onClose}
                                 className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm"
                             >
@@ -2420,36 +2410,33 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
 
                     {/* Navigation Tabs */}
                     <div className="flex items-center gap-1.5 pt-1">
-                        <button 
+                        <button
                             onClick={() => setActiveTab("overview")}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                activeTab === 'overview' 
-                                    ? 'bg-indigo-600 text-white' 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'overview'
+                                    ? 'bg-indigo-600 text-white'
                                     : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                            }`}
+                                }`}
                         >
                             📋 Overview & Insights
                         </button>
-                        <button 
+                        <button
                             onClick={() => setActiveTab("contacts")}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                                activeTab === 'contacts' 
-                                    ? 'bg-indigo-600 text-white' 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'contacts'
+                                    ? 'bg-indigo-600 text-white'
                                     : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                            }`}
+                                }`}
                         >
                             <span>👥 Team & Emails</span>
                             <span className="px-1.5 py-0.2 rounded bg-white/10 text-[10px]">
                                 {allContacts.length}
                             </span>
                         </button>
-                        <button 
+                        <button
                             onClick={() => setActiveTab("outreach")}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                activeTab === 'outreach' 
-                                    ? 'bg-indigo-600 text-white' 
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'outreach'
+                                    ? 'bg-indigo-600 text-white'
                                     : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                            }`}
+                                }`}
                         >
                             ✉️ AI Outreach Drafter
                         </button>
@@ -2594,7 +2581,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                         <p className="text-slate-400 text-xs">
                                             Trigger live Scout multi-factor discovery to find HR managers, tech leads, verified emails, phone numbers, and LinkedIn profile URLs.
                                         </p>
-                                        <button 
+                                        <button
                                             onClick={handleFetchContacts}
                                             disabled={fetchingContacts}
                                             className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs disabled:opacity-50"
@@ -2610,7 +2597,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                             Found {hrContacts.length} HR Contacts + {techContacts.length} Tech Leads
                                         </span>
                                         <div className="flex items-center gap-2">
-                                            <a 
+                                            <a
                                                 href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(job.company + ' talent')}&origin=SWITCH_SEARCH_VERTICAL`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
@@ -2620,7 +2607,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                                 <span>👥</span>
                                                 <span>View All on LinkedIn</span>
                                             </a>
-                                            <button 
+                                            <button
                                                 onClick={handleFetchContacts}
                                                 disabled={fetchingContacts}
                                                 className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] disabled:opacity-50 flex items-center gap-1"
@@ -2676,7 +2663,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                         <div className="text-slate-400 text-xs">
                                             Discover team contacts first to generate tailored cold outreach drafts!
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={handleFetchContacts}
                                             disabled={fetchingContacts}
                                             className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
@@ -2705,7 +2692,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                                 <div className="space-y-1.5">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase">Cold Email Subject & Body:</span>
-                                                        <button 
+                                                        <button
                                                             onClick={() => copyToClipboard(`${draft.email_subject || ''}\n\n${draft.email_body || ''}`, "Copied Cold Email!")}
                                                             className="text-indigo-400 hover:underline text-[11px]"
                                                         >
@@ -2722,7 +2709,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                                                 <div className="space-y-1">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase">WhatsApp / InMail Quick Pitch:</span>
-                                                        <button 
+                                                        <button
                                                             onClick={() => copyToClipboard(draft.inmail_message || '', "Copied InMail Pitch!")}
                                                             className="text-indigo-400 hover:underline text-[11px]"
                                                         >
@@ -2744,7 +2731,7 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
 
                 {/* Footer Action Bar */}
                 <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
-                    <button 
+                    <button
                         onClick={handleFetchContacts}
                         disabled={fetchingContacts}
                         className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
@@ -2754,16 +2741,16 @@ function JobDetailModal({ job, user, token, resumeSkills, onClose, onUpdateJob, 
                     </button>
 
                     <div className="flex items-center gap-2">
-                        <button 
+                        <button
                             onClick={onClose}
                             className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs"
                         >
                             Close
                         </button>
                         {job.url && (
-                            <a 
-                                href={job.url} 
-                                target="_blank" 
+                            <a
+                                href={job.url}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all shadow-sm"
                             >
@@ -2798,14 +2785,14 @@ function ContactCard({ contact, onCopy }) {
                     </span>
                 </div>
                 <div className="text-[11px] text-slate-400">{contact.headline}</div>
-                
+
                 {/* Contact details row */}
                 <div className="flex flex-wrap items-center gap-3 pt-0.5 text-xs text-slate-300">
                     {contact.email && (
                         <div className="flex items-center gap-1.5">
                             <span>✉️</span>
                             <span className="font-mono text-[11px] text-indigo-300">{contact.email}</span>
-                            <button 
+                            <button
                                 onClick={() => onCopy(contact.email, "Copied Email!")}
                                 className="text-slate-500 hover:text-white text-[11px]"
                                 title="Copy Email"
@@ -2820,9 +2807,9 @@ function ContactCard({ contact, onCopy }) {
                             <span>📞</span>
                             <span className="text-[11px]">{contact.phone}</span>
                             {contact.whatsapp_url && (
-                                <a 
-                                    href={contact.whatsapp_url} 
-                                    target="_blank" 
+                                <a
+                                    href={contact.whatsapp_url}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-emerald-400 hover:underline text-[11px]"
                                     title="Open WhatsApp Chat"
@@ -2837,9 +2824,9 @@ function ContactCard({ contact, onCopy }) {
 
             {/* Profile Link Button */}
             {contact.profile_url && (
-                <a 
-                    href={contact.profile_url} 
-                    target="_blank" 
+                <a
+                    href={contact.profile_url}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium shrink-0 flex items-center justify-center gap-1"
                 >
@@ -3027,7 +3014,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                     </div>
 
                     {/* Cookie Health Pill inside Alerts */}
-                    <button 
+                    <button
                         onClick={onOpenCookieModal}
                         className="px-2.5 py-1 rounded-lg bg-slate-900 border border-white/10 text-[11px] text-slate-300 hover:text-white transition-all shrink-0"
                     >
@@ -3040,8 +3027,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                         <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                             Destination Email Address <span className="text-indigo-400">*</span>
                         </label>
-                        <input 
-                            type="email" 
+                        <input
+                            type="email"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -3055,8 +3042,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                             <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                 Target Role / Title <span className="text-indigo-400">*</span>
                             </label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 required
                                 value={role}
                                 onChange={(e) => setRole(e.target.value)}
@@ -3068,8 +3055,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                             <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                                 Preferred Location
                             </label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 value={location}
                                 onChange={(e) => setLocation(e.target.value)}
                                 className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -3080,7 +3067,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div>
                             <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
-                            <select 
+                            <select
                                 value={workMode}
                                 onChange={(e) => setWorkMode(e.target.value)}
                                 className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -3093,7 +3080,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
 
                         <div>
                             <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience Level</label>
-                            <select 
+                            <select
                                 value={experienceLevel}
                                 onChange={(e) => setExperienceLevel(e.target.value)}
                                 className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -3109,7 +3096,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
 
                         <div>
                             <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Posted Window</label>
-                            <select 
+                            <select
                                 value={maxAgeDays}
                                 onChange={(e) => setMaxAgeDays(Number(e.target.value))}
                                 className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -3123,8 +3110,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
 
                         <div>
                             <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Time (24h)</label>
-                            <input 
-                                type="time" 
+                            <input
+                                type="time"
                                 value={preferredTime}
                                 onChange={(e) => setPreferredTime(e.target.value)}
                                 className="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
@@ -3133,16 +3120,16 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                     </div>
 
                     <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             disabled={saving}
                             className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
                         >
                             {saving ? "Saving Schedule..." : "💾 Save Daily Automation"}
                         </button>
 
-                        <button 
-                            type="button" 
+                        <button
+                            type="button"
                             onClick={handleSendTestEmail}
                             disabled={testing}
                             className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
@@ -3180,7 +3167,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                                         </div>
                                         <div className="text-[10px] text-indigo-400">✉️ {alert.email}</div>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={() => handleDeleteAlert(alert.id)}
                                         className="text-slate-500 hover:text-rose-400 text-xs p-1"
                                     >
@@ -3238,7 +3225,7 @@ function AdminPortal({ token, user, showToast }) {
         try {
             const res = await fetch(`${API_BASE_URL}/api/v1/admin/users`, {
                 method: "POST",
-                headers: { 
+                headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
@@ -3307,7 +3294,7 @@ function AdminPortal({ token, user, showToast }) {
             <div className="minimal-card rounded-xl p-5 border border-white/[0.08]">
                 <h2 className="text-base font-bold text-white mb-3">🛡️ Admin User Control</h2>
                 <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <input 
+                    <input
                         type="email"
                         required
                         placeholder="User email"
@@ -3315,7 +3302,7 @@ function AdminPortal({ token, user, showToast }) {
                         onChange={(e) => setNewEmail(e.target.value)}
                         className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
                     />
-                    <input 
+                    <input
                         type="text"
                         required
                         placeholder="Initial password"
@@ -3323,7 +3310,7 @@ function AdminPortal({ token, user, showToast }) {
                         onChange={(e) => setNewPassword(e.target.value)}
                         className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
                     />
-                    <select 
+                    <select
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
                         className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs"
@@ -3331,7 +3318,7 @@ function AdminPortal({ token, user, showToast }) {
                         <option value="user">Standard User</option>
                         <option value="admin">Administrator</option>
                     </select>
-                    <button 
+                    <button
                         type="submit"
                         disabled={creating}
                         className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold"
