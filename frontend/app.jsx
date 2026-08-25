@@ -854,18 +854,33 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
         } catch (e) {}
     }, [jobScope, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
-    // Execute Search across 9 platforms directly Worldwide (retains previous results until fresh ones arrive)
-    const executeSearch = async (overrideFile = null, overrideRole = null) => {
+    // Execute Search across 9 platforms directly targeted to active user filters (retains previous results until fresh ones arrive)
+    const executeSearch = async (overrideFile = null, overrideRole = null, overrideLocation = null) => {
         setSearching(true);
         setIsHarvestingLive(false);
 
         const activeRole = (overrideRole || role || "Software Engineer").trim();
+        const activeLocation = (overrideLocation !== null ? overrideLocation : filterLocationInput).trim() || "Worldwide";
+        
+        let activeSeniority = "mid";
+        if (filterSeniority !== "all") {
+            activeSeniority = filterSeniority;
+        } else if (filterExpYears !== "all") {
+            if (filterExpYears === "0") activeSeniority = "intern";
+            else if (filterExpYears === "1" || filterExpYears === "2") activeSeniority = "entry_level";
+            else if (filterExpYears === "3-5") activeSeniority = "mid";
+            else if (filterExpYears === "5+" || filterExpYears === "8+") activeSeniority = "senior";
+        } else if (resumeProfile?.seniority) {
+            activeSeniority = resumeProfile.seniority.toLowerCase();
+        }
+
+        const activeRemote = filterWorkMode !== "all" ? filterWorkMode : "any";
 
         const formData = new FormData();
         formData.append("role", activeRole);
-        formData.append("location", "Worldwide");
-        formData.append("experience_level", resumeProfile?.seniority?.toLowerCase() || "intern");
-        formData.append("remote_preference", "any");
+        formData.append("location", activeLocation);
+        formData.append("experience_level", activeSeniority);
+        formData.append("remote_preference", activeRemote);
         
         const fileToUpload = overrideFile || resumeFile;
         if (fileToUpload) {
@@ -1687,16 +1702,47 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
 
                             {/* Smart Location Input with NLP expansion */}
                             <div className="lg:col-span-2">
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
-                                    📍 Location (City, State, Region)
-                                </label>
-                                <input 
-                                    type="text"
-                                    placeholder="e.g. Pune, Bangalore, SF, Bay Area, Remote..."
-                                    value={filterLocationInput}
-                                    onChange={(e) => setFilterLocationInput(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
-                                />
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-[10px] font-semibold text-slate-400 uppercase">
+                                        📍 Target Location
+                                    </label>
+                                    {filterLocationInput && (
+                                        <button
+                                            type="button"
+                                            onClick={() => executeSearch(null, null, filterLocationInput)}
+                                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-0.5"
+                                        >
+                                            <span>⚡ Search</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Pune, Bangalore, SF, Bay Area, Remote..."
+                                        value={filterLocationInput}
+                                        onChange={(e) => setFilterLocationInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                executeSearch(null, null, e.target.value);
+                                            }
+                                        }}
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none pr-8"
+                                    />
+                                    {filterLocationInput && (
+                                        <button 
+                                            type="button"
+                                            onClick={() => {
+                                                setFilterLocationInput("");
+                                                executeSearch(null, null, "Worldwide");
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Job Pool / Scope Filter */}
@@ -1747,11 +1793,11 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                             </div>
                         </div>
 
-                        {/* Quick Location Preset Suggestion Chips */}
+                        {/* Quick Location Preset Suggestion Chips with Live Re-Harvesting */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
                             <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Quick Hubs:</span>
                             {[
-                                { label: "📍 All", val: "" },
+                                { label: "📍 All / Worldwide", val: "" },
                                 { label: "🇮🇳 India", val: "india" },
                                 { label: "📍 Pune", val: "pune" },
                                 { label: "📍 Bangalore", val: "bangalore" },
@@ -1764,10 +1810,13 @@ function JobSearchDashboard({ token, user, cookieStatusInfo, onOpenCookieModal, 
                                 <button
                                     key={idx}
                                     type="button"
-                                    onClick={() => setFilterLocationInput(hub.val)}
+                                    onClick={() => {
+                                        setFilterLocationInput(hub.val);
+                                        executeSearch(null, null, hub.val);
+                                    }}
                                     className={`px-2 py-0.5 rounded-md transition-all font-medium ${
-                                        filterLocationInput.toLowerCase() === hub.val
-                                            ? "bg-indigo-600 text-white border border-indigo-400"
+                                        (filterLocationInput.toLowerCase() === hub.val || (!filterLocationInput && hub.val === ""))
+                                            ? "bg-indigo-600 text-white border border-indigo-400 shadow-sm"
                                             : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]"
                                     }`}
                                 >
