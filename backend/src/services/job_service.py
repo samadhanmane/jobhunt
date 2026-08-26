@@ -1,10 +1,9 @@
 import os
+import gc
 import uuid
 import datetime
-import pandas as pd
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sklearn.metrics.pairwise import cosine_similarity
 import asyncio
 from src.config import settings
 from src.agents.orchestrator import OrchestratorAgent
@@ -27,9 +26,9 @@ from src.utils.date_utils import format_posted_date_for_csv
 ACTIVE_SEARCH_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 def _prune_active_sessions():
-    """Keep at most 2 active search sessions in memory to prevent RAM accumulation."""
+    """Keep at most 1 active search session in memory to strictly limit RAM usage under 150MB."""
     import gc
-    while len(ACTIVE_SEARCH_SESSIONS) > 2:
+    while len(ACTIVE_SEARCH_SESSIONS) > 1:
         oldest_key = next(iter(ACTIVE_SEARCH_SESSIONS))
         ACTIVE_SEARCH_SESSIONS.pop(oldest_key, None)
     gc.collect()
@@ -384,9 +383,9 @@ class JobService:
             curated_jobs = self.get_results(search_id)
             ACTIVE_SEARCH_SESSIONS[search_id] = {
                 "status": "harvesting",
-                "raw_jobs": list(all_raw_payload),
-                "unique_jobs": list(all_unique_payload),
-                "jobs": list(curated_jobs)
+                "raw_jobs": list(all_raw_payload[-150:]),
+                "unique_jobs": list(all_unique_payload[-100:]),
+                "jobs": list(curated_jobs[:40])
             }
 
             # Seen sets to prevent duplicates across streaming rounds
@@ -657,24 +656,53 @@ class JobService:
 
                 if search_id in ACTIVE_SEARCH_SESSIONS:
                     sess = ACTIVE_SEARCH_SESSIONS[search_id]
-                    sess["raw_jobs"] = (sess["raw_jobs"] + new_raw_payload)[-600:]
-                    sess["unique_jobs"] = (sess["unique_jobs"] + new_unique_payload)[-400:]
+                    sess["raw_jobs"] = (sess["raw_jobs"] + new_raw_payload)[-150:]
+                    sess["unique_jobs"] = (sess["unique_jobs"] + new_unique_payload)[-100:]
 
                     all_curated = sess["jobs"] + new_unique_payload
                     all_curated.sort(key=lambda x: x.get("match_score", 0), reverse=True)
-                    sess["jobs"] = all_curated[:50]
+                    sess["jobs"] = all_curated[:40]
 
                     try:
                         with SessionLocal() as stream_db:
                             from src.repositories.search_repository import SearchRepository
+                            from src.repositories.job_repository import JobRepository
+                            from src.models.job import Job
+                            
+                            db_jobs = []
+                            for uj in new_unique_payload:
+                                db_jobs.append(Job(
+                                    id=uj["id"],
+                                    search_id=search_id,
+                                    title=uj.get("title", ""),
+                                    company=uj.get("company", ""),
+                                    location=uj.get("location", "Remote"),
+                                    description=uj.get("description", ""),
+                                    url=uj.get("url", ""),
+                                    source=uj.get("source", "unknown"),
+                                    posted_date=uj.get("posted_date", ""),
+                                    salary_range=uj.get("salary_range"),
+                                    match_score=uj.get("match_score", 50.0),
+                                    match_reason=uj.get("match_reason", ""),
+                                    matching_skills=uj.get("matching_skills", []),
+                                    missing_skills=uj.get("missing_skills", []),
+                                    experience_fit=uj.get("experience_fit", "Standard Fit"),
+                                    key_requirements=uj.get("key_requirements", ""),
+                                    company_insights=uj.get("company_insights", {}),
+                                    hr_contacts=[],
+                                    tech_contacts=[]
+                                ))
+                            if db_jobs:
+                                JobRepository(stream_db).add_jobs(db_jobs)
+
                             SearchRepository(stream_db).update_search_status(
                                 search_id, 
                                 "harvesting", 
                                 total_found=len(sess["raw_jobs"]), 
                                 unique_count=len(sess["unique_jobs"])
                             )
-                    except Exception:
-                        pass
+                    except Exception as db_err:
+                        print(f"Notice: stream DB save notice: {db_err}")
 
                 del new_raw_batch
                 del new_unique_batch
@@ -699,6 +727,90 @@ class JobService:
             print(f"Notice: Streaming harvest notice: {stream_err}")
             if search_id in ACTIVE_SEARCH_SESSIONS:
                 ACTIVE_SEARCH_SESSIONS[search_id]["status"] = "completed"
+
+    def get_latest_background_pool(self, role: Optional[str] = None, location: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Retrieves all recently harvested background jobs from the database across background searches,
+        scheduled automations, and live stream rounds, ensuring users get all background findings even
+        if they closed the website tab.
+        """
+        from src.models.job import Job
+        from src.models.automation_history import AutomationHistory
+        from src.utils.text_cleaner import extract_job_experience_metadata
+        
+        try:
+            query = self.db.query(Job)
+            if role and len(role.strip()) > 2:
+                role_tok = role.strip().split()[0].lower()
+                query = query.filter(Job.title.ilike(f"%{role_tok}%"))
+            if location and location.strip().lower() not in ["remote", "worldwide", "any", "all", ""]:
+                loc_tok = location.strip().split()[0].lower()
+                query = query.filter(Job.location.ilike(f"%{loc_tok}%"))
+                
+            db_jobs = query.order_by(Job.created_at.desc(), Job.match_score.desc()).limit(150).all()
+            
+            curated_list = []
+            seen = set()
+            for j in db_jobs:
+                key = (j.url or f"{j.title}-{j.company}").lower().strip()
+                if key in seen:
+                    continue
+                seen.add(key)
+                exp_meta = extract_job_experience_metadata(j.title, j.description or "", j.experience_fit or "")
+                curated_list.append({
+                    "id": j.id,
+                    "title": j.title,
+                    "company": j.company,
+                    "location": j.location,
+                    "description": j.description,
+                    "url": j.url,
+                    "source": j.source,
+                    "posted_date": j.posted_date,
+                    "salary_range": j.salary_range,
+                    "match_score": j.match_score,
+                    "match_reason": j.match_reason,
+                    "matching_skills": j.matching_skills or [],
+                    "missing_skills": j.missing_skills or [],
+                    "experience_fit": j.experience_fit or "Good Fit",
+                    "experience_required": exp_meta["experience_required"],
+                    "min_experience_years": exp_meta["min_experience_years"],
+                    "seniority_level": exp_meta["seniority_level"],
+                    "key_requirements": j.key_requirements or "",
+                    "company_insights": j.company_insights or {},
+                    "hr_contacts": j.hr_contacts or [],
+                    "tech_contacts": j.tech_contacts or []
+                })
+
+            # Also pull recently recorded AutomationHistory snapshots
+            try:
+                histories = self.db.query(AutomationHistory).order_by(AutomationHistory.executed_at.desc()).limit(5).all()
+                for h in histories:
+                    for cj in (h.curated_jobs or []):
+                        key = (cj.get("url") or f"{cj.get('title')}-{cj.get('company')}").lower().strip()
+                        if key not in seen:
+                            seen.add(key)
+                            curated_list.append(cj)
+            except Exception:
+                pass
+
+            return {
+                "status": "success",
+                "total_found": len(curated_list),
+                "unique_count": len(curated_list),
+                "jobs": curated_list,
+                "unique_jobs": curated_list,
+                "raw_jobs": curated_list
+            }
+        except Exception as e:
+            print(f"Notice: get_latest_background_pool: {e}")
+            return {
+                "status": "error",
+                "total_found": 0,
+                "unique_count": 0,
+                "jobs": [],
+                "unique_jobs": [],
+                "raw_jobs": []
+            }
 
     def get_results(self, search_id: str) -> List[Dict[str, Any]]:
         from src.utils.text_cleaner import extract_job_experience_metadata

@@ -63,14 +63,28 @@ class LocalEmbeddingClient:
         return []
 
     def _fallback_embed(self, text: str) -> List[float]:
-        try:
-            from sklearn.feature_extraction.text import HashingVectorizer
-            if self._fallback_vectorizer is None:
-                self._fallback_vectorizer = HashingVectorizer(n_features=384, alternate_sign=False, norm='l2')
-            vec = self._fallback_vectorizer.transform([text]).toarray()[0]
-            return vec.tolist()
-        except Exception:
+        """
+        Pure Python deterministic 384-dimensional normalized vector (0 MB RAM, no sklearn/scipy needed).
+        """
+        import hashlib
+        import math
+        
+        if not text or not str(text).strip():
             return [0.0] * 384
+            
+        words = str(text).lower().split()
+        vec = [0.0] * 384
+        for w in words:
+            h = int(hashlib.md5(w.encode('utf-8')).hexdigest(), 16)
+            idx = h % 384
+            sign = 1.0 if (h // 384) % 2 == 0 else -1.0
+            vec[idx] += sign
+            
+        norm = math.sqrt(sum(x * x for x in vec))
+        if norm > 0:
+            vec = [x / norm for x in vec]
+            
+        return vec
 
     def get_embedding(self, text: str) -> List[float]:
         if self._get_hf_token():

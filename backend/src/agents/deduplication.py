@@ -1,10 +1,7 @@
 import json
 import re
-import numpy as np
 from typing import List, Dict, Any
-from sklearn.metrics.pairwise import cosine_similarity
 from src.agents.base import BaseJobAgent
-from src.llm.embeddings import embedding_client
 
 def normalize_company(company_str: str) -> str:
     """Normalize company name for robust cross-platform comparison."""

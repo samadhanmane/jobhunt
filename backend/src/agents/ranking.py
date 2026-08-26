@@ -287,8 +287,23 @@ class RankingAgent(BaseJobAgent):
             score += 5.0
 
         # --- 3. RESUME-BASED SKILLS MATCH (30%) ---
-        matched_skills = [s for s in resume_skills if (s.lower() in desc or s.lower() in title)]
-        skills_ratio = (len(matched_skills) / max(len(resume_skills), 1)) if resume_skills else 0.6
+        matched_skills = []
+        missing_skills = []
+
+        if resume_skills:
+            for s in resume_skills:
+                s_clean = s.strip()
+                if not s_clean:
+                    continue
+                pattern = r'(?i)\b' + re.escape(s_clean) + r'\b'
+                if re.search(pattern, f"{title} {desc}") or s_clean.lower() in desc or s_clean.lower() in title:
+                    matched_skills.append(s_clean)
+                else:
+                    missing_skills.append(s_clean)
+            skills_ratio = (len(matched_skills) / max(len(resume_skills), 1))
+        else:
+            skills_ratio = 0.6
+
         score += min(skills_ratio * 30.0, 30.0)
 
         # Severe penalty for mismatched domains (e.g. doctor, nurse, warehouse)
@@ -316,8 +331,8 @@ class RankingAgent(BaseJobAgent):
 
         return {
             "match_score": final_score,
-            "matching_skills": matched_skills[:6],
-            "missing_skills": [s for s in resume_skills if s not in matched_skills][:4],
+            "matching_skills": matched_skills[:8],
+            "missing_skills": missing_skills[:6],
             "experience_fit": exp_fit,
             "match_reason": match_reason
         }

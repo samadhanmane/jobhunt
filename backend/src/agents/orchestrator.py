@@ -176,19 +176,33 @@ Candidate Background:
         print(f"[Orchestrator] Platforms: JobSpy, Himalayas, Arbeitnow, Freehire, Jobicy, RemoteOK, Greenhouse, Lever, Ashby")
         print(f"[Orchestrator] ===========================================")
 
+        import gc
+        sem = asyncio.Semaphore(3)
+
+        async def run_guarded(coro):
+            async with sem:
+                try:
+                    res = await coro
+                    return res if isinstance(res, list) else []
+                except Exception as e:
+                    print(f"Notice: scraper error: {e}")
+                    return []
+                finally:
+                    gc.collect()
+
         tasks = []
         for idx, q_title in enumerate(target_queries):
             # Run JobSpy on primary anchor query to keep memory lean (< 50MB RAM)
             if idx == 0:
-                tasks.append(self.jobspy.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.himalayas.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords))
-            tasks.append(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority))
-            tasks.append(self.jobicy.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.remoteok.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.greenhouse.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.lever.search(query=q_title, location=location, remote=remote))
-            tasks.append(self.ashby.search(query=q_title, location=location, remote=remote))
+                tasks.append(run_guarded(self.jobspy.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
+            tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
+            tasks.append(run_guarded(self.jobicy.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.remoteok.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.greenhouse.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
+            tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -197,11 +211,16 @@ Candidate Background:
         for idx, res in enumerate(results):
             if isinstance(res, list):
                 for job in res:
+                    if job.get("description") and len(job["description"]) > 3000:
+                        job["description"] = job["description"][:3000]
                     source = job.get("source", "unknown")
                     platform_counts[source] = platform_counts.get(source, 0) + 1
-                all_jobs.extend(res)
+                    all_jobs.append(job)
             else:
                 print(f"[Orchestrator] Task {idx} notice: {res}")
+
+        del results
+        gc.collect()
 
         print(f"[Orchestrator] ===========================================")
         print(f"[Orchestrator] Total raw jobs gathered: {len(all_jobs)}")

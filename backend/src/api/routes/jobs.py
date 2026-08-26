@@ -42,6 +42,18 @@ async def scrape_job_links(request: ScrapeLinksRequest, db: Session = Depends(ge
     return results
 
 
+@router.get("/api/v1/jobs/latest-pool")
+def get_latest_jobs_pool(
+    role: Optional[str] = None, 
+    location: Optional[str] = None, 
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves the latest background-harvested jobs pool stored in the database.
+    """
+    job_service = JobService(db)
+    return job_service.get_latest_background_pool(role=role, location=location)
+
 @router.get("/api/v1/jobs/{search_id}")
 def get_jobs(search_id: str, db: Session = Depends(get_db)):
     """

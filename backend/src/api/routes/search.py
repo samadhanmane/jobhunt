@@ -50,6 +50,7 @@ async def parse_resume_endpoint(
 @router.post("/api/v1/search")
 async def search_jobs(
     resume: Optional[UploadFile] = File(None),
+    resume_profile: Optional[str] = Form(None),
     role: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     experience_level: Optional[str] = Form(None),
@@ -64,6 +65,14 @@ async def search_jobs(
     """
     temp_path = None
     parsed_resume = {}
+
+    if resume_profile:
+        try:
+            parsed_json = json.loads(resume_profile)
+            if parsed_json and isinstance(parsed_json, dict):
+                parsed_resume = parsed_json
+        except Exception:
+            pass
     
     # 1. Parse Preferences
     pref_dict = {}
@@ -103,6 +112,8 @@ async def search_jobs(
         user_id = None
         if temp_path:
             parsed_resume = await resume_parser.parse_resume(temp_path)
+
+        if parsed_resume and (parsed_resume.get("skills") or parsed_resume.get("raw_text")):
             user_id = str(uuid.uuid4())
             user_repo = UserRepository(db)
             profile = UserProfile(

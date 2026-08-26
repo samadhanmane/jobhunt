@@ -1754,38 +1754,58 @@ function JobSearchDashboard({
                 }
             }
 
-            // Load full accumulated pool from IndexedDB
+            // Load full accumulated pool from IndexedDB and sync with latest server-side background discoveries
             JobDB.loadPool().then((savedSearch) => {
-                if (savedSearch) {
-                    if (savedSearch.matched?.length) {
-                        setAllMatchedJobs(savedSearch.matched);
-                        allMatchedJobsRef.current = savedSearch.matched;
-                    }
-                    if (savedSearch.unique?.length) {
-                        setAllUniqueJobs(savedSearch.unique);
-                        allUniqueJobsRef.current = savedSearch.unique;
-                    }
-                    if (savedSearch.raw?.length) {
-                        setAllRawJobs(savedSearch.raw);
-                        allRawJobsRef.current = savedSearch.raw;
-                    }
-                    if (savedSearch.stats) setSearchStats(savedSearch.stats);
+                let initialMatched = savedSearch?.matched || [];
+                let initialUnique = savedSearch?.unique || [];
+                let initialRaw = savedSearch?.raw || [];
+
+                if (initialMatched.length) {
+                    setAllMatchedJobs(initialMatched);
+                    allMatchedJobsRef.current = initialMatched;
                 }
+                if (initialUnique.length) {
+                    setAllUniqueJobs(initialUnique);
+                    allUniqueJobsRef.current = initialUnique;
+                }
+                if (initialRaw.length) {
+                    setAllRawJobs(initialRaw);
+                    allRawJobsRef.current = initialRaw;
+                }
+                if (savedSearch?.stats) setSearchStats(savedSearch.stats);
+
+                // Fetch latest server-side background discoveries & automation history
+                fetch(`${API_BASE_URL}/api/v1/jobs/latest-pool`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.jobs && data.jobs.length > 0) {
+                            const mergedMatched = mergeJobList(allMatchedJobsRef.current, data.jobs || []);
+                            const mergedUnique = mergeJobList(allUniqueJobsRef.current, data.unique_jobs || data.jobs || []);
+                            const mergedRaw = mergeJobList(allRawJobsRef.current, data.raw_jobs || data.jobs || []);
+
+                            allMatchedJobsRef.current = mergedMatched;
+                            allUniqueJobsRef.current = mergedUnique;
+                            allRawJobsRef.current = mergedRaw;
+
+                            setAllMatchedJobs(mergedMatched);
+                            setAllUniqueJobs(mergedUnique);
+                            setAllRawJobs(mergedRaw);
+
+                            const newStats = {
+                                total_found: mergedRaw.length,
+                                unique_count: mergedUnique.length
+                            };
+                            setSearchStats(newStats);
+                            persistSearchData("", mergedMatched, mergedUnique, mergedRaw, newStats);
+                        }
+                    })
+                    .catch(() => {});
             });
 
             // Restore active search ID for continuous live streaming if in-progress
             const savedSearchId = localStorage.getItem("jobhunt_active_search_id");
             if (savedSearchId) {
                 setCurrentSearchId(savedSearchId);
-            }
-
-            // Load applied jobs tracker
-            const savedApplied = localStorage.getItem("jobhunt_applied_jobs");
-            if (savedApplied) {
-                try {
-                    const parsed = JSON.parse(savedApplied);
-                    if (Array.isArray(parsed)) setAppliedJobs(parsed);
-                } catch (e) {}
             }
 
             const savedFilters = localStorage.getItem("jobhunt_active_filters");
@@ -1863,6 +1883,9 @@ function JobSearchDashboard({
         const fileToUpload = overrideFile || resumeFile;
         if (fileToUpload) {
             formData.append("resume", fileToUpload);
+        }
+        if (resumeProfile) {
+            formData.append("resume_profile", JSON.stringify(resumeProfile));
         }
 
         try {
@@ -2978,6 +3001,7 @@ function JobSearchDashboard({
                                     key={job.id || idx}
                                     job={job}
                                     jobScope={jobScope}
+                                    resumeSkills={resumeProfile?.skills || []}
                                     isApplied={appliedJobKeys.has(getJobKey(job))}
                                     onToggleApplied={onToggleApplied}
                                     onViewDetails={() => setSelectedJob(job)}
@@ -3062,9 +3086,40 @@ function JobSearchDashboard({
 }
 
 // ==========================================
+// Helper: Extract & Format Matched / Missing Skills from Parsed Resume
+// ==========================================
+function getJobSkillLists(job, resumeSkills = []) {
+    if (!job) return { matched: [], missing: [] };
+
+    let matched = (job.matching_skills && Array.isArray(job.matching_skills) && job.matching_skills.length > 0)
+        ? [...job.matching_skills]
+        : [];
+    let missing = (job.missing_skills && Array.isArray(job.missing_skills) && job.missing_skills.length > 0)
+        ? [...job.missing_skills]
+        : [];
+
+    // Match directly against candidate's parsed resume skills
+    if (matched.length === 0 && resumeSkills && resumeSkills.length > 0) {
+        const text = `${job.title || ''} ${job.description || ''} ${job.key_requirements || ''}`.toLowerCase();
+        for (const s of resumeSkills) {
+            if (!s) continue;
+            const sClean = String(s).trim();
+            if (!sClean) continue;
+            if (text.includes(sClean.toLowerCase())) {
+                if (!matched.includes(sClean)) matched.push(sClean);
+            } else {
+                if (!missing.includes(sClean)) missing.push(sClean);
+            }
+        }
+    }
+
+    return { matched, missing };
+}
+
+// ==========================================
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
-function JobCard({ job, jobScope = "curated", isApplied = false, onToggleApplied, onViewDetails, onQueryAI }) {
+function JobCard({ job, jobScope = "curated", resumeSkills = [], isApplied = false, onToggleApplied, onViewDetails, onQueryAI }) {
     const score = Math.round(job.match_score || 0);
     let badgeText = `${score}% Match`;
     let scoreColor = "bg-slate-800 text-slate-300 border-slate-700";
@@ -3093,7 +3148,7 @@ function JobCard({ job, jobScope = "curated", isApplied = false, onToggleApplied
         else if (minS) salaryDisplay = `> ${curr}${minS.toLocaleString()}`;
     }
 
-    const matchingSkills = job.matching_skills || [];
+    const { matched: cardMatchingSkills } = getJobSkillLists(job, resumeSkills);
     const insights = job.company_insights || {};
     const hrCount = (job.hr_contacts || []).length;
     const techCount = (job.tech_contacts || []).length;
@@ -3187,15 +3242,15 @@ function JobCard({ job, jobScope = "curated", isApplied = false, onToggleApplied
                 )}
 
                 {/* Skills Preview */}
-                {matchingSkills.length > 0 && (
+                {cardMatchingSkills.length > 0 && (
                     <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                        {matchingSkills.slice(0, 3).map((s, idx) => (
+                        {cardMatchingSkills.slice(0, 3).map((s, idx) => (
                             <span key={idx} className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 text-[10px] border border-emerald-500/20">
                                 ✓ {s}
                             </span>
                         ))}
-                        {matchingSkills.length > 3 && (
-                            <span className="text-[10px] text-slate-500">+{matchingSkills.length - 3} more</span>
+                        {cardMatchingSkills.length > 3 && (
+                            <span className="text-[10px] text-slate-500">+{cardMatchingSkills.length - 3} more</span>
                         )}
                     </div>
                 )}
@@ -3457,38 +3512,52 @@ function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onT
                             )}
 
                             {/* Skills Taxonomy Breakdown */}
-                            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2.5">
-                                <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-                                    🛠️ Skill Alignment Matrix
-                                </div>
-                                <div className="space-y-2">
-                                    {job.matching_skills && job.matching_skills.length > 0 && (
-                                        <div>
-                                            <span className="text-[11px] text-emerald-400 font-semibold block mb-1">Matched Skills:</span>
-                                            <div className="flex flex-wrap gap-1">
-                                                {job.matching_skills.map((s, i) => (
-                                                    <span key={i} className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                                                        ✓ {s}
-                                                    </span>
-                                                ))}
-                                            </div>
+                            {(() => {
+                                const skillData = getJobSkillLists(job, resumeSkills);
+                                return (
+                                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-3">
+                                        <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                                            <span>🛠️ Skill Alignment Matrix</span>
+                                            <span className="text-[10px] text-slate-400 font-normal">
+                                                Matched: <strong className="text-emerald-400">{skillData.matched.length}</strong> • Skill Gaps: <strong className="text-amber-400">{skillData.missing.length}</strong>
+                                            </span>
                                         </div>
-                                    )}
+                                        <div className="space-y-2.5">
+                                            {skillData.matched.length > 0 && (
+                                                <div>
+                                                    <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1 mb-1.5">
+                                                        <span>✓</span>
+                                                        <span>Matched Competencies & Tools ({skillData.matched.length}):</span>
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {skillData.matched.map((s, i) => (
+                                                            <span key={i} className="px-2.5 py-0.5 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[11px] font-medium shadow-sm flex items-center gap-1">
+                                                                <span className="text-emerald-400 font-bold">✓</span> {s}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                    {job.missing_skills && job.missing_skills.length > 0 && (
-                                        <div>
-                                            <span className="text-[11px] text-amber-400 font-semibold block mb-1">Missing / Skill Gaps:</span>
-                                            <div className="flex flex-wrap gap-1">
-                                                {job.missing_skills.map((s, i) => (
-                                                    <span key={i} className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/30 text-amber-300 text-[11px]">
-                                                        ! {s}
+                                            {skillData.missing.length > 0 && (
+                                                <div>
+                                                    <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-1 mb-1.5">
+                                                        <span>!</span>
+                                                        <span>Target Gaps & Secondary Requirements ({skillData.missing.length}):</span>
                                                     </span>
-                                                ))}
-                                            </div>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {skillData.missing.map((s, i) => (
+                                                            <span key={i} className="px-2.5 py-0.5 rounded bg-amber-950/90 border border-amber-500/40 text-amber-300 text-[11px] font-medium shadow-sm flex items-center gap-1">
+                                                                <span className="text-amber-400 font-bold">!</span> {s}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Job Description Raw */}
                             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-1.5">

@@ -1,7 +1,8 @@
 import os
+import gc
+import uuid
 import asyncio
 import hashlib
-import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
@@ -175,11 +176,23 @@ class SchedulerService:
                     })
                 return rows
 
+            def write_csv_file(file_path, rows):
+                import csv
+                if not rows:
+                    with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                        f.write("Company Name,Role / Title,Location,Work Type,Posted Date (YYYY-MM-DD),Salary,Match Score,Experience Fit,Matching Skills,Missing Skills,Match Reason,URL,Source\n")
+                    return
+                fieldnames = list(rows[0].keys())
+                with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
+
             raw_csv_rows = build_csv_rows(raw_jobs, is_raw=True)
-            pd.DataFrame(raw_csv_rows).to_csv(raw_csv_path, index=False, encoding="utf-8-sig")
+            write_csv_file(raw_csv_path, raw_csv_rows)
 
             curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
-            pd.DataFrame(curated_csv_rows).to_csv(curated_csv_path, index=False, encoding="utf-8-sig")
+            write_csv_file(curated_csv_path, curated_csv_rows)
 
             # 6. Send Email Digest with Attachments
             summary_note = f"Personalized daily report for {alert.role} ({alert.location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
@@ -360,19 +373,194 @@ class SchedulerService:
             except Exception:
                 pass
 
+    async def run_continuous_background_job_discovery(self):
+        """
+        Runs periodic server-side background job discovery across platforms for all
+        active user roles, search histories, and email alerts.
+        This runs 24/7 in the background regardless of whether any browser tabs are open,
+        ensuring fresh jobs are continuously crawled and persisted to the database.
+        """
+        from src.models.job import Job
+        from src.models.search_history import SearchHistory
+        from src.repositories.job_repository import JobRepository
+        from src.utils.text_cleaner import extract_job_experience_metadata
+
+        db = SessionLocal()
+        try:
+            # 1. Collect distinct search targets from recent SearchHistory & EmailAlert
+            target_configs = []
+            seen_combos = set()
+
+            # From recent searches in the last 7 days
+            cutoff = datetime.utcnow() - timedelta(days=7)
+            recent_searches = db.query(SearchHistory).filter(SearchHistory.created_at >= cutoff).order_by(SearchHistory.created_at.desc()).limit(15).all()
+            for s in recent_searches:
+                if not s.role:
+                    continue
+                combo_key = f"{s.role.lower().strip()}|{(s.location or '').lower().strip()}"
+                if combo_key not in seen_combos:
+                    seen_combos.add(combo_key)
+                    pref = s.preferences or {}
+                    target_configs.append({
+                        "role": s.role.strip(),
+                        "location": (s.location or "Worldwide").strip(),
+                        "preferences": {
+                            "role": s.role.strip(),
+                            "location": "" if (s.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else s.location,
+                            "remote_preference": pref.get("remote_preference", "any"),
+                            "experience_level": pref.get("experience_level", "all"),
+                            "experience_years": pref.get("experience_years", 0)
+                        },
+                        "candidate_profile": {
+                            "skills": pref.get("skills") or pref.get("resume_skills") or [],
+                            "core_domain": s.role.strip(),
+                            "experience_years": pref.get("experience_years", 0),
+                            "seniority": pref.get("experience_level", "Mid")
+                        }
+                    })
+
+            # Also check EmailAlerts
+            active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
+            for a in active_alerts:
+                if not a.role:
+                    continue
+                combo_key = f"{a.role.lower().strip()}|{(a.location or '').lower().strip()}"
+                if combo_key not in seen_combos:
+                    seen_combos.add(combo_key)
+                    target_configs.append({
+                        "role": a.role.strip(),
+                        "location": (a.location or "Worldwide").strip(),
+                        "preferences": {
+                            "role": a.role.strip(),
+                            "location": "" if (a.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else a.location,
+                            "remote_preference": a.work_mode or "any",
+                            "experience_level": "all",
+                            "experience_years": a.experience_years or 0.0
+                        },
+                        "candidate_profile": {
+                            "skills": a.skills or [],
+                            "core_domain": a.role.strip(),
+                            "experience_years": a.experience_years or 0.0,
+                            "seniority": "Intern" if "intern" in a.role.lower() else "Junior"
+                        }
+                    })
+
+            if not target_configs:
+                # Default fallback role if no searches yet
+                target_configs = [{
+                    "role": "AI Engineer Intern",
+                    "location": "Worldwide",
+                    "preferences": {"role": "AI Engineer Intern", "location": "", "remote_preference": "any", "experience_level": "intern", "experience_years": 0},
+                    "candidate_profile": {"skills": ["Python", "PyTorch", "Machine Learning"], "core_domain": "AI / ML", "experience_years": 0, "seniority": "Intern"}
+                }]
+
+            # Fetch existing job URLs in DB to prevent re-adding duplicates
+            existing_db_urls = set(u[0].strip().lower() for u in db.query(Job.url).filter(Job.url != "").all() if u[0])
+
+            # Crawl for top 2 targets per discovery cycle to keep CPU & memory light
+            for config in target_configs[:2]:
+                role_name = config["role"]
+                loc_name = config["location"]
+                print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across 9 platforms...")
+
+                raw_jobs = await self.orchestrator.orchestrate_search(config["candidate_profile"], config["preferences"])
+                if not raw_jobs:
+                    continue
+
+                unique_jobs = await self.deduplicator.deduplicate(raw_jobs)
+                ranked_jobs = await self.ranking_agent.rank_jobs(unique_jobs, config["candidate_profile"], config["preferences"])
+
+                new_db_jobs = []
+                for j in ranked_jobs:
+                    url = (j.get("url") or "").strip().lower()
+                    if url and url in existing_db_urls:
+                        continue
+                    if url:
+                        existing_db_urls.add(url)
+
+                    rtitle = j.get("title", "Unknown Role")
+                    rdesc = (j.get("description") or "")[:3000]
+                    rexp = extract_job_experience_metadata(rtitle, rdesc, j.get("experience_fit", ""))
+                    rdate = format_posted_date_for_csv(j.get("posted_date"))
+                    if rdate == "N/A":
+                        rdate = datetime.utcnow().strftime("%Y-%m-%d")
+
+                    new_db_jobs.append(Job(
+                        id=str(uuid.uuid4()),
+                        search_id=f"auto_discovery_{datetime.utcnow().strftime('%Y%m%d%H%M')}",
+                        title=rtitle,
+                        company=j.get("company", "Unknown Company"),
+                        location=j.get("location", "Remote"),
+                        description=rdesc,
+                        url=j.get("url", ""),
+                        source=j.get("source", "unknown"),
+                        posted_date=rdate,
+                        salary_range=j.get("salary_range"),
+                        match_score=float(j.get("match_score", 50.0)),
+                        match_reason=j.get("match_reason", "Background Auto-Discovery Match"),
+                        matching_skills=j.get("matching_skills", []),
+                        missing_skills=j.get("missing_skills", []),
+                        experience_fit=j.get("experience_fit", "Good Fit"),
+                        key_requirements=j.get("key_requirements", ""),
+                        company_insights=j.get("company_insights") or {},
+                        hr_contacts=[],
+                        tech_contacts=[]
+                    ))
+
+                if new_db_jobs:
+                    JobRepository(db).add_jobs(new_db_jobs)
+                    print(f"[Background Auto-Discovery] ✅ Saved {len(new_db_jobs)} new background-discovered jobs to database for '{role_name}'.")
+                else:
+                    print(f"[Background Auto-Discovery] ℹ️ All {len(ranked_jobs)} discovered jobs for '{role_name}' are already up-to-date in database.")
+
+                del raw_jobs
+                del unique_jobs
+                del ranked_jobs
+                del new_db_jobs
+                gc.collect()
+
+        except Exception as bg_err:
+            print(f"[Background Auto-Discovery] Notice: {bg_err}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+            gc.collect()
+
     async def start_background_scheduler(self):
         """
-        Runs continuous background scheduler loop checking alerts every 60s
-        and cookie health every 10 minutes.
+        Runs continuous background scheduler loop:
+        1. Checks daily email alerts every 60s.
+        2. Runs continuous background auto-discovery crawler every 3 minutes.
+        3. Runs cookie health check every 10 minutes.
         """
-        print("[Scheduler] Automated daily email background worker started.")
+        print("[Scheduler] Automated background worker & continuous job discovery engine started.")
+        discovery_counter = 0
         health_check_counter = 0
+
+        # Run an initial background discovery 15 seconds after server boot
+        await asyncio.sleep(15)
+        try:
+            await self.run_continuous_background_job_discovery()
+        except Exception as e:
+            print(f"[Scheduler] Initial discovery notice: {e}")
 
         while True:
             try:
                 await self.check_and_trigger_due_alerts()
                 
-                # Run Cookie Health Sentinel every 10 minutes (10 loops * 60s)
+                # Run Continuous Background Job Discovery every 3 minutes (3 * 60s)
+                discovery_counter += 1
+                if discovery_counter >= 3:
+                    discovery_counter = 0
+                    await self.run_continuous_background_job_discovery()
+
+                # Run Cookie Health Sentinel every 10 minutes (10 * 60s)
                 health_check_counter += 1
                 if health_check_counter >= 10:
                     health_check_counter = 0
