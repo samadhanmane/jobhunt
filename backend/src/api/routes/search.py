@@ -56,12 +56,14 @@ async def search_jobs(
     experience_level: Optional[str] = Form(None),
     experience_years: Optional[float] = Form(None),
     remote_preference: Optional[str] = Form(None),
+    max_age_days: Optional[int] = Form(None),
+    source_platform: Optional[str] = Form(None),
     preferences: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
     Executes search pipeline: Orchestrates parallel multi-platform harvesting,
-    deduplication, AI ranking, and stores results.
+    deduplication, AI ranking, and stores results based on pre-harvest criteria.
     """
     temp_path = None
     parsed_resume = {}
@@ -94,6 +96,10 @@ async def search_jobs(
         pref_dict["experience_years"] = experience_years
     if remote_preference:
         pref_dict["remote_preference"] = remote_preference.strip()
+    if max_age_days is not None:
+        pref_dict["max_age_days"] = max_age_days
+    if source_platform:
+        pref_dict["source_platform"] = source_platform.strip().lower()
 
     if not pref_dict.get("role"):
         pref_dict["role"] = "Software Engineer"

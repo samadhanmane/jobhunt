@@ -1532,7 +1532,15 @@ function JobSearchDashboard({
     // Selected Job for Detailed Modal
     const [selectedJob, setSelectedJob] = useState(null);
 
-    // Filter Toolbar State with Saved Defaults
+    // Pre-Harvesting Setup State (Strictly controls scraper criteria & background harvesting)
+    const [harvestRole, setHarvestRole] = useState("AI ML Intern");
+    const [harvestLocation, setHarvestLocation] = useState("");
+    const [harvestWorkMode, setHarvestWorkMode] = useState("any"); // 'any' | 'remote' | 'hybrid' | 'onsite'
+    const [harvestExperience, setHarvestExperience] = useState("all"); // 'all' | 'intern' | 'entry' | 'junior' | 'mid' | 'senior' | 'lead'
+    const [harvestDate, setHarvestDate] = useState("all"); // 'all' | '1' | '3' | '7' | '14' | '30'
+    const [harvestSource, setHarvestSource] = useState("all"); // 'all' | 'greenhouse' | 'lever' | 'ashby' | 'linkedin' | 'himalayas' | 'arbeitnow' | 'freehire' | 'jobicy' | 'remoteok'
+
+    // In-Memory Result Filter Toolbar State (Strictly filters already-fetched jobs in real-time)
     const [filterKeyword, setFilterKeyword] = useState("");
     const [filterLocationInput, setFilterLocationInput] = useState("");
     const [filterExpYears, setFilterExpYears] = useState("all");
@@ -1751,7 +1759,20 @@ function JobSearchDashboard({
                 setResumeProfile(parsed);
                 if (parsed.target_roles && parsed.target_roles[0]) {
                     setRole(parsed.target_roles[0]);
+                    setHarvestRole(parsed.target_roles[0]);
                 }
+            }
+
+            // Restore pre-harvesting setup criteria
+            const savedHarvest = localStorage.getItem("jobhunt_harvest_criteria");
+            if (savedHarvest) {
+                const h = JSON.parse(savedHarvest);
+                if (h.harvestRole) { setHarvestRole(h.harvestRole); setRole(h.harvestRole); }
+                if (h.harvestLocation !== undefined) setHarvestLocation(h.harvestLocation);
+                if (h.harvestWorkMode !== undefined) setHarvestWorkMode(h.harvestWorkMode);
+                if (h.harvestExperience !== undefined) setHarvestExperience(h.harvestExperience);
+                if (h.harvestDate !== undefined) setHarvestDate(h.harvestDate);
+                if (h.harvestSource !== undefined) setHarvestSource(h.harvestSource);
             }
 
             // Load full accumulated pool from IndexedDB and sync with latest server-side background discoveries
@@ -1825,7 +1846,21 @@ function JobSearchDashboard({
         } catch (e) { }
     }, []);
 
-    // Automatically persist active filter settings whenever user changes any filter
+    // Automatically persist pre-harvest criteria whenever user adjusts them
+    useEffect(() => {
+        try {
+            localStorage.setItem("jobhunt_harvest_criteria", JSON.stringify({
+                harvestRole,
+                harvestLocation,
+                harvestWorkMode,
+                harvestExperience,
+                harvestDate,
+                harvestSource
+            }));
+        } catch (e) { }
+    }, [harvestRole, harvestLocation, harvestWorkMode, harvestExperience, harvestDate, harvestSource]);
+
+    // Automatically persist in-memory result filter settings
     useEffect(() => {
         try {
             localStorage.setItem("jobhunt_active_filters", JSON.stringify({
@@ -1843,42 +1878,37 @@ function JobSearchDashboard({
         } catch (e) { }
     }, [jobScope, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
-    // Execute Search across 9 platforms directly targeted to active user filters (retains previous results until fresh ones arrive)
+    // Execute Pre-Harvest across 9 platforms based strictly on Pre-Harvest Criteria and merge into pool
     const executeSearch = async (overrideFile = null, overrideRole = null, overrideLocation = null) => {
         setSearching(true);
         setIsHarvestingLive(false);
 
-        const activeRole = (overrideRole || role || "Software Engineer").trim();
-        const activeLocation = (overrideLocation !== null ? overrideLocation : filterLocationInput).trim() || "Worldwide";
+        const activeRole = (overrideRole !== null ? overrideRole : (harvestRole || role || "Software Engineer")).trim();
+        const activeLocation = (overrideLocation !== null ? overrideLocation : harvestLocation).trim();
 
-        let activeSeniority = "mid";
+        let activeSeniority = harvestExperience !== "all" ? harvestExperience : (resumeProfile?.seniority?.toLowerCase() || "mid");
         let searchRole = activeRole;
-        if (filterSeniority !== "all") {
-            activeSeniority = filterSeniority;
-        } else if (filterExpYears !== "all") {
-            if (filterExpYears === "0") {
-                activeSeniority = "intern";
-                if (!searchRole.toLowerCase().includes("intern")) searchRole = `${searchRole} Intern`;
-            } else if (filterExpYears === "1" || filterExpYears === "2") {
-                activeSeniority = "entry_level";
-                if (!searchRole.toLowerCase().includes("junior") && !searchRole.toLowerCase().includes("entry")) searchRole = `Junior ${searchRole}`;
-            } else if (filterExpYears === "3-5") {
-                activeSeniority = "mid";
-            } else if (filterExpYears === "5+" || filterExpYears === "8+") {
-                activeSeniority = "senior";
-                if (!searchRole.toLowerCase().includes("senior")) searchRole = `Senior ${searchRole}`;
+        if (activeSeniority === "intern" && !searchRole.toLowerCase().includes("intern")) {
+            searchRole = `${searchRole} Intern`;
+        } else if (activeSeniority === "junior" || activeSeniority === "entry") {
+            if (!searchRole.toLowerCase().includes("junior") && !searchRole.toLowerCase().includes("entry")) {
+                searchRole = `Junior ${searchRole}`;
             }
-        } else if (resumeProfile?.seniority) {
-            activeSeniority = resumeProfile.seniority.toLowerCase();
+        } else if (activeSeniority === "senior" && !searchRole.toLowerCase().includes("senior")) {
+            searchRole = `Senior ${searchRole}`;
         }
-
-        const activeRemote = filterWorkMode !== "all" ? filterWorkMode : "any";
 
         const formData = new FormData();
         formData.append("role", searchRole);
-        formData.append("location", activeLocation);
+        formData.append("location", activeLocation || "Worldwide");
         formData.append("experience_level", activeSeniority);
-        formData.append("remote_preference", activeRemote);
+        formData.append("remote_preference", harvestWorkMode);
+        if (harvestDate && harvestDate !== "all") {
+            formData.append("max_age_days", harvestDate);
+        }
+        if (harvestSource && harvestSource !== "all") {
+            formData.append("source_platform", harvestSource);
+        }
 
         const fileToUpload = overrideFile || resumeFile;
         if (fileToUpload) {
@@ -1905,7 +1935,7 @@ function JobSearchDashboard({
                 const incomingUnique = data.unique_jobs || data.all_jobs || incomingMatched;
                 const incomingRaw = data.raw_jobs || incomingUnique;
 
-                // Accumulate and combine with existing jobs using synchronous refs
+                // Merge newly harvested jobs into accumulated pool
                 const mergedMatched = mergeJobList(allMatchedJobsRef.current, incomingMatched);
                 const mergedUnique = mergeJobList(allUniqueJobsRef.current, incomingUnique);
                 const mergedRaw = mergeJobList(allRawJobsRef.current, incomingRaw);
@@ -1929,7 +1959,7 @@ function JobSearchDashboard({
 
                 // Start continuous background harvesting
                 setIsHarvestingLive(true);
-                showToast(`Harvested ${data.total_found || incomingRaw.length} postings for ${activeLocation} (Total pool: ${mergedRaw.length}) -> streaming more!`);
+                showToast(`Harvested & merged ${data.total_found || incomingRaw.length} postings for ${activeLocation || 'Worldwide'}! (Total pool: ${mergedRaw.length})`);
             } else {
                 showToast(data.detail || "Search failed.", "error");
             }
@@ -2327,62 +2357,202 @@ function JobSearchDashboard({
             )}
             {/* Search Input & Resume Header */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                {/* Simplified Search Form */}
+                {/* Pre-Harvest Search & Discovery Form */}
                 <div className="lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] flex flex-col justify-between">
                     <div>
                         <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.06]">
                             <div>
                                 <h2 className="text-base font-bold text-white flex items-center gap-2">
-                                    <span>🎯</span> Search & Live Job Discovery
+                                    <span>🚀</span> Live Harvesting & Job Scraper Engine
                                 </h2>
                                 <p className="text-xs text-slate-400 mt-0.5">
-                                    Parallel scraping across Greenhouse, Lever, Ashby, LinkedIn, Indeed, Himalayas, Arbeitnow, Jobicy & RemoteOK
+                                    Set criteria to crawl jobs across 9 platforms and merge into your pool. Background auto-discovery also continuously crawls these settings.
                                 </p>
                             </div>
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                9 ATS Platforms
+                            </span>
                         </div>
 
                         <form onSubmit={handleSearchSubmit} className="space-y-4">
-                            <div>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                            {/* Row 1: Target Role & Target Location */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
                                         Target Role / Title <span className="text-indigo-400">*</span>
                                     </label>
-                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold flex items-center gap-1">
-                                        <span>🌍</span> Worldwide Multi-Board Search
-                                    </span>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={harvestRole}
+                                        onChange={(e) => {
+                                            setHarvestRole(e.target.value);
+                                            setRole(e.target.value);
+                                        }}
+                                        placeholder="e.g. AI ML Engineer, Data Scientist, Full Stack"
+                                        className="w-full px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
+                                    />
                                 </div>
-                                <input
-                                    type="text"
-                                    required
-                                    value={role}
-                                    onChange={(e) => setRole(e.target.value)}
-                                    placeholder="e.g. AI ML Engineer, Full Stack Developer, Data Scientist"
-                                    className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
-                                />
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                                            Target Location
+                                        </label>
+                                        <span className="text-[10px] text-slate-500">Leave blank for Worldwide</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={harvestLocation}
+                                        onChange={(e) => setHarvestLocation(e.target.value)}
+                                        placeholder="e.g. Pune, Bangalore, US, Remote, Worldwide..."
+                                        className="w-full px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-indigo-500 focus:outline-none"
+                                    />
+                                </div>
                             </div>
 
-                            <button
-                                type="submit"
-                                disabled={searching}
-                                className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
-                            >
-                                {searching ? (
-                                    <>
-                                        <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                        <span>Harvesting Worldwide Across 9 Platforms...</span>
-                                    </>
-                                ) : (
-                                    <span>⚡ Harvest Worldwide Jobs & Match Profile</span>
+                            {/* Quick Location Preset Buttons */}
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Quick Hubs:</span>
+                                {[
+                                    { label: "📍 Worldwide", val: "" },
+                                    { label: "🇮🇳 India", val: "India" },
+                                    { label: "📍 Pune", val: "Pune" },
+                                    { label: "📍 Bangalore", val: "Bangalore" },
+                                    { label: "🇺🇸 US", val: "United States" },
+                                    { label: "🌉 Bay Area", val: "Bay Area" },
+                                    { label: "🇬🇧 UK", val: "UK" },
+                                    { label: "🇩🇪 Germany", val: "Germany" },
+                                    { label: "🏠 Remote", val: "Remote" }
+                                ].map((hub, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => setHarvestLocation(hub.val)}
+                                        className={`px-2 py-0.5 rounded-md transition-all font-medium ${(harvestLocation.toLowerCase() === hub.val.toLowerCase() || (!harvestLocation && hub.val === ""))
+                                            ? "bg-indigo-600 text-white border border-indigo-400 shadow-sm"
+                                            : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]"
+                                        }`}
+                                    >
+                                        {hub.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Row 2: Pre-Harvest Work Mode, Experience, Date Freshness, Platform Source */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Work Mode</label>
+                                    <select
+                                        value={harvestWorkMode}
+                                        onChange={(e) => setHarvestWorkMode(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-cyan-300"
+                                    >
+                                        <option value="any">🌐 All Modes</option>
+                                        <option value="remote">🏠 Remote Only</option>
+                                        <option value="hybrid">🔄 Hybrid</option>
+                                        <option value="onsite">🏢 Onsite / Office</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Experience</label>
+                                    <select
+                                        value={harvestExperience}
+                                        onChange={(e) => setHarvestExperience(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-emerald-300"
+                                    >
+                                        <option value="all">🎓 All Levels</option>
+                                        <option value="intern">🌱 Internship (0 Yrs)</option>
+                                        <option value="entry">🚀 0–1 Yr (Entry)</option>
+                                        <option value="junior">⚡ 1–2 Yrs (Junior)</option>
+                                        <option value="mid">💼 3–5 Yrs (Mid)</option>
+                                        <option value="senior">👑 5+ Yrs (Senior)</option>
+                                        <option value="lead">🏆 8+ Yrs (Lead)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
+                                    <select
+                                        value={harvestDate}
+                                        onChange={(e) => setHarvestDate(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-indigo-300"
+                                    >
+                                        <option value="all">📅 Any Time</option>
+                                        <option value="1">⚡ Past 24 Hours</option>
+                                        <option value="3">🔥 Past 3 Days</option>
+                                        <option value="7">📅 Past 7 Days</option>
+                                        <option value="14">🗓️ Past 14 Days</option>
+                                        <option value="30">🗓️ Past 30 Days</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Platform Source</label>
+                                    <select
+                                        value={harvestSource}
+                                        onChange={(e) => setHarvestSource(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-purple-300"
+                                    >
+                                        <option value="all">🌐 All 9 Platforms</option>
+                                        <option value="greenhouse">🌿 Greenhouse ATS</option>
+                                        <option value="lever">⚙️ Lever ATS</option>
+                                        <option value="ashby">⚡ Ashby ATS</option>
+                                        <option value="linkedin">💼 LinkedIn & Indeed</option>
+                                        <option value="himalayas">🏔️ Himalayas</option>
+                                        <option value="arbeitnow">🇪🇺 Arbeitnow</option>
+                                        <option value="freehire">🎯 Freehire</option>
+                                        <option value="jobicy">🌍 Jobicy</option>
+                                        <option value="remoteok">🏖️ RemoteOK</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Action Buttons: Harvest / Reharvest & Merge / Clear */}
+                            <div className="flex items-center gap-2.5 pt-1">
+                                <button
+                                    type="submit"
+                                    disabled={searching}
+                                    className="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25"
+                                >
+                                    {searching ? (
+                                        <>
+                                            <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                            <span>Harvesting Across Platforms...</span>
+                                        </>
+                                    ) : allRawJobs.length > 0 ? (
+                                        <>
+                                            <span>🔄 Reharvest & Merge Fresh Jobs ({harvestLocation || 'Worldwide'})</span>
+                                            <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-mono">
+                                                Pool: {allRawJobs.length}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <span>⚡ Harvest Live Jobs ({harvestLocation || 'Worldwide'})</span>
+                                    )}
+                                </button>
+
+                                {allRawJobs.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearJobPool}
+                                        className="py-2.5 px-3 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 text-slate-300 border border-white/10 text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5"
+                                        title="Clear all accumulated harvested jobs"
+                                    >
+                                        <span>🗑️ Clear Pool</span>
+                                    </button>
                                 )}
-                            </button>
+                            </div>
                         </form>
                     </div>
 
                     <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Multi-platform deduplication & AI scoring</span>
+                        <span>Background discovery continuously syncs fresh findings</span>
                         <span className="text-emerald-400 font-medium flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                            Live Active
+                            Live Engine
                         </span>
                     </div>
                 </div>
@@ -2695,64 +2865,78 @@ function JobSearchDashboard({
                         </div>
                     </div>
 
-                    {/* Filter Bar */}
-                    <div className="minimal-card rounded-xl p-4 border border-white/[0.08] space-y-3.5">
+                    {/* In-Memory Result Filter Bar (Strictly filters already-harvested jobs in real-time with 0 latency) */}
+                    <div className="minimal-card rounded-xl p-4 sm:p-5 border border-white/[0.08] space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-white/[0.06]">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm">🔍</span>
+                                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                                    In-Memory Result Filters
+                                </h3>
+                                <span className="px-2 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-[11px] font-mono font-semibold">
+                                    Showing {filteredJobs.length} of {allRawJobs.length} Jobs
+                                </span>
+                            </div>
+
+                            {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0 || sortBy !== 'score') && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setFilterKeyword("");
+                                        setFilterLocationInput("");
+                                        setFilterExpYears("all");
+                                        setFilterWorkMode("all");
+                                        setMinScore(0);
+                                        setFilterSeniority("all");
+                                        setFilterDate("all");
+                                        setFilterSource("all");
+                                        setSortBy("score");
+                                        showToast("In-memory result filters reset.");
+                                    }}
+                                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 hover:underline self-start sm:self-auto"
+                                >
+                                    <span>↺</span>
+                                    <span>Reset In-Memory Filters</span>
+                                </button>
+                            )}
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 text-xs">
                             {/* Search Keyword */}
                             <div className="lg:col-span-2">
-                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search Keywords</label>
+                                <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Search in Results</label>
                                 <input
                                     type="text"
-                                    placeholder="Company, title, skill..."
+                                    placeholder="Search company, title, skill..."
                                     value={filterKeyword}
                                     onChange={(e) => setFilterKeyword(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 />
                             </div>
 
-                            {/* Smart Location Input with NLP expansion */}
+                            {/* Location Filter in Fetched Jobs (In-memory text filter only) */}
                             <div className="lg:col-span-2">
                                 <div className="flex items-center justify-between mb-1">
                                     <label className="block text-[10px] font-semibold text-slate-400 uppercase">
-                                        📍 Target Location
+                                        📍 Filter by Location
                                     </label>
                                     {filterLocationInput && (
                                         <button
                                             type="button"
-                                            onClick={() => executeSearch(null, null, filterLocationInput)}
-                                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-0.5"
+                                            onClick={() => setFilterLocationInput("")}
+                                            className="text-[10px] text-slate-400 hover:text-slate-200"
                                         >
-                                            <span>⚡ Search</span>
+                                            Clear
                                         </button>
                                     )}
                                 </div>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. Pune, Bangalore, SF, Bay Area, Remote..."
-                                        value={filterLocationInput}
-                                        onChange={(e) => setFilterLocationInput(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                executeSearch(null, null, e.target.value);
-                                            }
-                                        }}
-                                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none pr-8"
-                                    />
-                                    {filterLocationInput && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setFilterLocationInput("");
-                                                executeSearch(null, null, "Worldwide");
-                                            }}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
-                                        >
-                                            ✕
-                                        </button>
-                                    )}
-                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Filter by city, state, or remote..."
+                                    value={filterLocationInput}
+                                    onChange={(e) => setFilterLocationInput(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                />
                             </div>
 
                             {/* Job Pool / Scope Filter */}
@@ -2768,6 +2952,7 @@ function JobSearchDashboard({
                                     <option value="curated">🎯 Curated ({allMatchedJobs.length || 0})</option>
                                     <option value="unique">🧬 Unique ({allUniqueJobs.length || searchStats.unique_count})</option>
                                     <option value="raw">🌐 Raw ({allRawJobs.length || searchStats.total_found})</option>
+                                    <option value="applied">✓ Applied ({appliedJobs.length || 0})</option>
                                 </select>
                             </div>
 
@@ -2778,13 +2963,11 @@ function JobSearchDashboard({
                                 </label>
                                 <select
                                     value={filterWorkMode}
-                                    onChange={(e) => {
-                                        setFilterWorkMode(e.target.value);
-                                    }}
+                                    onChange={(e) => setFilterWorkMode(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-semibold text-cyan-300"
                                 >
                                     <option value="all">🌐 All Modes</option>
-                                    <option value="remote">🏠 Remote (WFH)</option>
+                                    <option value="remote">🏠 Remote Only</option>
                                     <option value="hybrid">🔄 Hybrid</option>
                                     <option value="onsite">🏢 Onsite / Office</option>
                                 </select>
@@ -2809,7 +2992,7 @@ function JobSearchDashboard({
                                 <select
                                     value={filterExpYears}
                                     onChange={(e) => setFilterExpYears(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-amber-300"
                                 >
                                     <option value="all">🎓 All Levels</option>
                                     <option value="0">🌱 0 Yrs (Intern)</option>
@@ -2822,11 +3005,11 @@ function JobSearchDashboard({
                             </div>
                         </div>
 
-                        {/* Quick Location Preset Suggestion Chips with Live Re-Harvesting */}
+                        {/* Quick Location Filter Suggestion Chips (In-memory filter only) */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                            <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Quick Hubs:</span>
+                            <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Quick Location Filter:</span>
                             {[
-                                { label: "📍 All / Worldwide", val: "" },
+                                { label: "📍 All Locations", val: "" },
                                 { label: "🇮🇳 India", val: "india" },
                                 { label: "📍 Pune", val: "pune" },
                                 { label: "📍 Bangalore", val: "bangalore" },
@@ -2839,10 +3022,7 @@ function JobSearchDashboard({
                                 <button
                                     key={idx}
                                     type="button"
-                                    onClick={() => {
-                                        setFilterLocationInput(hub.val);
-                                        executeSearch(null, null, hub.val);
-                                    }}
+                                    onClick={() => setFilterLocationInput(hub.val)}
                                     className={`px-2 py-0.5 rounded-md transition-all font-medium ${(filterLocationInput.toLowerCase() === hub.val || (!filterLocationInput && hub.val === ""))
                                             ? "bg-indigo-600 text-white border border-indigo-400 shadow-sm"
                                             : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]"
@@ -2853,8 +3033,8 @@ function JobSearchDashboard({
                             ))}
                         </div>
 
-                        {/* Secondary Filter Row: Freshness, Source, Score Slider & Reset */}
-                        <div className="pt-3 border-t border-white/[0.05] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center text-xs">
+                        {/* Secondary Filter Row: Freshness, Source, Score Slider */}
+                        <div className="pt-3 border-t border-white/[0.05] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-center text-xs">
                             {/* Date Posted (Freshness) Filter */}
                             <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Date Posted</label>
@@ -2908,37 +3088,6 @@ function JobSearchDashboard({
                                     onChange={(e) => setMinScore(Number(e.target.value))}
                                     className="w-full accent-indigo-500 cursor-pointer"
                                 />
-                            </div>
-
-                            {/* Reset & Clear Buttons */}
-                            <div className="flex items-center justify-end gap-3 pt-3 sm:pt-0">
-                                {allRawJobs.length > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={handleClearJobPool}
-                                        className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 hover:underline"
-                                    >
-                                        <span>🗑️</span> Clear Pool ({allRawJobs.length})
-                                    </button>
-                                )}
-                                {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0) && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setFilterKeyword("");
-                                            setFilterLocationInput("");
-                                            setFilterExpYears("all");
-                                            setFilterWorkMode("all");
-                                            setMinScore(0);
-                                            setFilterSeniority("all");
-                                            setFilterDate("all");
-                                            setFilterSource("all");
-                                        }}
-                                        className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold underline flex items-center gap-1"
-                                    >
-                                        <span>↺</span> Reset Filters
-                                    </button>
-                                )}
                             </div>
                         </div>
                     </div>

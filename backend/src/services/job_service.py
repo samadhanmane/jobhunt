@@ -242,6 +242,15 @@ class JobService:
             
             # 3. Deduplicate using exact hashing & cosine similarity
             unique_jobs = await self.deduplicator.deduplicate(raw_jobs)
+
+            # Optional pre-harvest date freshness filter
+            max_days = preferences.get("max_age_days")
+            if max_days and isinstance(max_days, (int, float)) and max_days > 0:
+                from src.utils.date_utils import is_within_days
+                date_filtered = [j for j in unique_jobs if is_within_days(j.get("posted_date"), int(max_days))]
+                if date_filtered:
+                    unique_jobs = date_filtered
+
             unique_count = len(unique_jobs)
             
             # 4. Rank with candidate profile, skill match, gap analysis, and reason

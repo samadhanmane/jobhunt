@@ -190,19 +190,31 @@ Candidate Background:
                 finally:
                     gc.collect()
 
+        target_src = (preferences.get("source_platform") or preferences.get("sources") or "all").lower().strip()
+        run_all = target_src in ["all", "", "any", "all platforms"]
+
         tasks = []
         for idx, q_title in enumerate(target_queries):
             # Run JobSpy on primary anchor query to keep memory lean (< 50MB RAM)
-            if idx == 0:
-                tasks.append(run_guarded(self.jobspy.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
-            tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
-            tasks.append(run_guarded(self.jobicy.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.remoteok.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.greenhouse.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
-            tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["jobspy", "linkedin", "indeed"]:
+                if idx == 0:
+                    tasks.append(run_guarded(self.jobspy.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["himalayas"]:
+                tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["arbeitnow"]:
+                tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
+            if run_all or target_src in ["freehire"]:
+                tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
+            if run_all or target_src in ["jobicy"]:
+                tasks.append(run_guarded(self.jobicy.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["remoteok"]:
+                tasks.append(run_guarded(self.remoteok.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["greenhouse"]:
+                tasks.append(run_guarded(self.greenhouse.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["lever"]:
+                tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["ashby"]:
+                tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
