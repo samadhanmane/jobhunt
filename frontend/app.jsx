@@ -128,48 +128,150 @@ function cleanHtmlJobDescription(rawHtml) {
 }
 
 // ==========================================
-// Smart Location NLP Aliases Dictionary
+// Smart Location NLP Aliases & Hierarchy Engine
 // ==========================================
-const LOCATION_ALIASES = {
-    'india': ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'in'],
-    'pune': ['pune', 'maharashtra', 'india'],
-    'bangalore': ['bangalore', 'bengaluru', 'karnataka', 'india'],
-    'bengaluru': ['bangalore', 'bengaluru', 'karnataka', 'india'],
-    'mumbai': ['mumbai', 'maharashtra', 'bombay', 'india'],
-    'hyderabad': ['hyderabad', 'telangana', 'secunderabad', 'india'],
-    'delhi': ['delhi', 'noida', 'gurgaon', 'gurugram', 'ncr', 'india'],
-    'noida': ['noida', 'delhi', 'ncr', 'india'],
-    'gurgaon': ['gurgaon', 'gurugram', 'delhi', 'ncr', 'india'],
-    'chennai': ['chennai', 'madras', 'tamil nadu', 'india'],
-    'us': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
-    'usa': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
-    'united states': ['united states', 'usa', 'us', 'san francisco', 'new york', 'california', 'texas', 'seattle', 'austin', 'boston', 'chicago', 'ca', 'ny', 'tx', 'wa', 'ma'],
-    'california': ['california', 'ca', 'san francisco', 'sf', 'bay area', 'silicon valley', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'oakland', 'los angeles', 'la', 'san diego'],
-    'bay area': ['bay area', 'san francisco', 'sf', 'silicon valley', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'oakland', 'ca'],
-    'san francisco': ['san francisco', 'sf', 'bay area', 'silicon valley', 'ca'],
-    'new york': ['new york', 'ny', 'nyc', 'manhattan', 'brooklyn'],
-    'texas': ['texas', 'tx', 'austin', 'dallas', 'houston'],
-    'austin': ['austin', 'texas', 'tx'],
-    'seattle': ['seattle', 'wa', 'washington'],
-    'uk': ['united kingdom', 'uk', 'london', 'manchester', 'cambridge', 'edinburgh', 'birmingham', 'bristol', 'england', 'gb'],
-    'united kingdom': ['united kingdom', 'uk', 'london', 'manchester', 'cambridge', 'edinburgh', 'birmingham', 'bristol', 'england', 'gb'],
-    'london': ['london', 'uk', 'england'],
-    'germany': ['germany', 'de', 'berlin', 'munich', 'münchen', 'frankfurt', 'hamburg', 'cologne'],
-    'berlin': ['berlin', 'germany'],
-    'munich': ['munich', 'münchen', 'germany', 'de'],
-    'canada': ['canada', 'ca', 'toronto', 'ontario', 'vancouver', 'bc', 'montreal', 'quebec', 'ottawa'],
-    'toronto': ['toronto', 'ontario', 'canada'],
-    'vancouver': ['vancouver', 'bc', 'canada'],
-    'australia': ['australia', 'au', 'sydney', 'melbourne', 'brisbane'],
-    'singapore': ['singapore', 'sg'],
-    'netherlands': ['netherlands', 'amsterdam', 'rotterdam', 'nl'],
-    'amsterdam': ['amsterdam', 'netherlands', 'nl'],
-    'uae': ['united arab emirates', 'uae', 'dubai', 'abu dhabi'],
-    'dubai': ['dubai', 'uae', 'united arab emirates'],
-    'europe': ['europe', 'eu', 'emea', 'germany', 'uk', 'france', 'netherlands', 'spain', 'poland', 'switzerland', 'sweden', 'ireland'],
-    'apac': ['apac', 'asia', 'singapore', 'india', 'japan', 'australia', 'hong kong', 'taiwan', 'korea'],
-    'remote': ['remote', 'wfh', 'work from home', 'anywhere', 'worldwide', 'virtual', 'distributed']
+const LOCATION_HIERARCHY_MAP = {
+    'india': {
+        countryAliases: ['india', 'in', 'bharat', 'south asia'],
+        cities: ['pune', 'bangalore', 'bengaluru', 'mumbai', 'bombay', 'delhi', 'new delhi', 'hyderabad', 'secunderabad', 'noida', 'gurgaon', 'gurugram', 'chennai', 'madras', 'kolkata', 'ahmedabad', 'jaipur', 'indore', 'chandigarh', 'mohali', 'kochi', 'cochin', 'trivandrum', 'coimbatore', 'nagpur', 'bhopal', 'visakhapatnam', 'vizag', 'mysore', 'mysuru', 'bhubaneswar', 'surat', 'vadodara', 'lucknow', 'kanpur', 'patna', 'ncr', 'hinjawadi', 'kharadi', 'magarpatta', 'whitefield', 'electronic city', 'cyberabad', 'hitec city'],
+        states: ['maharashtra', 'karnataka', 'telangana', 'tamil nadu', 'tamilnadu', 'delhi ncr', 'uttar pradesh', 'haryana', 'west bengal', 'gujarat', 'rajasthan', 'kerala', 'madhya pradesh', 'punjab', 'andhra pradesh', 'odisha']
+    },
+    'usa': {
+        countryAliases: ['united states', 'usa', 'us', 'u.s.', 'u.s.a.', 'america', 'north america'],
+        cities: ['san francisco', 'sf', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'santa clara', 'cupertino', 'menlo park', 'redwood city', 'fremont', 'berkeley', 'oakland', 'san mateo', 'bay area', 'silicon valley', 'los angeles', 'la', 'san diego', 'irvine', 'new york', 'nyc', 'manhattan', 'brooklyn', 'austin', 'dallas', 'houston', 'san antonio', 'seattle', 'bellevue', 'redmond', 'boston', 'cambridge', 'chicago', 'denver', 'boulder', 'atlanta', 'raleigh', 'durham', 'charlotte', 'portland', 'phoenix', 'salt lake city', 'washington dc', 'dc', 'philadelphia', 'minneapolis', 'miami', 'tampa', 'pittsburgh'],
+        states: ['california', 'ca', 'new york', 'ny', 'texas', 'tx', 'washington', 'wa', 'massachusetts', 'ma', 'illinois', 'il', 'colorado', 'co', 'georgia', 'ga', 'north carolina', 'nc', 'oregon', 'or', 'florida', 'fl', 'arizona', 'az', 'utah', 'ut', 'virginia', 'va', 'maryland', 'md', 'pennsylvania', 'pa', 'ohio', 'oh', 'michigan', 'mi', 'minnesota', 'mn', 'new jersey', 'nj']
+    },
+    'uk': {
+        countryAliases: ['united kingdom', 'uk', 'great britain', 'gb', 'england', 'scotland', 'wales', 'northern ireland'],
+        cities: ['london', 'manchester', 'birmingham', 'edinburgh', 'glasgow', 'cambridge', 'oxford', 'bristol', 'leeds', 'belfast', 'sheffield', 'newcastle', 'nottingham', 'liverpool', 'reading', 'southampton', 'cardiff'],
+        states: ['england', 'scotland', 'wales', 'greater london']
+    },
+    'germany': {
+        countryAliases: ['germany', 'deutschland', 'de'],
+        cities: ['berlin', 'munich', 'münchen', 'frankfurt', 'frankfurt am main', 'hamburg', 'cologne', 'köln', 'stuttgart', 'düsseldorf', 'dusseldorf', 'leipzig', 'dortmund', 'essen', 'bremen', 'dresden', 'nuremberg', 'nürnberg', 'karlsruhe'],
+        states: ['bavaria', 'bayern', 'berlin', 'hessen', 'baden-württemberg', 'north rhine-westphalia']
+    },
+    'canada': {
+        countryAliases: ['canada', 'ca'],
+        cities: ['toronto', 'vancouver', 'montreal', 'ottawa', 'calgary', 'edmonton', 'waterloo', 'kitchener', 'quebec city', 'halifax', 'winnipeg', 'victoria'],
+        states: ['ontario', 'on', 'british columbia', 'bc', 'quebec', 'qc', 'alberta', 'ab']
+    },
+    'australia': {
+        countryAliases: ['australia', 'au', 'australasia'],
+        cities: ['sydney', 'melbourne', 'brisbane', 'perth', 'adelaide', 'canberra', 'gold coast'],
+        states: ['nsw', 'new south wales', 'victoria', 'vic', 'queensland', 'qld', 'wa', 'western australia']
+    },
+    'netherlands': {
+        countryAliases: ['netherlands', 'holland', 'nl'],
+        cities: ['amsterdam', 'rotterdam', 'the hague', 'utrecht', 'eindhoven', 'groningen'],
+        states: ['north holland', 'south holland']
+    },
+    'singapore': {
+        countryAliases: ['singapore', 'sg'],
+        cities: ['singapore'],
+        states: []
+    },
+    'uae': {
+        countryAliases: ['united arab emirates', 'uae', 'emirates'],
+        cities: ['dubai', 'abu dhabi', 'sharjah'],
+        states: ['dubai', 'abu dhabi']
+    },
+    'europe': {
+        countryAliases: ['europe', 'eu', 'emea'],
+        cities: ['berlin', 'munich', 'london', 'paris', 'amsterdam', 'dublin', 'madrid', 'barcelona', 'zurich', 'stockholm', 'warsaw', 'vienna', 'brussels'],
+        states: []
+    }
 };
+
+const RESTRICTION_PATTERNS = {
+    us_only: ['us only', 'usa only', 'u.s. only', 'united states only', 'must reside in the us', 'must be located in the us', 'us citizens only', 'authorized to work in the us', 'us based', 'us timezones', 'north america only', 'remote - us', 'remote (us)', 'remote, us', 'remote - usa', 'remote (usa)', 'remote, usa'],
+    eu_only: ['eu only', 'europe only', 'emea only', 'must reside in europe', 'germany only', 'uk only', 'united kingdom only', 'must be in uk', 'must be in germany', 'remote - europe', 'remote (eu)', 'remote, uk', 'remote - uk'],
+    india_only: ['india only', 'must reside in india', 'india based', 'remote - india', 'remote (india)', 'remote, in', 'remote - in']
+};
+
+function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") {
+    const q = (locQuery || "").toLowerCase().trim();
+    if (!q || q === 'worldwide' || q === 'global' || q === 'all' || q === 'any' || q === '') return true;
+
+    const jLoc = (jobLoc || "").toLowerCase();
+    const jDesc = (desc || "").slice(0, 800).toLowerCase();
+    const combined = `${jLoc} ${jDesc}`;
+
+    const isRemote = jLoc.includes('remote') || jLoc.includes('wfh') || jLoc.includes('work from home') || jLoc.includes('anywhere') || jLoc.includes('worldwide') || jLoc.includes('virtual') || jLoc.includes('distributed') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok';
+
+    if (q === 'remote') {
+        return isRemote;
+    }
+
+    // Identify target region
+    let targetRegion = null;
+    for (const [regionKey, info] of Object.entries(LOCATION_HIERARCHY_MAP)) {
+        if (info.countryAliases.some(a => a === q || (a.length > 2 && q.includes(a)))) {
+            targetRegion = regionKey;
+            break;
+        }
+        if (info.cities.some(c => c === q || (c.length > 2 && q.includes(c)))) {
+            targetRegion = regionKey;
+            break;
+        }
+        if (info.states.some(s => s === q || (s.length > 2 && q.includes(s)))) {
+            targetRegion = regionKey;
+            break;
+        }
+    }
+
+    // Check negative restriction violations
+    if (targetRegion === 'india') {
+        if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
+        if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
+    } else if (targetRegion === 'usa' || targetRegion === 'canada') {
+        if (RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p))) return false;
+        if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
+    } else if (targetRegion === 'uk' || targetRegion === 'germany' || targetRegion === 'europe') {
+        if (RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p))) return false;
+        if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
+    }
+
+    // Check direct substring
+    if (jLoc.includes(q)) return true;
+
+    // Check Hierarchy match
+    if (targetRegion && LOCATION_HIERARCHY_MAP[targetRegion]) {
+        const info = LOCATION_HIERARCHY_MAP[targetRegion];
+        
+        // If user typed a specific city (e.g. Pune)
+        const matchedCity = info.cities.find(c => c === q || q.includes(c));
+        if (matchedCity) {
+            if (jLoc.includes(matchedCity)) return true;
+        }
+
+        // If user typed a country (e.g. India)
+        const isCountryQuery = info.countryAliases.some(a => a === q || q.includes(a));
+        if (isCountryQuery) {
+            if (info.cities.some(c => jLoc.includes(c))) return true;
+            if (info.states.some(s => jLoc.includes(s))) return true;
+            if (info.countryAliases.some(a => jLoc.includes(a))) return true;
+        }
+    }
+
+    // Token match
+    const tokens = q.split(/[,/\s-]+/).filter(t => t.length > 2);
+    if (tokens.length > 0 && tokens.some(t => jLoc.includes(t))) {
+        return true;
+    }
+
+    // Global remote fallback if no negative restriction violated
+    if (isRemote) {
+        if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) return true;
+        if (source === 'himalayas' || source === 'jobicy' || source === 'remoteok') {
+            if (targetRegion === 'india' && !RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return true;
+            if (targetRegion === 'usa' && !RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return true;
+            if (!targetRegion) return true;
+        }
+    }
+
+    return false;
+}
 
 // ==========================================
 // Reusable CSV Export Utility
@@ -2212,22 +2314,10 @@ function JobSearchDashboard({
                 }
             }
 
-            // 2. Smart Location NLP / Custom Location Input
+            // 2. Enhanced Smart Location NLP & Geographic Hierarchy Filter
             if (filterLocationInput && filterLocationInput.trim()) {
-                const locQuery = filterLocationInput.toLowerCase().trim();
-                const isPresetRemote = locQuery === 'remote';
-
-                if (isPresetRemote) {
-                    const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere') || jobLoc === '';
-                    if (!isRemote) return false;
-                } else if (LOCATION_ALIASES[locQuery]) {
-                    const aliases = LOCATION_ALIASES[locQuery];
-                    const matchesAlias = aliases.some(alias => jobLoc.includes(alias)) || jobLoc.includes(locQuery) || jobLoc.includes('remote') || jobLoc.includes('anywhere');
-                    if (!matchesAlias) return false;
-                } else {
-                    const tokens = locQuery.split(/[,\s/]+/).filter(t => t.length >= 2);
-                    const matchesTokens = tokens.length > 0 ? tokens.some(t => jobLoc.includes(t)) : jobLoc.includes(locQuery);
-                    if (!matchesTokens && !jobLoc.includes(locQuery) && !jobLoc.includes('remote') && !jobLoc.includes('anywhere')) return false;
+                if (!matchesLocationNLP(filterLocationInput, jobLoc, desc, source)) {
+                    return false;
                 }
             }
 

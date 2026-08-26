@@ -6,36 +6,7 @@ from functools import partial
 from jobspy import scrape_jobs
 from src.integrations.base import BaseJobIntegration
 from src.utils.text_cleaner import clean_html_job_description
-
-def get_indeed_country(location_str: str) -> str:
-    """Map user-entered location or city to a valid JobSpy country code."""
-    loc = (location_str or "").lower().strip()
-    if not loc or loc in ["remote", "worldwide", "any", "all", ""]:
-        return "worldwide"
-    
-    country_map = {
-        "india": "india", "pune": "india", "bangalore": "india", "mumbai": "india", "delhi": "india", 
-        "hyderabad": "india", "noida": "india", "gurgaon": "india", "chennai": "india", "kolkata": "india",
-        "united states": "usa", "usa": "usa", "us": "usa", "san francisco": "usa", "new york": "usa", 
-        "california": "usa", "texas": "usa", "seattle": "usa", "austin": "usa", "chicago": "usa",
-        "united kingdom": "uk", "uk": "uk", "london": "uk", "manchester": "uk", "birmingham": "uk",
-        "germany": "germany", "berlin": "germany", "munich": "germany", "frankfurt": "germany", "hamburg": "germany",
-        "canada": "canada", "toronto": "canada", "vancouver": "canada", "montreal": "canada", "ottawa": "canada",
-        "australia": "australia", "sydney": "australia", "melbourne": "australia", "brisbane": "australia",
-        "singapore": "singapore",
-        "netherlands": "netherlands", "amsterdam": "netherlands", "rotterdam": "netherlands",
-        "france": "france", "paris": "france",
-        "united arab emirates": "united arab emirates", "uae": "united arab emirates", "dubai": "united arab emirates",
-        "switzerland": "switzerland", "zurich": "switzerland", "geneva": "switzerland",
-        "poland": "poland", "warsaw": "poland", "krakow": "poland",
-        "spain": "spain", "madrid": "spain", "barcelona": "spain"
-    }
-    
-    for key, country_code in country_map.items():
-        if key in loc:
-            return country_code
-            
-    return "usa"
+from src.utils.location_helper import get_indeed_country_code, get_linkedin_location_string, detect_country_key
 
 import httpx
 from bs4 import BeautifulSoup
@@ -51,30 +22,33 @@ class JobSpyClient(BaseJobIntegration):
         loop = asyncio.get_event_loop()
         
         is_specific_loc = bool(location and location.lower().strip() not in ["remote", "worldwide", "global", "any", "all", ""])
-        loc_clean = location.strip() if is_specific_loc else ("Remote" if remote else "")
+        
+        if is_specific_loc:
+            linkedin_loc = get_linkedin_location_string(location)
+            indeed_loc = location.strip()
+            indeed_country = get_indeed_country_code(location)
+            target_countries = [indeed_country]
+        else:
+            linkedin_loc = "Worldwide" if not remote else "Remote"
+            indeed_loc = "Remote" if remote else ""
+            target_countries = ["usa", "india", "uk"]
+
         is_remote_param = False if is_specific_loc else remote
         results_count = kwargs.get("results_wanted", 20)
 
         import gc
 
-        # Build list of Indeed country domains to scrape
-        if is_specific_loc:
-            target_countries = [get_indeed_country(location)]
-        else:
-            # Multi-domain global scraping across top tech hubs
-            target_countries = ["usa", "india", "uk"]
-
         # Run scrapers strictly sequentially (semaphore 1) to guarantee memory stays under 50MB
         sem = asyncio.Semaphore(1)
 
-        async def bounded_scrape(sites, country_code, count):
+        async def bounded_scrape(sites, country_code, loc_param, count):
             async with sem:
                 def _do_scrape():
                     try:
                         return scrape_jobs(
                             site_name=sites,
                             search_term=query,
-                            location=loc_clean,
+                            location=loc_param,
                             results_wanted=min(count, 15),
                             hours_old=168,  # 7 days of jobs
                             country_indeed=country_code,
@@ -88,9 +62,9 @@ class JobSpyClient(BaseJobIntegration):
                 return res
 
         # Prepare scraping tasks
-        tasks = [bounded_scrape(["linkedin"], "usa", min(results_count, 15))]
+        tasks = [bounded_scrape(["linkedin"], "usa", linkedin_loc, min(results_count, 15))]
         for c in target_countries:
-            tasks.append(bounded_scrape(["indeed"], c, 10 if len(target_countries) > 1 else min(results_count, 15)))
+            tasks.append(bounded_scrape(["indeed"], c, indeed_loc, 10 if len(target_countries) > 1 else min(results_count, 15)))
 
         try:
             results = await asyncio.gather(*tasks, return_exceptions=True)

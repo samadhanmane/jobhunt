@@ -4,6 +4,7 @@ import time
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
 from src.utils.text_cleaner import clean_html_job_description
+from src.utils.location_helper import is_job_location_match
 
 _REMOTEOK_CACHE: Dict[str, Any] = {
     "timestamp": 0,
@@ -55,6 +56,8 @@ class RemoteOKClient(BaseJobIntegration):
             tags = [str(t).lower() for t in j.get("tags", [])]
             job_url = j.get("url") or f"https://remoteok.com/l/{j.get('id', '')}"
             location_val = j.get("location") or "Remote / Worldwide"
+            if location and not is_job_location_match(location_val, location, "remote" if remote else "any", "remoteok", desc):
+                continue
             
             text_to_check = f"{title.lower()} {' '.join(tags)} {desc[:300].lower()}"
             if not tokens or any(t in text_to_check for t in tokens):

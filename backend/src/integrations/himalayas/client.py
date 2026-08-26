@@ -4,6 +4,7 @@ import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
 from src.utils.text_cleaner import clean_html_job_description
+from src.utils.location_helper import is_job_location_match
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -59,6 +60,9 @@ class HimalayasClient(BaseJobIntegration):
             locations_list = job.get("locationRestrictions", []) or job.get("locations", [])
             loc_str = ", ".join(locations_list) if isinstance(locations_list, list) and locations_list else str(job.get("location", "Remote"))
             clean_desc = clean_html_job_description(raw_desc)
+
+            if location and not is_job_location_match(loc_str, location, "remote" if remote else "any", "himalayas", clean_desc):
+                continue
 
             jobs.append({
                 "title": title,

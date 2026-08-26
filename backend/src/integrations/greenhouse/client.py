@@ -4,6 +4,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.location_helper import is_job_location_match
 
 # High-profile tech companies using Greenhouse
 DEFAULT_GREENHOUSE_COMPANIES = [
@@ -43,8 +44,10 @@ class GreenhouseClient(BaseJobIntegration):
                             job_loc = str(j.get("location", {}).get("name", "Remote / Global")) if isinstance(j.get("location"), dict) else "Remote"
                             job_url = str(j.get("absolute_url", ""))
                             
-                            # Filter match
+                            # Filter match by role tokens and location
                             if any(t in title.lower() for t in tokens) if tokens else True:
+                                if location and not is_job_location_match(job_loc, location, "remote" if remote else "any", "greenhouse"):
+                                    continue
                                 if canonical_url := job_url:
                                     if canonical_url not in seen_urls:
                                         seen_urls.add(canonical_url)

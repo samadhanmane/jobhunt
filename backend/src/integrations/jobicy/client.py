@@ -4,6 +4,7 @@ import time
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
 from src.utils.text_cleaner import clean_html_job_description
+from src.utils.location_helper import is_job_location_match
 
 _JOBICY_CACHE: Dict[str, Any] = {
     "timestamp": 0,
@@ -56,6 +57,9 @@ class JobicyClient(BaseJobIntegration):
             job_geo = str(j.get("jobGeo", "Remote"))
             
             text_to_check = f"{title.lower()} {desc[:300].lower()}"
+            loc_val = f"Remote ({job_geo})" if job_geo else "Remote"
+            if location and not is_job_location_match(loc_val, location, "remote" if remote else "any", "jobicy", desc):
+                continue
             if not tokens or any(t in text_to_check for t in tokens):
                 salary_info = None
                 min_sal = j.get("annualSalaryMin")

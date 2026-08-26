@@ -2,6 +2,7 @@ import httpx
 import re
 from typing import List, Dict, Any
 from src.integrations.base import BaseJobIntegration
+from src.utils.location_helper import is_job_location_match
 
 DEFAULT_LEVER_COMPANIES = [
     "netflix", "spotify", "atlassian", "palantir", "affirm", "kraken",
@@ -39,6 +40,8 @@ class LeverClient(BaseJobIntegration):
                             desc = str(j.get("descriptionPlain", ""))
                             
                             if any(t in title.lower() for t in tokens) if tokens else True:
+                                if location and not is_job_location_match(job_loc, location, "remote" if remote else "any", "lever", desc):
+                                    continue
                                 if job_url and job_url not in seen_urls:
                                     seen_urls.add(job_url)
                                     all_jobs.append({
