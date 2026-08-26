@@ -27,6 +27,7 @@ class CreateAlertRequest(BaseModel):
 
 @router.post("")
 async def create_alert(
+    background_tasks: BackgroundTasks,
     email: str = Form(...),
     role: str = Form(...),
     location: str = Form("Remote"),
@@ -34,23 +35,31 @@ async def create_alert(
     work_mode: str = Form("any"),
     max_age_days: int = Form(1),
     preferred_time: str = Form("09:00"),
+    skills_json: Optional[str] = Form(None),
+    resume_summary: Optional[str] = Form(None),
     resume: Optional[UploadFile] = File(None),
     current_user: UserAccount = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Creates a new daily job email alert scoped to the authenticated user.
+    Executes in milliseconds with zero-blocking background welcome email.
     """
     skills = []
-    resume_summary = ""
+    if skills_json:
+        try:
+            parsed_s = json.loads(skills_json)
+            if isinstance(parsed_s, list):
+                skills = [str(s).strip() for s in parsed_s if s]
+        except Exception:
+            pass
 
-    if resume:
+    if not skills and resume:
         try:
             import tempfile
             content = await resume.read()
             filename = resume.filename.lower()
 
-            # Save to temp file for parser
             suffix = ".pdf" if filename.endswith(".pdf") else (".docx" if filename.endswith(".docx") else ".txt")
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(content)
@@ -60,7 +69,8 @@ async def create_alert(
             parser = ResumeParserService()
             profile = await parser.parse_resume(tmp_path)
             skills = profile.get("skills", [])
-            resume_summary = profile.get("summary", "")
+            if not resume_summary:
+                resume_summary = profile.get("summary", "")
 
             try:
                 os.unlink(tmp_path)
@@ -79,7 +89,7 @@ async def create_alert(
         max_age_days=max_age_days,
         preferred_time=preferred_time,
         skills=skills,
-        resume_summary=resume_summary,
+        resume_summary=resume_summary or "",
         sent_job_hashes=[],
         is_active=True
     )
@@ -87,9 +97,15 @@ async def create_alert(
     db.commit()
     db.refresh(alert)
 
-    # Send welcome confirmation email
+    # Send welcome confirmation email in background task (non-blocking)
     try:
-        email_service.send_welcome_confirmation(alert.email, alert.role, alert.location, alert.preferred_time)
+        background_tasks.add_task(
+            email_service.send_welcome_confirmation,
+            alert.email,
+            alert.role,
+            alert.location,
+            alert.preferred_time
+        )
     except Exception as e:
         print(f"Notice: Welcome email dispatch error: {e}")
 
@@ -102,8 +118,11 @@ async def create_alert(
             "email": alert.email,
             "role": alert.role,
             "location": alert.location,
+            "experience_years": alert.experience_years,
+            "work_mode": alert.work_mode,
             "preferred_time": alert.preferred_time,
-            "skills": alert.skills
+            "skills": alert.skills,
+            "created_at": alert.created_at.isoformat() if alert.created_at else ""
         }
     }
 
@@ -219,14 +238,12 @@ async def test_send_alert(
 
         ranked_jobs = await scheduler_service.ranking_agent.rank_jobs(unique_jobs, candidate_profile, preferences)
 
-        # Generate BOTH CSV Reports:
-        # CSV 1: All Raw Fetched Jobs (Pre-Deduplication, fully structured)
-        # CSV 2: Curated & Filtered Matching Jobs (Post-Deduplication & AI-Ranked)
+        # Generate BOTH CSV Reports without pandas (Zero-RAM pure Python)
         backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         export_dir = os.path.join(backend_root, "exports")
         os.makedirs(export_dir, exist_ok=True)
         import datetime
-        import pandas as pd
+        import csv
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         
         raw_csv_path = os.path.join(export_dir, f"all_fetched_raw_jobs_{today_str}.csv")
@@ -269,13 +286,24 @@ async def test_send_alert(
                 })
             return rows
 
+        def write_csv_file(file_path, rows):
+            if not rows:
+                with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                    f.write("Company Name,Role / Title,Location,Work Type,Posted Date (YYYY-MM-DD),Salary,Match Score,Experience Fit,Matching Skills,Missing Skills,Match Reason,URL,Source\n")
+                return
+            fieldnames = list(rows[0].keys())
+            with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
         # Export CSV 1: All raw jobs
         raw_csv_rows = build_csv_rows(raw_jobs, is_raw=True)
-        pd.DataFrame(raw_csv_rows).to_csv(raw_csv_path, index=False, encoding="utf-8-sig")
+        write_csv_file(raw_csv_path, raw_csv_rows)
 
         # Export CSV 2: Curated matching jobs
         curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
-        pd.DataFrame(curated_csv_rows).to_csv(curated_csv_path, index=False, encoding="utf-8-sig")
+        write_csv_file(curated_csv_path, curated_csv_rows)
 
         # Send Email with BOTH CSV attachments
         summary_note = f"Personalized job report for {role} ({location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
@@ -335,14 +363,29 @@ def get_automation_history(
     db: Session = Depends(get_db)
 ):
     """
-    Returns list of sent automation digest runs for the authenticated user.
+    Returns list of sent automation digest runs for the authenticated user (ultra-fast columnar metadata query).
     """
     from src.models.automation_history import AutomationHistory
-    query = db.query(AutomationHistory)
+    query = db.query(
+        AutomationHistory.id,
+        AutomationHistory.alert_id,
+        AutomationHistory.role,
+        AutomationHistory.location,
+        AutomationHistory.work_mode,
+        AutomationHistory.experience_level,
+        AutomationHistory.experience_years,
+        AutomationHistory.max_age_days,
+        AutomationHistory.preferred_time,
+        AutomationHistory.recipient_email,
+        AutomationHistory.total_raw_found,
+        AutomationHistory.total_unique_found,
+        AutomationHistory.total_curated_sent,
+        AutomationHistory.sent_at
+    )
     if current_user.role != "admin":
         query = query.filter((AutomationHistory.user_id == current_user.id) | (AutomationHistory.recipient_email == current_user.email))
     
-    records = query.order_by(AutomationHistory.sent_at.desc()).limit(50).all()
+    records = query.order_by(AutomationHistory.sent_at.desc()).limit(30).all()
     
     return {
         "status": "success",

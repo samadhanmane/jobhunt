@@ -3927,8 +3927,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     };
 
     useEffect(() => {
-        fetchAlerts();
-        fetchHistory();
+        Promise.all([fetchAlerts(), fetchHistory()]);
     }, []);
 
     const handleResumeChange = async (e) => {
@@ -3972,6 +3971,12 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         formData.append("experience_level", experienceLevel);
         formData.append("max_age_days", maxAgeDays);
         formData.append("preferred_time", preferredTime);
+        if (resumeProfile?.skills) {
+            formData.append("skills_json", JSON.stringify(resumeProfile.skills));
+        }
+        if (resumeProfile?.summary) {
+            formData.append("resume_summary", resumeProfile.summary);
+        }
         if (resumeFile) {
             formData.append("resume", resumeFile);
         }
@@ -3988,7 +3993,6 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                 if (data.alert) {
                     setActiveAlerts(prev => [data.alert, ...prev.filter(a => a.id !== data.alert.id)]);
                 }
-                fetchAlerts();
                 fetchHistory();
             } else {
                 showToast(data.detail || "Failed to schedule alert.", "error");
