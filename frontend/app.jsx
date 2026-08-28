@@ -818,6 +818,8 @@ function App() {
                         cookieStatusInfo={cookieStatusInfo}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
                         showToast={showToast}
+                        appliedJobs={appliedJobs}
+                        onToggleApplied={toggleJobApplied}
                         onInspectSnapshot={handleInspectSnapshot}
                     />
                 )}
@@ -4109,7 +4111,7 @@ function ContactCard({ contact, onCopy }) {
 // ==========================================
 // Component: Email Automation & Live Alerts
 // ==========================================
-function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, showToast, onInspectSnapshot }) {
+function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, showToast, appliedJobs = [], onToggleApplied, onInspectSnapshot }) {
     const [email, setEmail] = useState(user.email || "");
     const [role, setRole] = useState("AI ML Intern");
     const [location, setLocation] = useState("Pune");
@@ -4130,6 +4132,16 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     const [historyList, setHistoryList] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [inspectingId, setInspectingId] = useState(null);
+
+    // Direct In-Page Historical Automation Snapshot Viewer State
+    const [viewingSnapshot, setViewingSnapshot] = useState(null);
+    const [snapshotScope, setSnapshotScope] = useState("curated"); // 'curated' | 'unique' | 'raw'
+    const [snapshotFilterKeyword, setSnapshotFilterKeyword] = useState("");
+    const [snapshotFilterLocation, setSnapshotFilterLocation] = useState("");
+    const [snapshotFilterWorkMode, setSnapshotFilterWorkMode] = useState("all");
+    const [snapshotMinScore, setSnapshotMinScore] = useState(0);
+    const [snapshotSortBy, setSnapshotSortBy] = useState("score"); // 'score' | 'date'
+    const [selectedJob, setSelectedJob] = useState(null);
 
     const fetchAlerts = async () => {
         try {
@@ -4208,6 +4220,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         formData.append("location", location);
         formData.append("work_mode", workMode);
         formData.append("experience_level", experienceLevel);
+        const expMap = { intern: 0.0, entry: 1.0, junior: 2.0, mid: 4.0, senior: 6.0, lead: 8.0 };
+        formData.append("experience_years", expMap[experienceLevel] !== undefined ? expMap[experienceLevel] : 0.0);
         formData.append("max_age_days", maxAgeDays);
         formData.append("preferred_time", preferredTime);
         if (resumeProfile?.skills) {
@@ -4252,6 +4266,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         formData.append("location", location);
         formData.append("work_mode", workMode);
         formData.append("experience_level", experienceLevel);
+        const expMap = { intern: 0.0, entry: 1.0, junior: 2.0, mid: 4.0, senior: 6.0, lead: 8.0 };
+        formData.append("experience_years", expMap[experienceLevel] !== undefined ? expMap[experienceLevel] : 0.0);
         formData.append("max_age_days", maxAgeDays);
         if (resumeFile) {
             formData.append("resume", resumeFile);
@@ -4317,10 +4333,17 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             });
             const data = await res.json();
             if (res.ok && data.history) {
-                if (onInspectSnapshot) {
-                    onInspectSnapshot(data.history);
-                }
-                showToast(`Loaded snapshot for "${data.history.role}" (${data.history.curated_jobs?.length || 0} curated jobs)!`);
+                setViewingSnapshot(data.history);
+                setSnapshotScope("curated");
+                setSnapshotFilterKeyword("");
+                setSnapshotFilterLocation("");
+                setSnapshotFilterWorkMode("all");
+                setSnapshotMinScore(0);
+                showToast(`Viewing snapshot for "${data.history.role}" (${data.history.curated_jobs?.length || 0} curated jobs) on this page!`);
+                setTimeout(() => {
+                    const el = document.getElementById("snapshot-viewer-section");
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 100);
             } else {
                 showToast("Failed to load historical snapshot.", "error");
             }
@@ -4350,6 +4373,60 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             showToast("Error generating CSV: " + err.message, "error");
         }
     };
+
+    const activeSnapshotList = useMemo(() => {
+        if (!viewingSnapshot) return [];
+        if (snapshotScope === 'raw') return viewingSnapshot.raw_jobs || [];
+        if (snapshotScope === 'unique') return viewingSnapshot.unique_jobs || [];
+        return viewingSnapshot.curated_jobs || [];
+    }, [viewingSnapshot, snapshotScope]);
+
+    const filteredSnapshotJobs = useMemo(() => {
+        if (!activeSnapshotList) return [];
+        return activeSnapshotList.filter(job => {
+            if (!job) return false;
+            const title = (job.title || "").toLowerCase();
+            const company = (job.company || "").toLowerCase();
+            const jobLoc = (job.location || "").toLowerCase();
+            const desc = (job.description || "").toLowerCase();
+            const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
+
+            // 1. Keyword search
+            if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
+                const kw = snapshotFilterKeyword.toLowerCase().trim();
+                if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
+                    return false;
+                }
+            }
+
+            // 2. Location filter using matchesLocationNLP
+            if (snapshotFilterLocation && snapshotFilterLocation.trim()) {
+                if (!matchesLocationNLP(snapshotFilterLocation, jobLoc, desc, job.source)) {
+                    return false;
+                }
+            }
+
+            // 3. Work Mode filter
+            const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || jobLoc.includes('anywhere');
+            const isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid');
+            const isOnsite = !isRemote && !isHybrid;
+            if (snapshotFilterWorkMode === 'remote' && !isRemote) return false;
+            if (snapshotFilterWorkMode === 'hybrid' && !isHybrid) return false;
+            if (snapshotFilterWorkMode === 'onsite' && !isOnsite) return false;
+
+            // 4. Min Score filter
+            if (snapshotScope === 'curated' && snapshotMinScore > 0) {
+                if ((job.match_score || 0) < snapshotMinScore) return false;
+            }
+
+            return true;
+        }).sort((a, b) => {
+            if (snapshotSortBy === 'date') {
+                return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
+            }
+            return (b.match_score || 0) - (a.match_score || 0);
+        });
+    }, [activeSnapshotList, snapshotFilterKeyword, snapshotFilterLocation, snapshotFilterWorkMode, snapshotMinScore, snapshotSortBy, snapshotScope]);
 
     return (
         <div className="space-y-6">
@@ -4515,7 +4592,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                                         <div>
                                             <div className="font-bold text-white text-xs">{alert.role}</div>
                                             <div className="text-[11px] text-slate-400">
-                                                📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time}
+                                                📍 {alert.location || 'Remote'} • ⏰ {alert.preferred_time} • <span className="text-indigo-300 font-semibold">🎓 {alert.experience_level ? (alert.experience_level === 'all' ? 'All Levels' : alert.experience_level.toUpperCase()) : `${alert.experience_years || 0} Yrs`}</span>
                                             </div>
                                             <div className="text-[10px] text-indigo-400">✉️ {alert.email}</div>
                                         </div>
@@ -4542,7 +4619,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                             <span>Sent Automation History & Job Snapshots</span>
                         </h3>
                         <p className="text-xs text-slate-400 mt-0.5">
-                            Every email digest sent to your inbox is saved here. Inspect curated matches and raw databases interactively on the website with complete search and filter capabilities.
+                            Every email digest sent to your inbox is saved here. Inspect curated matches and raw databases interactively on this page with complete search and filter capabilities.
                         </p>
                     </div>
                     <button
@@ -4553,6 +4630,231 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                         <span>Refresh History</span>
                     </button>
                 </div>
+
+                {/* Direct In-Page Historical Automation Snapshot Viewer */}
+                {viewingSnapshot && (
+                    <div id="snapshot-viewer-section" className="rounded-2xl p-4 sm:p-6 border-2 border-indigo-500/50 bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950 space-y-5 shadow-2xl shadow-indigo-950/40">
+                        {/* Header with Title and Control Buttons */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2.5 py-0.5 rounded-md bg-indigo-600 text-white font-bold text-xs shadow-sm flex items-center gap-1">
+                                        <span>📜</span> Snapshot Viewer
+                                    </span>
+                                    <h3 className="font-extrabold text-white text-base sm:text-lg">
+                                        "{viewingSnapshot.role}"
+                                    </h3>
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                        📍 {viewingSnapshot.location || 'Remote'}
+                                    </span>
+                                </div>
+                                <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
+                                    <span>🗓️ Sent on {viewingSnapshot.sent_at ? new Date(viewingSnapshot.sent_at).toLocaleString() : 'Recent'}</span>
+                                    <span>•</span>
+                                    <span>✉️ {viewingSnapshot.recipient_email}</span>
+                                    <span>•</span>
+                                    <span className="text-indigo-300 font-semibold">🎓 Exp: {viewingSnapshot.experience_level ? (viewingSnapshot.experience_level === 'all' ? 'All Levels' : viewingSnapshot.experience_level.toUpperCase()) : `${viewingSnapshot.experience_years || 0} Yrs`}</span>
+                                    <span>•</span>
+                                    <span>🌐 Mode: {viewingSnapshot.work_mode || 'any'}</span>
+                                    <span>•</span>
+                                    <span>⏱️ {viewingSnapshot.max_age_days ? `${viewingSnapshot.max_age_days}d window` : '24h'}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const list = snapshotScope === 'raw' ? (viewingSnapshot.raw_jobs || []) : (snapshotScope === 'unique' ? (viewingSnapshot.unique_jobs || []) : (viewingSnapshot.curated_jobs || []));
+                                        generateJobsCSV(list, `${snapshotScope} Snapshot`, `${snapshotScope}_snapshot_${(viewingSnapshot.role || 'jobs').replace(/[^a-zA-Z0-9]/g, '_')}`);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all flex items-center gap-1"
+                                >
+                                    <span>📥</span>
+                                    <span>Export CSV</span>
+                                </button>
+
+                                {onInspectSnapshot && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onInspectSnapshot(viewingSnapshot)}
+                                        title="Open in Main Search Dashboard if you want to merge into full workspace pool"
+                                        className="px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 text-xs font-semibold transition-all flex items-center gap-1"
+                                    >
+                                        <span>🚀</span>
+                                        <span>Open in Main Search</span>
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => setViewingSnapshot(null)}
+                                    className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 border border-rose-500/30 text-rose-200 text-xs font-bold transition-all flex items-center gap-1"
+                                >
+                                    <span>✕</span>
+                                    <span>Close Viewer</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Scope Selector Tabs */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-white/[0.06]">
+                                <button
+                                    type="button"
+                                    onClick={() => setSnapshotScope('curated')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                        snapshotScope === 'curated'
+                                            ? "bg-emerald-600 text-white shadow-sm"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    <span>🎯 Curated Matches</span>
+                                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30">
+                                        {(viewingSnapshot.curated_jobs || []).length}
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSnapshotScope('unique')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                        snapshotScope === 'unique'
+                                            ? "bg-indigo-600 text-white shadow-sm"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    <span>🧬 Unique Roles</span>
+                                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30">
+                                        {(viewingSnapshot.unique_jobs || []).length}
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSnapshotScope('raw')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                        snapshotScope === 'raw'
+                                            ? "bg-slate-700 text-white shadow-sm"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    <span>🌐 Raw Harvested</span>
+                                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30">
+                                        {(viewingSnapshot.raw_jobs || []).length}
+                                    </span>
+                                </button>
+                            </div>
+
+                            <div className="text-xs text-slate-400 font-medium">
+                                Showing <strong className="text-white">{filteredSnapshotJobs.length}</strong> of {activeSnapshotList.length} jobs
+                            </div>
+                        </div>
+
+                        {/* Interactive Filter Toolbar */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-white/[0.04]">
+                            {/* Keyword Filter */}
+                            <div>
+                                <input
+                                    type="text"
+                                    value={snapshotFilterKeyword}
+                                    onChange={(e) => setSnapshotFilterKeyword(e.target.value)}
+                                    placeholder="Search title, skills, company..."
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            {/* Location Filter */}
+                            <div>
+                                <input
+                                    type="text"
+                                    value={snapshotFilterLocation}
+                                    onChange={(e) => setSnapshotFilterLocation(e.target.value)}
+                                    placeholder="Filter location (Pune, US, etc)..."
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            {/* Work Mode */}
+                            <div>
+                                <select
+                                    value={snapshotFilterWorkMode}
+                                    onChange={(e) => setSnapshotFilterWorkMode(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="all">Work Mode: All</option>
+                                    <option value="remote">Remote Only</option>
+                                    <option value="onsite">Onsite Only</option>
+                                    <option value="hybrid">Hybrid Only</option>
+                                </select>
+                            </div>
+
+                            {/* Min Score */}
+                            <div>
+                                <select
+                                    value={snapshotMinScore}
+                                    onChange={(e) => setSnapshotMinScore(Number(e.target.value))}
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value={0}>Min Match: All</option>
+                                    <option value={60}>Min Match: 60%+</option>
+                                    <option value={75}>Min Match: 75%+</option>
+                                    <option value={85}>Min Match: 85%+</option>
+                                </select>
+                            </div>
+
+                            {/* Sort By */}
+                            <div>
+                                <select
+                                    value={snapshotSortBy}
+                                    onChange={(e) => setSnapshotSortBy(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="score">Sort: Highest Match</option>
+                                    <option value="date">Sort: Newest Posted</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Snapshot Job Cards Grid */}
+                        {filteredSnapshotJobs.length === 0 ? (
+                            <div className="p-8 rounded-xl bg-slate-950/40 border border-dashed border-slate-800 text-center text-xs text-slate-400 space-y-1">
+                                <div>🔍 No jobs in this snapshot matched your current filters.</div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSnapshotFilterKeyword('');
+                                        setSnapshotFilterLocation('');
+                                        setSnapshotFilterWorkMode('all');
+                                        setSnapshotMinScore(0);
+                                    }}
+                                    className="text-indigo-400 hover:text-indigo-300 font-semibold underline text-xs"
+                                >
+                                    Clear filters to see all {activeSnapshotList.length} jobs
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[700px] overflow-y-auto pr-1">
+                                {filteredSnapshotJobs.map((job, idx) => {
+                                    const jobKey = ((job.url || job.job_url || `${job.title}-${job.company}-${job.location}-${idx}`) || "").toLowerCase().trim();
+                                    const isApplied = (appliedJobs || []).some(item => ((item.url || item.job_url || `${item.title}-${item.company}-${item.location}`) || "").toLowerCase().trim() === ((job.url || job.job_url || `${job.title}-${job.company}-${job.location}`) || "").toLowerCase().trim());
+                                    return (
+                                        <JobCard
+                                            key={jobKey}
+                                            job={job}
+                                            jobScope={snapshotScope}
+                                            resumeSkills={resumeProfile?.skills || []}
+                                            isApplied={isApplied}
+                                            onToggleApplied={onToggleApplied}
+                                            onViewDetails={() => setSelectedJob(job)}
+                                            onQueryAI={() => {}}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {loadingHistory ? (
                     <div className="text-center py-10 text-xs text-slate-500">Loading automation history...</div>
@@ -4566,98 +4868,129 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {historyList.map((item) => (
-                            <div
-                                key={item.id}
-                                className="p-4 rounded-xl bg-slate-900/90 border border-white/[0.06] hover:border-indigo-500/30 transition-all space-y-3 shadow-md"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-bold text-white text-sm">{item.role}</span>
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                                                📍 {item.location || 'Remote'}
-                                            </span>
+                        {historyList.map((item) => {
+                            const isViewing = viewingSnapshot?.id === item.id;
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`p-4 rounded-xl bg-slate-900/90 border transition-all space-y-3 shadow-md ${
+                                        isViewing
+                                            ? "border-indigo-500 ring-2 ring-indigo-500/30 bg-slate-900"
+                                            : "border-white/[0.06] hover:border-indigo-500/30"
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-bold text-white text-sm">{item.role}</span>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                    📍 {item.location || 'Remote'}
+                                                </span>
+                                                {isViewing && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                        Viewing Above ▾
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                                                <span>🗓️ {item.sent_at ? new Date(item.sent_at).toLocaleString() : 'Recent'}</span>
+                                                <span>•</span>
+                                                <span className="text-slate-300">✉️ {item.recipient_email}</span>
+                                            </div>
                                         </div>
-                                        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                                            <span>🗓️ {item.sent_at ? new Date(item.sent_at).toLocaleString() : 'Recent'}</span>
-                                            <span>•</span>
-                                            <span className="text-slate-300">✉️ {item.recipient_email}</span>
-                                        </div>
+
+                                        <button
+                                            onClick={() => handleDeleteHistory(item.id)}
+                                            title="Delete snapshot"
+                                            className="text-slate-500 hover:text-rose-400 text-xs p-1"
+                                        >
+                                            🗑️
+                                        </button>
                                     </div>
 
-                                    <button
-                                        onClick={() => handleDeleteHistory(item.id)}
-                                        title="Delete snapshot"
-                                        className="text-slate-500 hover:text-rose-400 text-xs p-1"
-                                    >
-                                        🗑️
-                                    </button>
-                                </div>
-
-                                {/* Filter parameters used during run */}
-                                <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400">
-                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
-                                        Mode: {item.work_mode || 'any'}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
-                                        Exp: {item.experience_level || `${item.experience_years || 0} Yrs`}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
-                                        Window: {item.max_age_days ? `${item.max_age_days}d` : '24h'}
-                                    </span>
-                                    {item.preferred_time && (
+                                    {/* Filter parameters used during run */}
+                                    <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400">
                                         <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
-                                            Time: {item.preferred_time}
+                                            Mode: {item.work_mode || 'any'}
                                         </span>
-                                    )}
+                                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5 text-indigo-300 font-medium">
+                                            Exp: {item.experience_level ? (item.experience_level === 'all' ? 'All Levels' : item.experience_level.toUpperCase()) : `${item.experience_years || 0} Yrs`}
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                            Window: {item.max_age_days ? `${item.max_age_days}d` : '24h'}
+                                        </span>
+                                        {item.preferred_time && (
+                                            <span className="px-2 py-0.5 rounded bg-slate-800 border border-white/5">
+                                                Time: {item.preferred_time}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Job Counts Badges */}
+                                    <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+                                        <span className="px-2 py-0.5 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
+                                            🎯 {item.total_curated_sent || 0} Curated
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-lg bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-[11px] font-semibold">
+                                            🧬 {item.total_unique_found || 0} Unique
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-white/5 text-slate-300 text-[11px] font-semibold">
+                                            🌐 {item.total_raw_found || 0} Raw
+                                        </span>
+                                    </div>
+
+                                    {/* Interactive Website Inspection & Direct CSV Download Actions */}
+                                    <div className="pt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                            onClick={() => handleInspectClick(item.id)}
+                                            disabled={inspectingId === item.id}
+                                            className={`flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 ${
+                                                isViewing
+                                                    ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                                                    : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                                            }`}
+                                        >
+                                            <span>{isViewing ? "✓" : "🔍"}</span>
+                                            <span>{inspectingId === item.id ? "Loading Snapshot..." : (isViewing ? "Viewing On This Page ▾" : "Inspect & Filter on Website")}</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => handleDownloadHistoryCSV(item.id, 'curated')}
+                                            className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
+                                            title="Download Curated CSV"
+                                        >
+                                            📥 Curated CSV
+                                        </button>
+
+                                        <button
+                                            onClick={() => handleDownloadHistoryCSV(item.id, 'raw')}
+                                            className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
+                                            title="Download Raw CSV"
+                                        >
+                                            📥 Raw CSV
+                                        </button>
+                                    </div>
                                 </div>
-
-                                {/* Job Counts Badges */}
-                                <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
-                                    <span className="px-2 py-0.5 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
-                                        🎯 {item.total_curated_sent || 0} Curated
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-lg bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-[11px] font-semibold">
-                                        🧬 {item.total_unique_found || 0} Unique
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-white/5 text-slate-300 text-[11px] font-semibold">
-                                        🌐 {item.total_raw_found || 0} Raw
-                                    </span>
-                                </div>
-
-                                {/* Interactive Website Inspection & Direct CSV Download Actions */}
-                                <div className="pt-2 flex flex-wrap items-center gap-2">
-                                    <button
-                                        onClick={() => handleInspectClick(item.id)}
-                                        disabled={inspectingId === item.id}
-                                        className="flex-1 py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
-                                    >
-                                        <span>🔍</span>
-                                        <span>{inspectingId === item.id ? "Loading Snapshot..." : "Inspect & Filter on Website"}</span>
-                                    </button>
-
-                                    <button
-                                        onClick={() => handleDownloadHistoryCSV(item.id, 'curated')}
-                                        className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
-                                        title="Download Curated CSV"
-                                    >
-                                        📥 Curated CSV
-                                    </button>
-
-                                    <button
-                                        onClick={() => handleDownloadHistoryCSV(item.id, 'raw')}
-                                        className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-medium transition-all"
-                                        title="Download Raw CSV"
-                                    >
-                                        📥 Raw CSV
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
+
+            {/* Interactive Job Detail Modal for Snapshot Jobs */}
+            {selectedJob && (
+                <JobDetailModal
+                    job={selectedJob}
+                    user={user}
+                    token={token}
+                    resumeSkills={resumeProfile?.skills || []}
+                    isApplied={(appliedJobs || []).some(item => ((item.url || item.job_url || `${item.title}-${item.company}-${item.location}`) || "").toLowerCase().trim() === ((selectedJob.url || selectedJob.job_url || `${selectedJob.title}-${selectedJob.company}-${selectedJob.location}`) || "").toLowerCase().trim())}
+                    onToggleApplied={onToggleApplied}
+                    onClose={() => setSelectedJob(null)}
+                    onOpenCookieModal={onOpenCookieModal}
+                    showToast={showToast}
+                />
+            )}
         </div>
     );
 }

@@ -14,6 +14,7 @@ class EmailAlert(Base):
     email = Column(String(255), nullable=False, index=True)
     role = Column(String(255), nullable=False)
     location = Column(String(255), nullable=True, default="Remote")
+    experience_level = Column(String(50), nullable=True, default="all")  # 'intern', 'entry', 'junior', 'mid', 'senior', 'lead', 'all'
     experience_years = Column(Float, nullable=True, default=0.0)
     work_mode = Column(String(50), nullable=True, default="any")  # 'remote', 'onsite', 'any'
     max_age_days = Column(Integer, nullable=True, default=1)      # 1 = past 24h, 3, 7

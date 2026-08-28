@@ -31,6 +31,7 @@ async def create_alert(
     email: str = Form(...),
     role: str = Form(...),
     location: str = Form("Remote"),
+    experience_level: str = Form("all"),
     experience_years: float = Form(0.0),
     work_mode: str = Form("any"),
     max_age_days: int = Form(1),
@@ -79,12 +80,19 @@ async def create_alert(
         except Exception as e:
             print(f"Notice: Resume parsing in alert creation skipped: {e}")
 
+    # Compute experience_years if not explicitly passed
+    calc_exp_years = experience_years
+    if calc_exp_years == 0.0 and experience_level != "all":
+        exp_map = {"intern": 0.0, "entry": 1.0, "junior": 2.0, "mid": 4.0, "senior": 6.0, "lead": 8.0}
+        calc_exp_years = exp_map.get(experience_level.lower(), 0.0)
+
     alert = EmailAlert(
         user_id=current_user.id,
         email=email.strip().lower(),
         role=role.strip(),
         location=location.strip(),
-        experience_years=experience_years,
+        experience_level=experience_level.strip().lower(),
+        experience_years=calc_exp_years,
         work_mode=work_mode,
         max_age_days=max_age_days,
         preferred_time=preferred_time,
@@ -118,6 +126,7 @@ async def create_alert(
             "email": alert.email,
             "role": alert.role,
             "location": alert.location,
+            "experience_level": alert.experience_level or "all",
             "experience_years": alert.experience_years,
             "work_mode": alert.work_mode,
             "preferred_time": alert.preferred_time,
@@ -145,6 +154,7 @@ def list_alerts(
         "email": a.email,
         "role": a.role,
         "location": a.location,
+        "experience_level": a.experience_level or "all",
         "experience_years": a.experience_years,
         "work_mode": a.work_mode,
         "preferred_time": a.preferred_time,

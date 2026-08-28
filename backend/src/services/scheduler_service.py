@@ -86,10 +86,27 @@ class SchedulerService:
             
             max_days = alert.max_age_days if (alert.max_age_days is not None and alert.max_age_days > 0) else 7
 
+            exp_lvl = getattr(alert, "experience_level", None) or "all"
+            if exp_lvl == "all" and getattr(alert, "experience_years", 0.0) is not None:
+                yrs = float(alert.experience_years or 0.0)
+                if yrs == 0.0 and "intern" in alert.role.lower():
+                    exp_lvl = "intern"
+                elif 0.0 < yrs <= 1.0:
+                    exp_lvl = "entry"
+                elif 1.0 < yrs <= 2.5:
+                    exp_lvl = "junior"
+                elif 2.5 < yrs <= 5.0:
+                    exp_lvl = "mid"
+                elif 5.0 < yrs <= 8.0:
+                    exp_lvl = "senior"
+                elif yrs > 8.0:
+                    exp_lvl = "lead"
+
             preferences = {
                 "role": alert.role,
                 "location": "" if is_worldwide else raw_loc,
                 "remote_preference": alert.work_mode or "any",
+                "experience_level": exp_lvl,
                 "experience_years": alert.experience_years or 0.0,
                 "max_age_days": max_days
             }
@@ -98,7 +115,7 @@ class SchedulerService:
                 "skills": alert.skills or [],
                 "core_domain": "AI / Machine Learning" if "ai" in alert.role.lower() or "ml" in alert.role.lower() else "Software Engineering",
                 "experience_years": alert.experience_years or 0.0,
-                "seniority": "Intern" if "intern" in alert.role.lower() else "Junior",
+                "seniority": exp_lvl.title() if exp_lvl != "all" else ("Intern" if "intern" in alert.role.lower() else "Junior"),
                 "target_roles": [alert.role]
             }
 
@@ -228,6 +245,7 @@ class SchedulerService:
                         role=alert.role,
                         location=alert.location or "Remote",
                         work_mode=alert.work_mode or "any",
+                        experience_level=exp_lvl,
                         experience_years=alert.experience_years or 0.0,
                         max_age_days=alert.max_age_days or 1,
                         preferred_time=alert.preferred_time or "09:00",
@@ -427,6 +445,7 @@ class SchedulerService:
                 combo_key = f"{a.role.lower().strip()}|{(a.location or '').lower().strip()}"
                 if combo_key not in seen_combos:
                     seen_combos.add(combo_key)
+                    alert_exp = getattr(a, "experience_level", None) or "all"
                     target_configs.append({
                         "role": a.role.strip(),
                         "location": (a.location or "Worldwide").strip(),
@@ -434,14 +453,14 @@ class SchedulerService:
                             "role": a.role.strip(),
                             "location": "" if (a.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else a.location,
                             "remote_preference": a.work_mode or "any",
-                            "experience_level": "all",
+                            "experience_level": alert_exp,
                             "experience_years": a.experience_years or 0.0
                         },
                         "candidate_profile": {
                             "skills": a.skills or [],
                             "core_domain": a.role.strip(),
                             "experience_years": a.experience_years or 0.0,
-                            "seniority": "Intern" if "intern" in a.role.lower() else "Junior"
+                            "seniority": alert_exp.title() if alert_exp != "all" else ("Intern" if "intern" in a.role.lower() else "Junior")
                         }
                     })
 
