@@ -1,298 +1,169 @@
 import json
 import re
-import os
 from typing import List, Dict, Any
 from src.agents.base import BaseJobAgent
-from src.llm.prompts.rank import RANKING_SYSTEM_PROMPT
+from src.utils.location_helper import is_job_location_match, is_india_location, detect_work_mode
+from src.utils.role_helper import (
+    is_title_role_match,
+    detect_ai_sub_domain,
+    detect_ai_facets,
+    detect_experience_tier,
+    NEGATIVE_ROLE_KEYWORDS
+)
 
-GENERIC_STOP_WORDS = {
-    "developer", "engineer", "software", "analyst", "specialist", 
-    "architect", "consultant", "lead", "senior", "junior", "intern", 
-    "technologies", "development", "programming", "applications"
+TECH_STACK_CLUSTERS = {
+    "python": ["python", "fastapi", "flask", "django", "asyncio"],
+    "deep_learning": ["pytorch", "torch", "tensorflow", "keras", "cuda", "huggingface", "transformers"],
+    "llm_frameworks": ["langchain", "langgraph", "llamaindex", "dspy", "crewai", "autogen", "vllm", "ollama"],
+    "vector_dbs": ["pinecone", "chroma", "chromadb", "weaviate", "qdrant", "faiss", "milvus"],
+    "devops_cloud": ["docker", "kubernetes", "k8s", "aws", "gcp", "azure", "git", "linux", "ci/cd"],
+    "fullstack": ["react", "next.js", "typescript", "javascript", "node", "tailwind", "sql", "postgresql"]
 }
 
-MISMATCHED_DOMAINS = [
-    "nurse", "nursing", "physician", "doctor", "therapist", "dentist",
-    "attorney", "paralegal", "legal counsel",
-    "driver", "warehouse", "forklift", "truck", "delivery", "plumber", "electrician",
-    "chef", "cook", "bartender", "waiter", "barista", "cashier",
-    "real estate", "property manager"
-]
-
-from src.utils.location_helper import is_job_location_match, detect_country_key, get_search_location_variations
-
 class RankingAgent(BaseJobAgent):
+    """
+    Explainable 4-Pillar Ranking & Core Filtering Schema Matcher.
+    Pillars:
+      1. Role & Domain Alignment (35%)
+      2. Tech Stack & Skills Fit (30%)
+      3. Seniority & Experience Fit (20%)
+      4. Location & Work Mode Fit (15%)
+    """
     def __init__(self, llm=None):
         super().__init__(llm)
 
-    def _extract_json_array(self, content: str) -> List[Dict[str, Any]]:
-        """Safely extracts JSON array or individual objects from LLM response."""
-        content = content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        try:
-            parsed = json.loads(content)
-            if isinstance(parsed, list):
-                return parsed
-        except Exception:
-            pass
+    def _score_job(self, job: Dict[str, Any], candidate_profile: Dict[str, Any], preferences: Dict[str, Any]) -> Dict[str, Any]:
+        title = str(job.get("title", "")).strip()
+        desc = str(job.get("description", "")).strip()
+        loc = str(job.get("location", "")).strip()
+        u = str(job.get("url", ""))
 
-        items = []
-        object_blocks = re.findall(r'\{[^{}]*\}', content)
-        for block in object_blocks:
-            try:
-                clean_block = re.sub(r',\s*\}', '}', block)
-                obj = json.loads(clean_block)
-                items.append(obj)
-            except Exception:
-                idx_m = re.search(r'"index"\s*:\s*(\d+)', block)
-                score_m = re.search(r'"match_score"\s*:\s*(\d+)', block)
-                reason_m = re.search(r'"reason"\s*:\s*"([^"]+)"', block)
-                if idx_m and score_m:
-                    items.append({
-                        "index": int(idx_m.group(1)),
-                        "match_score": int(score_m.group(1)),
-                        "reason": reason_m.group(1) if reason_m else "",
-                        "matching_skills": [],
-                        "missing_skills": [],
-                        "experience_fit": "Good Fit"
-                    })
-        return items
+        target_role = preferences.get("role", "Software Engineer")
+        target_loc = preferences.get("location", "Worldwide")
+        pref_work_mode = preferences.get("work_mode") or preferences.get("remote_preference") or "any"
+        target_exp_tier = preferences.get("experience_tier", "")
+        req_facets = preferences.get("ai_facets", [])
 
-    def _fast_heuristics_score(self, job: Dict[str, Any], resume_profile: Dict[str, Any], preferences: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculates match score strictly following the priority order:
-        1. Location & Work Mode Fit (Strict Pre-filter)
-        2. Experience Level / Seniority Alignment (35%)
-        3. Target Role & Related Titles Fit (35%)
-        4. Resume-based Skills Match (30%)
-        """
-        title = str(job.get("title", "")).lower()
-        desc = str(job.get("description", "")).lower()
-        job_loc = str(job.get("location", "")).lower()
-        
-        resume_skills = [s for s in resume_profile.get("skills", []) if s.lower() not in GENERIC_STOP_WORDS]
-        target_roles = [r.lower() for r in (resume_profile.get("target_roles", []) or [preferences.get("role", "")])]
-        
-        pref_role_str = str(preferences.get("role", "")).lower().strip()
-        pref_loc = str(preferences.get("location", "")).lower().strip()
-        pref_work_mode = str(preferences.get("remote_preference", preferences.get("work_mode", "any"))).lower().strip()
-        
-        # Determine Candidate Experience Category from profile & preferences
-        cand_years = float(resume_profile.get("experience_years", preferences.get("experience_years", 0)) or 0)
-        cand_seniority = str(resume_profile.get("seniority", preferences.get("experience_level", "Mid"))).lower().strip()
-        raw_exp = str(preferences.get("experience_level", preferences.get("experience_years", str(cand_years)))).lower().strip()
+        # Detect metadata
+        sub_domain = detect_ai_sub_domain(title, desc)
+        facets = detect_ai_facets(title, desc)
+        job_exp_tier = detect_experience_tier(title, desc)
+        work_mode = detect_work_mode(loc, title, desc)
 
-        if "intern" in cand_seniority or "intern" in raw_exp or cand_years == 0 or raw_exp in ["0", "0.0", "fresher", "internship"] or "intern" in pref_role_str:
-            exp_category = "intern"
-        elif "junior" in cand_seniority or "entry" in cand_seniority or "entry" in raw_exp or cand_years <= 2.0 or raw_exp in ["1", "1.0", "2", "2.0", "junior"]:
-            exp_category = "entry"
-        elif "lead" in cand_seniority or "lead" in raw_exp or "director" in raw_exp or "staff" in raw_exp or cand_years >= 8.0:
-            exp_category = "lead"
-        elif "senior" in cand_seniority or "senior" in raw_exp or cand_years >= 5.0 or raw_exp in ["5", "6", "7", "8"]:
-            exp_category = "senior"
+        # 1. Negative Noise Check
+        title_lower = title.lower()
+        if not any(k in target_role.lower() for k in ["sales", "support", "marketing"]):
+            if any(neg in title_lower for neg in NEGATIVE_ROLE_KEYWORDS):
+                role_score = 10
+            else:
+                role_score = 90 if is_title_role_match(title, target_role) else 50
         else:
-            exp_category = "mid"
+            role_score = 80 if is_title_role_match(title, target_role) else 40
 
-        # Extract required experience years from Job Description & Title
-        exp_years_found = []
-        plus_matches = re.findall(r'(\d+)\s*\+\s*(?:years?|yrs?)\b', desc)
-        for m in plus_matches:
-            val = int(m)
-            if 1 <= val <= 25:
-                exp_years_found.append(val)
+        # Sub-domain alignment boost
+        pref_sub_domain = preferences.get("sub_domain")
+        if pref_sub_domain and pref_sub_domain.lower() != "all":
+            if pref_sub_domain.lower() in sub_domain.lower():
+                role_score = min(100, role_score + 15)
 
-        min_matches = re.findall(r'(?:minimum|min\.?|at\s+least|requires?|require|with)\s*(\d+)\s*\+?\s*(?:years?|yrs?)\b', desc)
-        for m in min_matches:
-            val = int(m)
-            if 1 <= val <= 25:
-                exp_years_found.append(val)
-
-        range_matches = re.findall(r'(\d+)\s*(?:to|-)\s*(\d+)\s*(?:years?|yrs?)\b', desc)
-        for m in range_matches:
-            val = int(m[0])
-            if 1 <= val <= 25:
-                exp_years_found.append(val)
-
-        req_years = max(exp_years_found) if exp_years_found else 0
-
-        is_job_intern = any(w in title for w in ["intern", "internship", "trainee", "apprentice", "fresher", "student", "co-op", "graduate intern"])
-        is_job_entry = any(w in title for w in ["entry level", "junior", "associate", "graduate", "0-1 year", "0 to 1 year", "0-2 year"]) or is_job_intern or (req_years in [0, 1] and not any(w in title for w in ["senior", "lead", "staff", "principal", "head", "architect"]))
-        is_job_senior = any(w in title for w in ["senior", "sr.", "sr ", "lead", "principal", "staff", "director", "manager", "head of", "architect", "vp"]) or (req_years >= 4)
-        is_job_lead = any(w in title for w in ["lead", "principal", "staff", "director", "head of", "chief", "vp"]) or (req_years >= 8)
-
-        score = 0.0
-        score_cap = 100.0
-
-        # --- 1. EXPERIENCE LEVEL & SENIORITY FIT (35%) ---
-        if exp_category == "intern":
-            if is_job_senior:
-                exp_score = -25.0
-                exp_fit = f"Senior Role (Requires {req_years}+ Years)" if req_years >= 4 else "Senior Role (Requires Experience)"
-                score_cap = 30.0
-            elif is_job_intern:
-                exp_score = 35.0
-                exp_fit = "Internship (Exact Fit)"
-            elif is_job_entry:
-                exp_score = 25.0
-                exp_fit = "Entry Level / Early Career"
-            else:
-                exp_score = 0.0
-                exp_fit = "Mid Level Role"
-                score_cap = 45.0
-        elif exp_category == "entry":
-            if is_job_senior:
-                exp_score = -20.0
-                exp_fit = f"Senior Role (Requires {req_years}+ Years)" if req_years >= 4 else "Senior Role (Requires Experience)"
-                score_cap = 40.0
-            elif is_job_entry and not is_job_senior:
-                exp_score = 35.0
-                exp_fit = "Entry Level (Exact Fit)"
-            elif is_job_intern:
-                exp_score = 28.0
-                exp_fit = "Internship / Early Career"
-            else:
-                exp_score = 15.0
-                exp_fit = "Mid Level Fit"
-        elif exp_category == "senior":
-            if is_job_intern:
-                exp_score = -25.0
-                exp_fit = "Internship (Underqualified Role)"
-                score_cap = 25.0
-            elif is_job_senior:
-                exp_score = 35.0
-                exp_fit = "Senior Level (Exact Fit)"
-            else:
-                exp_score = 20.0
-                exp_fit = "Mid / Senior Level"
-        elif exp_category == "lead":
-            if is_job_intern:
-                exp_score = -30.0
-                exp_fit = "Internship (Underqualified Role)"
-                score_cap = 20.0
-            elif is_job_lead:
-                exp_score = 35.0
-                exp_fit = "Lead / Principal (Exact Fit)"
-            elif is_job_senior:
-                exp_score = 28.0
-                exp_fit = "Senior Level Fit"
-            else:
-                exp_score = 15.0
-                exp_fit = "Mid Level"
-        else:  # "mid"
-            if is_job_intern:
-                exp_score = 5.0
-                exp_fit = "Internship Position"
-            elif is_job_lead:
-                exp_score = 15.0
-                exp_fit = "Lead Position"
-            else:
-                exp_score = 35.0
-                exp_fit = "Mid Level (Exact Fit)"
-
-        score += exp_score
-
-        # --- 2. TARGET ROLE & RELATED TITLES FIT (35%) ---
-        role_tokens = [w for w in pref_role_str.split() if len(w) > 1 and w not in ["the", "for", "and", "in", "of", "to"]]
-        matched_title_tokens = sum(1 for t in role_tokens if t in title)
-
-        if pref_role_str and pref_role_str in title:
-            score += 35.0
-        elif any(r in title for r in target_roles if len(r) > 3):
-            score += 33.0
-        elif role_tokens and matched_title_tokens == len(role_tokens):
-            score += 30.0
-        elif matched_title_tokens > 0:
-            score += 18.0 + (matched_title_tokens / max(len(role_tokens), 1)) * 12.0
-        elif any(s.lower() in title for s in resume_skills):
-            score += 15.0
-        else:
-            score += 5.0
-
-        # --- 3. RESUME-BASED SKILLS MATCH (30%) ---
+        # 2. Skills & Tech Stack Score (30%)
+        cand_skills = [s.lower().strip() for s in (candidate_profile.get("skills", []) or [])]
         matched_skills = []
         missing_skills = []
+        desc_lower = desc.lower()
 
-        if resume_skills:
-            for s in resume_skills:
-                s_clean = s.strip()
-                if not s_clean:
-                    continue
-                pattern = r'(?i)\b' + re.escape(s_clean) + r'\b'
-                if re.search(pattern, f"{title} {desc}") or s_clean.lower() in desc or s_clean.lower() in title:
-                    matched_skills.append(s_clean)
-                else:
-                    missing_skills.append(s_clean)
-            skills_ratio = (len(matched_skills) / max(len(resume_skills), 1))
+        # Check candidate skills in description
+        for s in cand_skills:
+            if s and s in desc_lower or s in title_lower:
+                matched_skills.append(s.title())
+            elif s:
+                missing_skills.append(s.title())
+
+        # Check cluster coverage
+        cluster_matches = 0
+        for cluster_name, keywords in TECH_STACK_CLUSTERS.items():
+            if any(kw in desc_lower for kw in keywords):
+                cluster_matches += 1
+
+        skill_score = min(100, int((len(matched_skills) * 15) + (cluster_matches * 10)))
+        if not cand_skills:
+            skill_score = 75
+
+        # 3. Experience Tier Fit (20%)
+        cand_seniority = str(candidate_profile.get("seniority", "Mid")).lower()
+        exp_score = 75
+        if "intern" in target_role.lower() or target_exp_tier == "intern" or "intern" in cand_seniority:
+            if "intern" in job_exp_tier.lower() or "intern" in title_lower:
+                exp_score = 100
+            elif "entry" in job_exp_tier.lower():
+                exp_score = 85
+            else:
+                exp_score = 30
+        elif target_exp_tier:
+            if target_exp_tier.lower() in job_exp_tier.lower():
+                exp_score = 100
+            else:
+                exp_score = 60
+
+        # 4. Location & Work Mode Fit (15%)
+        loc_score = 70
+        is_target_india = "india" in target_loc.lower() or any(c in target_loc.lower() for c in ["pune", "bengaluru", "bangalore", "hyderabad", "mumbai", "delhi"])
+        if is_target_india:
+            if is_india_location(loc, u, title, desc):
+                loc_score = 100
+            else:
+                loc_score = 25
+        elif target_loc.lower() in ["remote", "worldwide", "global", "any"]:
+            if work_mode == "Remote":
+                loc_score = 100
+            else:
+                loc_score = 70
         else:
-            skills_ratio = 0.6
+            if is_job_location_match(loc, target_loc, pref_work_mode, "", desc, title, u):
+                loc_score = 95
+            else:
+                loc_score = 40
 
-        score += min(skills_ratio * 30.0, 30.0)
+        # Final Weighted Match Score
+        total_score = round(
+            (role_score * 0.35) +
+            (skill_score * 0.30) +
+            (exp_score * 0.20) +
+            (loc_score * 0.15)
+        )
 
-        # Severe penalty for mismatched domains (e.g. doctor, nurse, warehouse)
-        is_mismatched = any(m_dom in title for m_dom in MISMATCHED_DOMAINS)
-        if is_mismatched:
-            score = max(score - 50.0, 5.0)
-            exp_fit = "Mismatched Field"
-            score_cap = min(score_cap, 20.0)
+        match_reason = f"Role Fit: {role_score}% | Skills Fit: {skill_score}% | Experience Fit: {exp_score}% | Location Fit: {loc_score}%"
 
-        # Apply score cap based on strict seniority disqualification
-        raw_final = max(score, 5.0)
-        final_score = min(score_cap, min(100.0, round(raw_final, 1)))
+        enriched_job = dict(job)
+        enriched_job.update({
+            "match_score": total_score,
+            "match_reason": match_reason,
+            "role_match_score": role_score,
+            "skill_match_score": skill_score,
+            "exp_match_score": exp_score,
+            "loc_match_score": loc_score,
+            "sub_domain": sub_domain,
+            "ai_facets": facets,
+            "experience_fit": job_exp_tier,
+            "work_mode": work_mode,
+            "matching_skills": matched_skills[:10],
+            "missing_skills": missing_skills[:8],
+        })
+        return enriched_job
 
-        # Dynamic match reason
-        if final_score >= 80:
-            match_reason = f"Excellent match for your {exp_fit.lower()} preference in '{pref_role_str}'."
-        elif final_score >= 60:
-            match_reason = f"Good alignment with {exp_fit.lower()} requirements and skills."
-        elif final_score <= 35 and "Senior" in exp_fit:
-            match_reason = f"Underqualified: {exp_fit}."
-        elif final_score <= 35 and "Underqualified" in exp_fit:
-            match_reason = f"Overqualified: {exp_fit}."
-        else:
-            match_reason = f"Partial fit ({exp_fit})."
-
-        return {
-            "match_score": final_score,
-            "matching_skills": matched_skills[:8],
-            "missing_skills": missing_skills[:6],
-            "experience_fit": exp_fit,
-            "match_reason": match_reason
-        }
-
-    async def rank_jobs(self, jobs: List[Dict[str, Any]], resume_profile: Dict[str, Any], preferences: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Applies strict location & work mode filters, then ranks jobs using priority heuristics and LLM breakdown.
-        """
+    async def rank_jobs(self, jobs: List[Dict[str, Any]], candidate_profile: Dict[str, Any], preferences: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Scores and ranks all unique jobs."""
         if not jobs:
             return []
 
-        pref_loc = str(preferences.get("location", "")).lower().strip()
-        loc_tokens = [w for w in pref_loc.replace(",", " ").split() if len(w) > 2 and w not in ["remote", "any", "worldwide", "all", "global"]]
-        pref_work_mode = str(preferences.get("remote_preference", preferences.get("work_mode", "any"))).lower().strip()
+        ranked = []
+        for j in jobs:
+            try:
+                scored = self._score_job(j, candidate_profile, preferences)
+                ranked.append(scored)
+            except Exception:
+                ranked.append(j)
 
-        # Step 1: Strict Preference Pre-Filter (Location & Work Mode)
-        valid_candidates = []
-        for job in jobs:
-            job_loc = str(job.get("location", "")).lower()
-            job_src = str(job.get("source", "")).lower()
-            
-            if is_job_location_match(job_loc, pref_loc, pref_work_mode, job_src):
-                valid_candidates.append(job)
-
-        active_jobs = valid_candidates
-            
-        # Step 2: Run priority heuristics scoring
-        for job in active_jobs:
-            heuristic_res = self._fast_heuristics_score(job, resume_profile, preferences)
-            job["match_score"] = heuristic_res["match_score"]
-            job["matching_skills"] = heuristic_res["matching_skills"]
-            job["missing_skills"] = heuristic_res["missing_skills"]
-            job["experience_fit"] = heuristic_res["experience_fit"]
-            job["match_reason"] = heuristic_res["match_reason"]
-            
-        jobs_sorted = sorted(active_jobs, key=lambda x: x.get("match_score", 0), reverse=True)
-        return jobs_sorted
+        # Sort descending by match score
+        ranked.sort(key=lambda x: float(x.get("match_score", 0)), reverse=True)
+        return ranked

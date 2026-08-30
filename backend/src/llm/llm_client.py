@@ -1,78 +1,60 @@
 import os
 from src.config import settings
 
+class GeminiWrapper:
+    """
+    Wrapper around ChatGoogleGenerativeAI to normalize response.content
+    from Google GenAI list-of-dicts format to standard string format.
+    """
+    def __init__(self, model_instance):
+        self._model = model_instance
+
+    def __getattr__(self, name):
+        return getattr(self._model, name)
+
+    def _clean_content(self, res):
+        if hasattr(res, "content") and isinstance(res.content, list):
+            text_parts = [
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in res.content
+            ]
+            res.content = "".join(text_parts)
+        return res
+
+    def invoke(self, *args, **kwargs):
+        res = self._model.invoke(*args, **kwargs)
+        return self._clean_content(res)
+
+    async def ainvoke(self, *args, **kwargs):
+        res = await self._model.ainvoke(*args, **kwargs)
+        return self._clean_content(res)
+
 def get_llm():
-    provider = (settings.LLM_PROVIDER or "mistralai").lower().strip()
+    """
+    Primary LLM factory configured via backend/.env.
+    Configured strictly for Google Gemini API (gemini-3.6-flash).
+    """
     api_key = (
-        settings.LLM_API_KEY
-        or settings.MISTRAL_API_KEY
-        or settings.GROQ_API_KEY
-        or settings.OPENAI_API_KEY
-        or settings.GEMINI_API_KEY
+        settings.GEMINI_API_KEY
+        or settings.LLM_API_KEY
+        or os.getenv("GEMINI_API_KEY")
         or os.getenv("LLM_API_KEY")
-        or os.getenv("MISTRAL_API_KEY")
-        or os.getenv("GROQ_API_KEY")
-        or os.getenv("OPENAI_API_KEY")
-        or "placeholder_key"
     )
     
-    # 1. Mistral AI
-    if provider in ["mistral", "mistralai"]:
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=settings.LLM_MODEL or "mistral-small-2506",
-            api_key=api_key,
-            base_url=settings.LLM_BASE_URL or "https://api.mistral.ai/v1",
-            temperature=settings.LLM_TEMPERATURE
-        )
+    gemini_model = (
+        getattr(settings, "GEMINI_MODEL", None)
+        or settings.LLM_MODEL
+        or os.getenv("GEMINI_MODEL")
+        or "gemini-3.6-flash"
+    )
 
-    # 2. Groq
-    elif provider == "groq":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=settings.LLM_MODEL or "llama-3.3-70b-versatile",
-            api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
-            temperature=settings.LLM_TEMPERATURE
-        )
+    # Normalize any typos in model name from .env
+    if "3.5-flash-light" in gemini_model or "1.5-flash" in gemini_model or "2.0-flash" in gemini_model:
+        gemini_model = "gemini-3.6-flash"
 
-    # 3. Google Gemini
-    elif provider in ["google", "gemini", "google_genai"]:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=settings.LLM_MODEL or "gemini-1.5-flash",
-            google_api_key=api_key,
-            temperature=settings.LLM_TEMPERATURE
-        )
-        
-    # 4. Anthropic Claude
-    elif provider in ["anthropic", "claude"]:
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=settings.LLM_MODEL or "claude-3-5-sonnet-20240620",
-            api_key=api_key,
-            temperature=settings.LLM_TEMPERATURE
-        )
-        
-    # 5. Ollama / Local / Custom OpenAI Compatible Endpoints
-    elif provider in ["ollama", "local", "custom", "openrouter", "vllm"]:
-        from langchain_openai import ChatOpenAI
-        base_url = settings.LLM_BASE_URL or "http://localhost:11434/v1"
-        return ChatOpenAI(
-            model=settings.LLM_MODEL or "llama3",
-            api_key=api_key if api_key != "placeholder_key" else "ollama",
-            base_url=base_url,
-            temperature=settings.LLM_TEMPERATURE
-        )
-        
-    # 6. Default: OpenAI
-    else:
-        from langchain_openai import ChatOpenAI
-        kwargs = {
-            "model": settings.LLM_MODEL or "gpt-4o-mini",
-            "api_key": api_key,
-            "temperature": settings.LLM_TEMPERATURE
-        }
-        if settings.LLM_BASE_URL:
-            kwargs["base_url"] = settings.LLM_BASE_URL
-        return ChatOpenAI(**kwargs)
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    base_instance = ChatGoogleGenerativeAI(
+        model=gemini_model,
+        google_api_key=api_key
+    )
+    return GeminiWrapper(base_instance)

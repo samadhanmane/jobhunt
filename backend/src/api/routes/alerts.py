@@ -1,3 +1,4 @@
+from src.utils.cadence_helper import calculate_followup_milestone
 import json
 import os
 from typing import Optional, List
@@ -33,6 +34,10 @@ async def create_alert(
     location: str = Form("Remote"),
     experience_level: str = Form("all"),
     experience_years: float = Form(0.0),
+    experience_tier: str = Form("all"),
+    sub_domain: str = Form("All"),
+    ai_facets_json: Optional[str] = Form(None),
+    stipend_range: Optional[str] = Form(None),
     work_mode: str = Form("any"),
     max_age_days: int = Form(1),
     preferred_time: str = Form("09:00"),
@@ -93,6 +98,10 @@ async def create_alert(
         location=location.strip(),
         experience_level=experience_level.strip().lower(),
         experience_years=calc_exp_years,
+        experience_tier=experience_tier.strip().lower() if experience_tier else "all",
+        sub_domain=sub_domain.strip() if sub_domain else "All",
+        ai_facets=json.loads(ai_facets_json) if ai_facets_json and ai_facets_json.startswith('[') else [],
+        stipend_range=stipend_range.strip() if stipend_range else None,
         work_mode=work_mode,
         max_age_days=max_age_days,
         preferred_time=preferred_time,
@@ -248,6 +257,17 @@ async def test_send_alert(
 
         ranked_jobs = await scheduler_service.ranking_agent.rank_jobs(unique_jobs, candidate_profile, preferences)
 
+        # Filter curated matches strictly by targeted title/role and seniority fit
+        from src.utils.role_helper import filter_curated_jobs_by_role
+        curated_jobs = filter_curated_jobs_by_role(
+            ranked_jobs,
+            target_role=role,
+            experience_level=experience_level,
+            min_score=40.0
+        )
+        if not curated_jobs:
+            curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30][:10]
+
         # Generate BOTH CSV Reports without pandas (Zero-RAM pure Python)
         backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         export_dir = os.path.join(backend_root, "exports")
@@ -312,16 +332,16 @@ async def test_send_alert(
         write_csv_file(raw_csv_path, raw_csv_rows)
 
         # Export CSV 2: Curated matching jobs
-        curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
+        curated_csv_rows = build_csv_rows(curated_jobs, is_raw=False)
         write_csv_file(curated_csv_path, curated_csv_rows)
 
         # Send Email with BOTH CSV attachments
-        summary_note = f"Personalized job report for {role} ({location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
+        summary_note = f"Personalized job report for {role} ({location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(curated_jobs)} jobs)."
         sent = email_service.send_daily_job_digest(
             to_email=to_email,
             role=role,
             location=location,
-            jobs=ranked_jobs,
+            jobs=curated_jobs,
             csv_paths=[raw_csv_path, curated_csv_path],
             summary_note=summary_note,
             raw_total_count=len(raw_jobs)
@@ -341,8 +361,8 @@ async def test_send_alert(
                 max_age_days=max_age_days or 1,
                 total_raw_found=len(raw_jobs),
                 total_unique_found=len(unique_jobs),
-                total_curated_sent=len(ranked_jobs),
-                curated_jobs=ranked_jobs,
+                total_curated_sent=len(curated_jobs),
+                curated_jobs=curated_jobs,
                 unique_jobs=unique_jobs,
                 raw_jobs=raw_jobs,
                 sent_at=datetime.datetime.utcnow()
@@ -360,7 +380,7 @@ async def test_send_alert(
             "status": "success" if sent else "error",
             "email": to_email,
             "raw_jobs_count": len(raw_jobs),
-            "jobs_sent": len(ranked_jobs),
+            "jobs_sent": len(curated_jobs),
             "csv_paths": [raw_csv_path, curated_csv_path]
         }
     except Exception as e:
@@ -506,3 +526,60 @@ def delete_alert(
     db.delete(alert)
     db.commit()
     return {"status": "success", "message": "Alert deleted successfully"}
+
+@router.post("/{alert_id}/test")
+async def trigger_instant_test_alert(
+    alert_id: str,
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Instantly triggers a test execution of an EmailAlert and delivers the rich digest.
+    """
+    alert = db.query(EmailAlert).filter(EmailAlert.id == alert_id, EmailAlert.user_id == current_user.id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+
+    res = await scheduler_service.execute_alert_run(alert_id, db)
+    return {
+        "status": "success",
+        "message": f"Test digest dispatched to {alert.email}",
+        "result": res
+    }
+
+@router.get("/followups")
+async def get_application_followups(
+    current_user: UserAccount = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns automated follow-up cadence status for applied jobs
+    based on career-ops Day 5, Day 12, Day 21 milestones.
+    """
+    from src.models.user_application import UserApplication
+    try:
+        apps = db.query(UserApplication).filter(UserApplication.user_id == current_user.id).all()
+    except Exception:
+        apps = []
+
+    followups = []
+    for app in apps:
+        app_date = str(app.applied_date or app.created_at or "")[:10]
+        milestone = calculate_followup_milestone(app_date)
+        followups.append({
+            "application_id": app.id,
+            "company": app.company_name,
+            "role": app.job_title,
+            "applied_date": app_date,
+            "job_url": app.job_url,
+            "cadence": milestone
+        })
+
+    # Sort so due and overdue appear first
+    followups.sort(key=lambda x: (not x["cadence"]["is_due"], x["cadence"]["days_until_next"] if "days_until_next" in x["cadence"] else 99))
+    return {
+        "status": "success",
+        "total_tracked": len(followups),
+        "due_count": sum(1 for f in followups if f["cadence"]["is_due"]),
+        "followups": followups
+    }

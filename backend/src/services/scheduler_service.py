@@ -1,3 +1,8 @@
+from src.models.blacklist import BlacklistCompany
+from src.services.repost_detector import repost_detector
+from src.services.upskill_service import upskill_service
+from src.utils.liveness_helper import check_job_liveness
+from src.utils.location_helper import is_india_location
 import os
 import gc
 import uuid
@@ -63,7 +68,7 @@ class SchedulerService:
         Executes a complete scheduled run for an EmailAlert:
         1. Queries all platforms.
         2. Applies cross-day deduplication (excluding previously emailed jobs).
-        3. Ranks with Mistral AI.
+        3. Ranks with Google Gemini AI.
         4. Generates CSV attachment.
         5. Sends HTML email digest with CSV.
         6. Updates sent_job_hashes in DB so tomorrow gets fresh jobs.
@@ -102,11 +107,19 @@ class SchedulerService:
                 elif yrs > 8.0:
                     exp_lvl = "lead"
 
+            sub_dom = getattr(alert, "sub_domain", "All") or "All"
+            exp_tier = getattr(alert, "experience_tier", "all") or "all"
+            facets = getattr(alert, "ai_facets", []) or []
+
             preferences = {
                 "role": alert.role,
                 "location": "" if is_worldwide else raw_loc,
                 "remote_preference": alert.work_mode or "any",
+                "work_mode": alert.work_mode or "any",
                 "experience_level": exp_lvl,
+                "experience_tier": exp_tier,
+                "sub_domain": sub_dom,
+                "ai_facets": facets,
                 "experience_years": alert.experience_years or 0.0,
                 "max_age_days": max_days
             }
@@ -119,8 +132,21 @@ class SchedulerService:
                 "target_roles": [alert.role]
             }
 
-            # 1. Parallel Multi-Platform Scrape
+            # 1. Parallel Multi-Platform Scrape with Blacklist Gate
+            user_blacklist = []
+            if alert.user_id:
+                try:
+                    bl_entries = db.query(BlacklistCompany).filter(BlacklistCompany.user_id == alert.user_id).all()
+                    user_blacklist = [b.company_name.lower().strip() for b in bl_entries if b.company_name]
+                except Exception:
+                    user_blacklist = []
+            preferences["blacklist"] = user_blacklist
+
             raw_jobs = await self.orchestrator.orchestrate_search(candidate_profile, preferences)
+
+            # Enforce Blacklist Filtering
+            if user_blacklist:
+                raw_jobs = [j for j in raw_jobs if j.get("company", "").lower().strip() not in user_blacklist]
 
             # 2. Intra-Batch Deduplication
             unique_batch = await self.deduplicator.deduplicate(raw_jobs)
@@ -144,8 +170,31 @@ class SchedulerService:
                 # If all jobs were previously sent or filtered, use the top 5 highest matching unique jobs as fallback
                 fresh_jobs = unique_batch[:5]
 
-            # 4. Rank with LLM
+            # 4. Rank with LLM & Heuristics
             ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences)
+
+            # Filter curated matches strictly by targeted title/role and seniority fit
+            from src.utils.role_helper import filter_curated_jobs_by_role
+            curated_jobs = filter_curated_jobs_by_role(
+                ranked_jobs,
+                target_role=alert.role,
+                experience_level=exp_lvl,
+                sub_domain=sub_dom,
+                min_score=40.0
+            )
+
+            # Attach Repost Detection and 3-Tier Skill Gap to curated jobs
+            for j in curated_jobs:
+                repost_info = repost_detector.record_and_evaluate_repost(j.get("company"), j.get("title"), j.get("url"), db)
+                j["is_repost"] = repost_info.get("is_repost", False)
+                j["repost_badge"] = repost_info.get("badge_label", "Active Opening")
+
+                gap_info = upskill_service.analyze_job_skill_gap(j, alert.skills or [])
+                j["supported_skills"] = gap_info.get("supported_skills", [])
+                j["skill_coverage_pct"] = gap_info.get("coverage_percentage", 0)
+            if not curated_jobs:
+                # Fallback to top scored jobs if strict filter is empty
+                curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30][:10]
 
             # 5. Generate BOTH CSV Reports
             backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -179,12 +228,18 @@ class SchedulerService:
                     rows.append({
                         "Company Name": j.get("company", "Unknown Company"),
                         "Role / Title": j.get("title", "Unknown Title"),
+                        "Sub-Domain": j.get("sub_domain", "AI/ML General"),
+                        "AI Facets": ", ".join(j.get("ai_facets", [])) if j.get("ai_facets") else "Standard AI",
+                        "Repost Status": j.get("repost_badge", "Active Opening"),
+                        "Supported Skills": ", ".join(j.get("supported_skills", [])) if j.get("supported_skills") else "N/A",
                         "Location": j.get("location", "N/A"),
-                        "Work Type": work_type,
+                        "Work Type": j.get("work_mode", work_type),
                         "Posted Date (YYYY-MM-DD)": format_posted_date_for_csv(j.get("posted_date")),
                         "Salary": salary if salary else "N/A",
                         "Match Score": score_str,
-                        "Experience Fit": exp_fit,
+                        "Role Fit": f"{round(j.get('role_match_score', score_val or 0))}%",
+                        "Skills Fit": f"{round(j.get('skill_match_score', score_val or 0))}%",
+                        "Experience Fit": j.get("experience_fit", exp_fit),
                         "Matching Skills": ", ".join(j.get("matching_skills", [])) if j.get("matching_skills") else "N/A",
                         "Missing Skills": ", ".join(j.get("missing_skills", [])) if j.get("missing_skills") else "N/A",
                         "Match Reason": reason,
@@ -208,16 +263,16 @@ class SchedulerService:
             raw_csv_rows = build_csv_rows(raw_jobs, is_raw=True)
             write_csv_file(raw_csv_path, raw_csv_rows)
 
-            curated_csv_rows = build_csv_rows(ranked_jobs, is_raw=False)
+            curated_csv_rows = build_csv_rows(curated_jobs, is_raw=False)
             write_csv_file(curated_csv_path, curated_csv_rows)
 
             # 6. Send Email Digest with Attachments
-            summary_note = f"Personalized daily report for {alert.role} ({alert.location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(ranked_jobs)} jobs)."
+            summary_note = f"Personalized daily report for {alert.role} ({alert.location or 'Worldwide'}). Attached are both the full raw scraped database ({len(raw_jobs)} jobs) and curated matches ({len(curated_jobs)} jobs)."
             sent_success = email_service.send_daily_job_digest(
                 to_email=alert.email,
                 role=alert.role,
                 location=alert.location,
-                jobs=ranked_jobs,
+                jobs=curated_jobs,
                 csv_paths=[raw_csv_path, curated_csv_path],
                 summary_note=summary_note,
                 raw_total_count=len(raw_jobs)
@@ -251,8 +306,8 @@ class SchedulerService:
                         preferred_time=alert.preferred_time or "09:00",
                         total_raw_found=len(raw_jobs),
                         total_unique_found=len(unique_batch),
-                        total_curated_sent=len(ranked_jobs),
-                        curated_jobs=ranked_jobs,
+                        total_curated_sent=len(curated_jobs),
+                        curated_jobs=curated_jobs,
                         unique_jobs=unique_batch,
                         raw_jobs=raw_jobs,
                         sent_at=datetime.utcnow()
@@ -491,6 +546,8 @@ class SchedulerService:
 
                 new_db_jobs = []
                 for j in ranked_jobs:
+                    if float(j.get("match_score", 0.0)) < 35.0:
+                        continue
                     url = (j.get("url") or "").strip().lower()
                     if url and url in existing_db_urls:
                         continue

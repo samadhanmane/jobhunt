@@ -811,6 +811,20 @@ function App() {
                         onExitSnapshot={() => setActiveSnapshot(null)}
                     />
                 )}
+                {activeTab === 'analytics' && (
+                    <PipelineAnalyticsView
+                        token={token}
+                        appliedJobs={appliedJobs}
+                    />
+                )}
+
+                {activeTab === 'stories' && (
+                    <StoryBankView
+                        token={token}
+                        showToast={showToast}
+                    />
+                )}
+
                 {activeTab === 'alerts' && (
                     <EmailAlertsView
                         token={token}
@@ -1635,6 +1649,8 @@ function JobSearchDashboard({
 
     // Selected Job for Detailed Modal
     const [selectedJob, setSelectedJob] = useState(null);
+    const [dossierCompany, setDossierCompany] = useState(null);
+    const [blacklistedCompanies, setBlacklistedCompanies] = useState([]);
 
     // Pre-Harvesting Setup State (Strictly controls scraper criteria & background harvesting)
     const [harvestRole, setHarvestRole] = useState("AI ML Intern");
@@ -1642,7 +1658,11 @@ function JobSearchDashboard({
     const [harvestWorkMode, setHarvestWorkMode] = useState("any"); // 'any' | 'remote' | 'hybrid' | 'onsite'
     const [harvestExperience, setHarvestExperience] = useState("all"); // 'all' | 'intern' | 'entry' | 'junior' | 'mid' | 'senior' | 'lead'
     const [harvestDate, setHarvestDate] = useState("all"); // 'all' | '1' | '3' | '7' | '14' | '30'
-    const [harvestSource, setHarvestSource] = useState("all"); // 'all' | 'greenhouse' | 'lever' | 'ashby' | 'linkedin' | 'himalayas' | 'arbeitnow' | 'freehire' | 'jobicy' | 'remoteok'
+    const [harvestSource, setHarvestSource] = useState("all");
+    const [harvestSubDomain, setHarvestSubDomain] = useState("All");
+    const [harvestFacets, setHarvestFacets] = useState([]);
+    const [filterSubDomain, setFilterSubDomain] = useState("All");
+    const [filterFacets, setFilterFacets] = useState([]); // 'all' | 'greenhouse' | 'lever' | 'ashby' | 'linkedin' | 'himalayas' | 'arbeitnow' | 'freehire' | 'jobicy' | 'remoteok'
 
     // In-Memory Result Filter Toolbar State (Strictly filters already-fetched jobs in real-time)
     const [filterKeyword, setFilterKeyword] = useState("");
@@ -2006,6 +2026,12 @@ function JobSearchDashboard({
         formData.append("role", searchRole);
         formData.append("location", activeLocation || "Worldwide");
         formData.append("experience_level", activeSeniority);
+        formData.append("experience_tier", harvestExperience);
+        formData.append("work_mode", harvestWorkMode);
+        formData.append("sub_domain", harvestSubDomain);
+        if (harvestFacets.length > 0) {
+            formData.append("ai_facets", JSON.stringify(harvestFacets));
+        }
         formData.append("remote_preference", harvestWorkMode);
         if (harvestDate && harvestDate !== "all") {
             formData.append("max_age_days", harvestDate);
@@ -3258,6 +3284,15 @@ function JobSearchDashboard({
             )}
 
             {/* Interactive Job Details Modal */}
+            {dossierCompany && (
+                <CompanyDossierModal
+                    companyName={dossierCompany}
+                    token={token}
+                    onClose={() => setDossierCompany(null)}
+                    showToast={showToast}
+                />
+            )}
+
             {selectedJob && (
                 <JobDetailModal
                     job={selectedJob}
@@ -4108,6 +4143,347 @@ function ContactCard({ contact, onCopy }) {
     );
 }
 
+
+// ==========================================
+// Component: Company Intelligence Dossier Modal (Feature 3)
+// ==========================================
+function CompanyDossierModal({ companyName, token, onClose, showToast }) {
+    const [dossier, setDossier] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!companyName) return;
+        const fetchDossier = async () => {
+            try {
+                setLoading(true);
+                const res = await fetch(`${API_BASE_URL}/api/v1/company/${encodeURIComponent(companyName)}/dossier`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                if (res.ok && data.dossier) {
+                    setDossier(data.dossier);
+                }
+            } catch (err) {
+                console.error("Dossier error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDossier();
+    }, [companyName, token]);
+
+    if (!companyName) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto">
+                <div className="flex items-start justify-between border-b border-white/10 pb-4">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-2xl">🏢</span>
+                            <h3 className="text-xl font-bold text-white">{companyName}</h3>
+                            {dossier?.canonical_domain && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                                    {dossier.canonical_domain}
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">Company Evidence Dossier & Hiring Intelligence</p>
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10">✕</button>
+                </div>
+
+                {loading ? (
+                    <div className="py-12 text-center text-slate-400 text-sm">Gathering company intelligence...</div>
+                ) : dossier ? (
+                    <div className="space-y-4 text-xs">
+                        {/* Summary Metrics */}
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="p-3 rounded-xl bg-slate-950/60 border border-white/5">
+                                <span className="block text-slate-400 text-[11px]">Active Openings</span>
+                                <strong className="text-lg text-indigo-400">{dossier.active_openings_count}</strong>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-950/60 border border-white/5">
+                                <span className="block text-slate-400 text-[11px]">Hiring Latency</span>
+                                <strong className="text-sm text-emerald-400">{dossier.hiring_latency}</strong>
+                            </div>
+                            <div className="p-3 rounded-xl bg-slate-950/60 border border-white/5">
+                                <span className="block text-slate-400 text-[11px]">ATS Provider</span>
+                                <strong className="text-sm text-amber-300">{dossier.ats_provider}</strong>
+                            </div>
+                        </div>
+
+                        {/* Verified Outbound Email Permutations */}
+                        <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/20 space-y-2">
+                            <h4 className="font-bold text-indigo-300 text-xs flex items-center gap-1.5">
+                                <span>✉️</span> Outbound Recruiter & Hiring Contacts
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                {(dossier.contacts || []).map((c, i) => (
+                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-slate-900 border border-white/5">
+                                        <div>
+                                            <span className="text-[11px] text-slate-300 font-semibold block">{c.role}</span>
+                                            <code className="text-[10px] text-indigo-300">{c.email}</code>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(c.email);
+                                                showToast?.(`Copied ${c.email}!`);
+                                            }}
+                                            className="px-2 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600 text-white text-[10px] font-semibold"
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Active Openings List */}
+                        <div className="space-y-2">
+                            <h4 className="font-bold text-white text-xs">Current Active Openings</h4>
+                            {dossier.active_openings?.length > 0 ? (
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                    {dossier.active_openings.map((job, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-950/40 border border-white/5">
+                                            <span className="font-medium text-slate-200">{job.title}</span>
+                                            <a href={job.url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">Apply ↗</a>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-slate-500 italic">No additional openings stored locally.</p>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-8 text-center text-slate-400">Failed to load company dossier.</div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
+// Component: Pipeline Funnel Velocity & Analytics View (Feature 5)
+// ==========================================
+function PipelineAnalyticsView({ token, appliedJobs = [] }) {
+    const [metrics, setMetrics] = useState(null);
+    const [heatmap, setHeatmap] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchAnalytics = async () => {
+            try {
+                setLoading(true);
+                const [funnelRes, heatRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/api/v1/analytics/pipeline`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_BASE_URL}/api/v1/analytics/skills-demand`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const funnelData = await funnelRes.json();
+                const heatData = await heatRes.json();
+                if (funnelData.metrics) setMetrics(funnelData.metrics);
+                if (heatData.market_skill_heatmap) setHeatmap(heatData.market_skill_heatmap);
+            } catch (err) {
+                console.error("Analytics fetch error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchAnalytics();
+    }, [token, appliedJobs.length]);
+
+    return (
+        <div className="space-y-6 max-w-5xl mx-auto p-4 sm:p-6 animate-fadeIn">
+            {/* Header */}
+            <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <span>📊</span> Application Funnel Velocity & Skills Radar
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">Calibrate your job search pipeline velocity and uncover top market skill demands.</p>
+            </div>
+
+            {/* Funnel Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-4 rounded-2xl bg-slate-900 border border-white/10 text-center">
+                    <span className="text-xs text-slate-400 font-semibold block mb-1">Total Applied</span>
+                    <strong className="text-2xl text-white font-extrabold">{metrics?.total_applied || appliedJobs.length}</strong>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-900 border border-indigo-500/20 text-center">
+                    <span className="text-xs text-indigo-300 font-semibold block mb-1">Interview Rate</span>
+                    <strong className="text-2xl text-indigo-400 font-extrabold">{metrics?.interview_rate || 0}%</strong>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Benchmark: 12%</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-900 border border-emerald-500/20 text-center">
+                    <span className="text-xs text-emerald-300 font-semibold block mb-1">Offer Rate</span>
+                    <strong className="text-2xl text-emerald-400 font-extrabold">{metrics?.offer_rate || 0}%</strong>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Benchmark: 25%</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-900 border border-amber-500/20 text-center">
+                    <span className="text-xs text-amber-300 font-semibold block mb-1">Avg Response Latency</span>
+                    <strong className="text-2xl text-amber-300 font-extrabold">{metrics?.avg_response_days || 6.5}d</strong>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Days to hear back</span>
+                </div>
+            </div>
+
+            {/* Market Skill Demand Heatmap */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-white/10 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="font-bold text-white text-sm flex items-center gap-1.5">
+                            <span>⚡</span> Top Market AI Skill Demands (Career-Ops Upskill Heatmap)
+                        </h3>
+                        <p className="text-xs text-slate-400">Identifies highest-frequency skills across live postings and compares them to your resume.</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-2">
+                    {heatmap.slice(0, 12).map((item, idx) => (
+                        <div key={idx} className="p-3 rounded-xl bg-slate-950/60 border border-white/5 flex items-center justify-between text-xs">
+                            <div>
+                                <span className="font-bold text-slate-200 block">{item.skill}</span>
+                                <span className="text-[10px] text-slate-400">{item.job_count} postings ({item.demand_percentage}%)</span>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.is_owned ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-amber-500/20 text-amber-300 border border-amber-500/30"}`}>
+                                {item.is_owned ? "✓ On Resume" : "Gap"}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
+// Component: STAR+R Interview Story Bank View (Feature 6)
+// ==========================================
+function StoryBankView({ token, showToast }) {
+    const [stories, setStories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreate, setShowCreate] = useState(false);
+    const [title, setTitle] = useState("");
+    const [situation, setSituation] = useState("");
+    const [task, setTask] = useState("");
+    const [action, setAction] = useState("");
+    const [result, setResult] = useState("");
+    const [techs, setTechs] = useState("Python, LangGraph, FastAPI");
+
+    const fetchStories = async () => {
+        try {
+            setLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/stories`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.stories) {
+                setStories(data.stories || []);
+            }
+        } catch (err) {
+            console.error("Story fetch error:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchStories();
+    }, [token]);
+
+    const handleSaveStory = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/stories`, {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    title,
+                    situation,
+                    task,
+                    action,
+                    result,
+                    technologies: techs.split(",").map(t => t.trim()).filter(Boolean)
+                })
+            });
+            if (res.ok) {
+                showToast("STAR story added to bank!");
+                setShowCreate(false);
+                fetchStories();
+            }
+        } catch (err) {
+            showToast("Failed to save story", "error");
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-4xl mx-auto p-4 sm:p-6 animate-fadeIn">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <span>🎙️</span> STAR+R Interview Story Bank
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Ground truth stories used to automatically prepare tailored interview talking points.</p>
+                </div>
+                <button
+                    onClick={() => setShowCreate(!showCreate)}
+                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 transition-all shadow-md"
+                >
+                    {showCreate ? "Cancel" : "+ New STAR Story"}
+                </button>
+            </div>
+
+            {showCreate && (
+                <form onSubmit={handleSaveStory} className="p-5 rounded-2xl bg-slate-900 border border-indigo-500/30 space-y-3 text-xs">
+                    <div>
+                        <label className="font-semibold text-slate-300 block mb-1">Project / Achievement Title</label>
+                        <input className="w-full p-2.5 rounded bg-slate-950 border border-white/10 text-white" value={title} onChange={e => setTitle(e.target.value)} required placeholder="e.g. Agentic Workflow Parallelization" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="font-semibold text-slate-300 block mb-1">Situation</label>
+                            <textarea className="w-full p-2 rounded bg-slate-950 border border-white/10 text-white" rows={2} value={situation} onChange={e => setSituation(e.target.value)} required placeholder="What was the context or problem?" />
+                        </div>
+                        <div>
+                            <label className="font-semibold text-slate-300 block mb-1">Task</label>
+                            <textarea className="w-full p-2 rounded bg-slate-950 border border-white/10 text-white" rows={2} value={task} onChange={e => setTask(e.target.value)} required placeholder="What was your specific responsibility?" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="font-semibold text-slate-300 block mb-1">Action</label>
+                            <textarea className="w-full p-2 rounded bg-slate-950 border border-white/10 text-white" rows={2} value={action} onChange={e => setAction(e.target.value)} required placeholder="What technical steps did you execute?" />
+                        </div>
+                        <div>
+                            <label className="font-semibold text-slate-300 block mb-1">Result</label>
+                            <textarea className="w-full p-2 rounded bg-slate-950 border border-white/10 text-white" rows={2} value={result} onChange={e => setResult(e.target.value)} required placeholder="Quantified impact (e.g. 40% latency drop)" />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="font-semibold text-slate-300 block mb-1">Technologies Used (comma-separated)</label>
+                        <input className="w-full p-2 rounded bg-slate-950 border border-white/10 text-white" value={techs} onChange={e => setTechs(e.target.value)} />
+                    </div>
+                    <button type="submit" className="px-4 py-2 rounded bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500">Save Story</button>
+                </form>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {stories.map((story, idx) => (
+                    <div key={idx} className="p-4 rounded-2xl bg-slate-900 border border-white/10 space-y-2 text-xs">
+                        <h4 className="font-bold text-white text-sm">{story.title}</h4>
+                        <p className="text-slate-300"><strong className="text-indigo-400">Action:</strong> {story.action}</p>
+                        <p className="text-emerald-300 font-semibold"><strong className="text-slate-400">Result:</strong> {story.result}</p>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                            {(story.technologies || []).map((t, i) => (
+                                <span key={i} className="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-white/5 text-[10px]">{t}</span>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 // ==========================================
 // Component: Email Automation & Live Alerts
 // ==========================================
@@ -4119,6 +4495,11 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     const [experienceLevel, setExperienceLevel] = useState("intern");
     const [maxAgeDays, setMaxAgeDays] = useState(3);
     const [preferredTime, setPreferredTime] = useState("09:00");
+    const [subDomain, setSubDomain] = useState("All");
+    const [aiFacets, setAiFacets] = useState([]);
+    const [stipendRange, setStipendRange] = useState("");
+    const [followupsList, setFollowupsList] = useState([]);
+    const [loadingFollowups, setLoadingFollowups] = useState(false);
 
     const [resumeFile, setResumeFile] = useState(null);
     const [resumeProfile, setResumeProfile] = useState(null);
@@ -4139,6 +4520,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
     const [snapshotFilterKeyword, setSnapshotFilterKeyword] = useState("");
     const [snapshotFilterLocation, setSnapshotFilterLocation] = useState("");
     const [snapshotFilterWorkMode, setSnapshotFilterWorkMode] = useState("all");
+    const [snapshotFilterExperience, setSnapshotFilterExperience] = useState("all");
     const [snapshotMinScore, setSnapshotMinScore] = useState(0);
     const [snapshotSortBy, setSnapshotSortBy] = useState("score"); // 'score' | 'date'
     const [selectedJob, setSelectedJob] = useState(null);
@@ -4177,8 +4559,25 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         }
     };
 
+    const fetchFollowups = async () => {
+        try {
+            setLoadingFollowups(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/alerts/followups`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.followups) {
+                setFollowupsList(data.followups || []);
+            }
+        } catch (err) {
+            console.error("Fetch followups error:", err);
+        } finally {
+            setLoadingFollowups(false);
+        }
+    };
+
     useEffect(() => {
-        Promise.all([fetchAlerts(), fetchHistory()]);
+        Promise.all([fetchAlerts(), fetchHistory(), fetchFollowups()]);
     }, []);
 
     const handleResumeChange = async (e) => {
@@ -4220,6 +4619,12 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
         formData.append("location", location);
         formData.append("work_mode", workMode);
         formData.append("experience_level", experienceLevel);
+        formData.append("experience_tier", experienceLevel);
+        formData.append("sub_domain", subDomain);
+        formData.append("stipend_range", stipendRange);
+        if (aiFacets.length > 0) {
+            formData.append("ai_facets_json", JSON.stringify(aiFacets));
+        }
         const expMap = { intern: 0.0, entry: 1.0, junior: 2.0, mid: 4.0, senior: 6.0, lead: 8.0 };
         formData.append("experience_years", expMap[experienceLevel] !== undefined ? expMap[experienceLevel] : 0.0);
         formData.append("max_age_days", maxAgeDays);
@@ -4338,6 +4743,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                 setSnapshotFilterKeyword("");
                 setSnapshotFilterLocation("");
                 setSnapshotFilterWorkMode("all");
+                setSnapshotFilterExperience("all");
                 setSnapshotMinScore(0);
                 showToast(`Viewing snapshot for "${data.history.role}" (${data.history.curated_jobs?.length || 0} curated jobs) on this page!`);
                 setTimeout(() => {
@@ -4414,7 +4820,26 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             if (snapshotFilterWorkMode === 'hybrid' && !isHybrid) return false;
             if (snapshotFilterWorkMode === 'onsite' && !isOnsite) return false;
 
-            // 4. Min Score filter
+            // 4. Experience Level filter
+            if (snapshotFilterExperience && snapshotFilterExperience !== 'all') {
+                const minYears = typeof job.min_experience_years === 'number' ? job.min_experience_years : -1;
+                const fitLower = (job.experience_fit || "").toLowerCase();
+                const expReq = (job.experience_required || "").toLowerCase();
+                const isTrueIntern = title.includes('intern') || title.includes('internship') || title.includes('trainee') || title.includes('apprentice') || title.includes('co-op') || title.includes('student') || fitLower.includes('intern') || expReq.includes('intern');
+                const isSeniorRole = title.includes('senior') || title.includes('sr.') || title.includes('sr ') || title.includes('lead') || title.includes('principal') || title.includes('staff') || title.includes('director') || title.includes('architect') || title.includes('head of') || fitLower.includes('senior') || fitLower.includes('lead') || minYears >= 5;
+                const isEntryRole = (title.includes('entry') || title.includes('fresher') || title.includes('graduate') || title.includes('new grad') || expReq.includes('0-1') || expReq.includes('1 yr') || minYears === 0 || minYears === 1) && !isSeniorRole;
+                const isJuniorRole = (title.includes('junior') || title.includes('jr.') || title.includes('associate') || expReq.includes('1-2') || expReq.includes('2 yr') || minYears === 2) && !isSeniorRole;
+                const requiresYears = minYears >= 2 || desc.includes('2+ year') || desc.includes('3+ year') || desc.includes('4+ year') || desc.includes('5+ year') || desc.includes('2-4 year') || desc.includes('3-5 year');
+
+                if (snapshotFilterExperience === 'intern' && (!isTrueIntern || requiresYears || isSeniorRole)) return false;
+                if (snapshotFilterExperience === 'entry' && (!isEntryRole || isTrueIntern || isSeniorRole || minYears > 1)) return false;
+                if (snapshotFilterExperience === 'junior' && (!isJuniorRole || isTrueIntern || isSeniorRole || minYears > 2)) return false;
+                if (snapshotFilterExperience === 'mid' && (minYears < 2 || minYears > 5 || isTrueIntern || title.includes('principal') || title.includes('staff'))) return false;
+                if (snapshotFilterExperience === 'senior' && (!isSeniorRole && minYears < 4)) return false;
+                if (snapshotFilterExperience === 'lead' && (minYears < 7 && !title.includes('lead') && !title.includes('principal') && !title.includes('staff'))) return false;
+            }
+
+            // 5. Min Score filter
             if (snapshotScope === 'curated' && snapshotMinScore > 0) {
                 if ((job.match_score || 0) < snapshotMinScore) return false;
             }
@@ -4426,7 +4851,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             }
             return (b.match_score || 0) - (a.match_score || 0);
         });
-    }, [activeSnapshotList, snapshotFilterKeyword, snapshotFilterLocation, snapshotFilterWorkMode, snapshotMinScore, snapshotSortBy, snapshotScope]);
+    }, [activeSnapshotList, snapshotFilterKeyword, snapshotFilterLocation, snapshotFilterWorkMode, snapshotFilterExperience, snapshotMinScore, snapshotSortBy, snapshotScope]);
 
     return (
         <div className="space-y-6">
@@ -4752,7 +5177,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                         </div>
 
                         {/* Interactive Filter Toolbar */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-white/[0.04]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 p-3 rounded-xl bg-slate-950/70 border border-white/[0.04]">
                             {/* Keyword Filter */}
                             <div>
                                 <input
@@ -4786,6 +5211,23 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                                     <option value="remote">Remote Only</option>
                                     <option value="onsite">Onsite Only</option>
                                     <option value="hybrid">Hybrid Only</option>
+                                </select>
+                            </div>
+
+                            {/* Experience Filter */}
+                            <div>
+                                <select
+                                    value={snapshotFilterExperience}
+                                    onChange={(e) => setSnapshotFilterExperience(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500"
+                                >
+                                    <option value="all">Exp: All Levels</option>
+                                    <option value="intern">Intern / Internship</option>
+                                    <option value="entry">Entry Level (0-1 yrs)</option>
+                                    <option value="junior">Junior (1-3 yrs)</option>
+                                    <option value="mid">Mid Level (3-5 yrs)</option>
+                                    <option value="senior">Senior (5-8 yrs)</option>
+                                    <option value="lead">Lead / Staff (8+ yrs)</option>
                                 </select>
                             </div>
 
@@ -4826,6 +5268,7 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
                                         setSnapshotFilterKeyword('');
                                         setSnapshotFilterLocation('');
                                         setSnapshotFilterWorkMode('all');
+                                        setSnapshotFilterExperience('all');
                                         setSnapshotMinScore(0);
                                     }}
                                     className="text-indigo-400 hover:text-indigo-300 font-semibold underline text-xs"

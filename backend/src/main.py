@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from src.config import settings
-from src.api.routes import search, jobs, health, alerts, auth, admin, contacts
+from src.api.routes import search, jobs, health, alerts, auth, admin, contacts, advanced_features
 from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
 from src.services.keepalive_service import keepalive_service
@@ -127,6 +127,7 @@ app.include_router(search.router, tags=["Search"])
 app.include_router(jobs.router, tags=["Jobs"])
 app.include_router(contacts.router, tags=["Recruiter & HR Contacts"])
 app.include_router(alerts.router, tags=["Email Alerts"])
+app.include_router(advanced_features.router)
 app.include_router(health.router, tags=["Health Check"])
 
 @app.get("/", tags=["Status"])

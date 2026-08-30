@@ -12,6 +12,7 @@ from src.integrations.remoteok.client import RemoteOKClient
 from src.integrations.greenhouse.client import GreenhouseClient
 from src.integrations.lever.client import LeverClient
 from src.integrations.ashby.client import AshbyClient
+from src.integrations.phenom.client import PhenomClient
 from src.llm.prompts.search import QUERY_PLANNER_SYSTEM_PROMPT
 
 class OrchestratorAgent(BaseJobAgent):
@@ -26,6 +27,7 @@ class OrchestratorAgent(BaseJobAgent):
         self.greenhouse = GreenhouseClient()
         self.lever = LeverClient()
         self.ashby = AshbyClient()
+        self.phenom = PhenomClient()
 
     def _extract_json(self, raw_content: str) -> Dict[str, Any]:
         """Safely extract JSON object from LLM response."""
@@ -173,7 +175,7 @@ Candidate Background:
         print(f"[Orchestrator] Target Location: '{location or 'Worldwide'}'")
         print(f"[Orchestrator] Remote Only: {remote}")
         print(f"[Orchestrator] Domain Keywords: {domain_keywords[:6]}")
-        print(f"[Orchestrator] Platforms: JobSpy, Himalayas, Arbeitnow, Freehire, Jobicy, RemoteOK, Greenhouse, Lever, Ashby")
+        print(f"[Orchestrator] Platforms: JobSpy, Himalayas, Arbeitnow, Freehire, Jobicy, RemoteOK, Greenhouse, Lever, Ashby, Phenom")
         print(f"[Orchestrator] ===========================================")
 
         import gc
@@ -215,6 +217,8 @@ Candidate Background:
                 tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
             if run_all or target_src in ["ashby"]:
                 tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
+            if run_all or target_src in ["phenom"]:
+                tasks.append(run_guarded(self.phenom.search(query=q_title, location=location, remote=remote)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -231,7 +235,14 @@ Candidate Background:
             else:
                 print(f"[Orchestrator] Task {idx} notice: {res}")
 
-        del results
+        
+            # Career-Ops Feature 4: Company Blacklist Gate
+            blacklist = preferences.get("blacklist") or []
+            if blacklist:
+                blacklist_clean = {b.lower().strip() for b in blacklist if b}
+                results = [j for j in results if j.get("company", "").lower().strip() not in blacklist_clean]
+
+            del results
         gc.collect()
 
         print(f"[Orchestrator] ===========================================")

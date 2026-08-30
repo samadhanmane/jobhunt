@@ -16,7 +16,11 @@ class EmailAlert(Base):
     location = Column(String(255), nullable=True, default="Remote")
     experience_level = Column(String(50), nullable=True, default="all")  # 'intern', 'entry', 'junior', 'mid', 'senior', 'lead', 'all'
     experience_years = Column(Float, nullable=True, default=0.0)
-    work_mode = Column(String(50), nullable=True, default="any")  # 'remote', 'onsite', 'any'
+    experience_tier = Column(String(50), nullable=True, default="all") # 'internship', 'entry', 'mid', 'senior', 'lead', 'all'
+    sub_domain = Column(String(100), nullable=True, default="All")      # 'Agentic Systems', 'NLP & LLMs', etc.
+    ai_facets = Column(JSON, nullable=True, default=list)              # ['RAG Systems', 'Autonomous Agents', etc.]
+    stipend_range = Column(String(100), nullable=True)                 # '₹30K-₹60K/mo', etc.
+    work_mode = Column(String(50), nullable=True, default="any")  # 'remote', 'onsite', 'hybrid', 'any'
     max_age_days = Column(Integer, nullable=True, default=1)      # 1 = past 24h, 3, 7
     preferred_time = Column(String(20), nullable=True, default="09:00") # "HH:MM" in 24hr format
     skills = Column(JSON, nullable=True)                          # List of technical skills

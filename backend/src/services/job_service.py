@@ -1,3 +1,6 @@
+from src.services.repost_detector import repost_detector
+from src.services.upskill_service import upskill_service
+from src.models.database import SessionLocal
 import os
 import gc
 import uuid
@@ -256,8 +259,21 @@ class JobService:
             # 4. Rank with candidate profile, skill match, gap analysis, and reason
             ranked_jobs = await self.ranker.rank_jobs(unique_jobs, candidate_profile, preferences)
             
-            # 5. Batch generate embeddings for top 40 best matched jobs (prevents event loop database locking)
+            # 5. Attach Repost Detection & 3-Tier Skill Gap to live search results
             top_ranked_jobs = ranked_jobs[:40]
+            try:
+                db_temp = SessionLocal()
+                for j in top_ranked_jobs:
+                    repost_info = repost_detector.record_and_evaluate_repost(j.get("company"), j.get("title"), j.get("url"), db_temp)
+                    j["is_repost"] = repost_info.get("is_repost", False)
+                    j["repost_badge"] = repost_info.get("badge_label", "Active Opening")
+
+                    gap_info = upskill_service.analyze_job_skill_gap(j, candidate_profile.get("skills", []))
+                    j["supported_skills"] = gap_info.get("supported_skills", [])
+                    j["skill_coverage_pct"] = gap_info.get("coverage_percentage", 0)
+                db_temp.close()
+            except Exception as e:
+                print(f"Notice attaching live intelligence: {e}")
             texts = [f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"[:1000] for j in top_ranked_jobs]
             embeddings = embedding_client.get_embeddings(texts)
 
@@ -342,6 +358,13 @@ class JobService:
                     "matching_skills": raw_j.get("matching_skills", []),
                     "missing_skills": raw_j.get("missing_skills", []),
                     "experience_fit": raw_j.get("experience_fit", "Standard Fit"),
+                    "sub_domain": raw_j.get("sub_domain", "AI/ML General"),
+                    "ai_facets": raw_j.get("ai_facets", []),
+                    "work_mode": raw_j.get("work_mode", "Remote"),
+                    "role_match_score": raw_j.get("role_match_score", 70),
+                    "skill_match_score": raw_j.get("skill_match_score", 70),
+                    "exp_match_score": raw_j.get("exp_match_score", 70),
+                    "loc_match_score": raw_j.get("loc_match_score", 70),
                     "experience_required": raw_exp["experience_required"],
                     "min_experience_years": raw_exp["min_experience_years"],
                     "seniority_level": raw_exp["seniority_level"],

@@ -58,6 +58,12 @@ async def search_jobs(
     remote_preference: Optional[str] = Form(None),
     max_age_days: Optional[int] = Form(None),
     source_platform: Optional[str] = Form(None),
+    sub_domain: Optional[str] = Form(None),
+    experience_tier: Optional[str] = Form(None),
+    work_mode: Optional[str] = Form(None),
+    ai_facets: Optional[str] = Form(None),
+    stipend_range: Optional[str] = Form(None),
+    posted_within: Optional[str] = Form(None),
     preferences: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
@@ -98,6 +104,22 @@ async def search_jobs(
         pref_dict["remote_preference"] = remote_preference.strip()
     if max_age_days is not None:
         pref_dict["max_age_days"] = max_age_days
+    if sub_domain:
+        pref_dict["sub_domain"] = sub_domain.strip()
+    if experience_tier:
+        pref_dict["experience_tier"] = experience_tier.strip()
+    if work_mode:
+        pref_dict["work_mode"] = work_mode.strip()
+        pref_dict["remote_preference"] = work_mode.strip()
+    if stipend_range:
+        pref_dict["stipend_range"] = stipend_range.strip()
+    if posted_within:
+        pref_dict["posted_within"] = posted_within.strip()
+    if ai_facets:
+        try:
+            pref_dict["ai_facets"] = json.loads(ai_facets) if isinstance(ai_facets, str) and ai_facets.startswith('[') else [f.strip() for f in ai_facets.split(',')]
+        except Exception:
+            pref_dict["ai_facets"] = [ai_facets.strip()]
     if source_platform:
         pref_dict["source_platform"] = source_platform.strip().lower()
 

@@ -12,9 +12,10 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # Multi-Provider LLM Settings
-    LLM_PROVIDER: str = "mistralai"  
-    LLM_MODEL: str = "mistral-small-2506"
+    # Google Gemini AI Settings (Configured via .env)
+    LLM_PROVIDER: str = "gemini"
+    LLM_MODEL: str = "gemini-3.6-flash"
+    GEMINI_MODEL: Optional[str] = "gemini-3.6-flash"
     LLM_API_KEY: Optional[str] = None
     LLM_TEMPERATURE: float = 0.3
     LLM_BASE_URL: Optional[str] = None
