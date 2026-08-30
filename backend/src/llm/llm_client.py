@@ -1,5 +1,10 @@
 import os
+import logging
 from src.config import settings
+
+# Suppress informational AFC (Automatic Function Calling) advisory logs from Google GenAI SDK
+logging.getLogger("google.genai").setLevel(logging.ERROR)
+logging.getLogger("google_genai").setLevel(logging.ERROR)
 
 class GeminiWrapper:
     """
