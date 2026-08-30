@@ -235,14 +235,13 @@ Candidate Background:
             else:
                 print(f"[Orchestrator] Task {idx} notice: {res}")
 
-        
-            # Career-Ops Feature 4: Company Blacklist Gate
-            blacklist = preferences.get("blacklist") or []
-            if blacklist:
-                blacklist_clean = {b.lower().strip() for b in blacklist if b}
-                results = [j for j in results if j.get("company", "").lower().strip() not in blacklist_clean]
+        # Career-Ops Feature 4: Company Blacklist Gate
+        blacklist = preferences.get("blacklist") or []
+        if blacklist:
+            blacklist_clean = {b.lower().strip() for b in blacklist if b}
+            all_jobs = [j for j in all_jobs if j.get("company", "").lower().strip() not in blacklist_clean]
 
-            del results
+        del results
         gc.collect()
 
         print(f"[Orchestrator] ===========================================")
