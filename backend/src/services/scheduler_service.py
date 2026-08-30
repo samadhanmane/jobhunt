@@ -501,6 +501,8 @@ class SchedulerService:
                 if combo_key not in seen_combos:
                     seen_combos.add(combo_key)
                     alert_exp = getattr(a, "experience_level", None) or "all"
+                    alert_sub = getattr(a, "sub_domain", "All") or "All"
+                    alert_facets = getattr(a, "ai_facets", []) or []
                     target_configs.append({
                         "role": a.role.strip(),
                         "location": (a.location or "Worldwide").strip(),
@@ -508,7 +510,11 @@ class SchedulerService:
                             "role": a.role.strip(),
                             "location": "" if (a.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else a.location,
                             "remote_preference": a.work_mode or "any",
+                            "work_mode": a.work_mode or "any",
                             "experience_level": alert_exp,
+                            "experience_tier": alert_exp,
+                            "sub_domain": alert_sub,
+                            "ai_facets": alert_facets,
                             "experience_years": a.experience_years or 0.0
                         },
                         "candidate_profile": {
