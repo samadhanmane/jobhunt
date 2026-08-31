@@ -27,11 +27,12 @@ class JobSpyClient(BaseJobIntegration):
             linkedin_loc = get_linkedin_location_string(location)
             indeed_loc = location.strip()
             indeed_country = get_indeed_country_code(location)
-            target_countries = [indeed_country]
+            # Strictly use India for Indeed unless explicit foreign location is requested
+            target_countries = ["india"] if indeed_country in ["india", "in"] or "india" in location.lower() else [indeed_country]
         else:
             linkedin_loc = "Worldwide" if not remote else "Remote"
-            indeed_loc = "Remote" if remote else ""
-            target_countries = ["usa", "india", "uk"]
+            indeed_loc = "India" if not remote else "Remote"
+            target_countries = ["india"]
 
         is_remote_param = False if is_specific_loc else remote
         results_count = kwargs.get("results_wanted", 20)

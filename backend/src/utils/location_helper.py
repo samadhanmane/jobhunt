@@ -26,7 +26,7 @@ FOREIGN_CITIES = [
 LOCATION_HIERARCHY = {
     "india": {
         "aliases": ["india", "in", "bharat", "ind"],
-        "indeed_code": "in",
+        "indeed_code": "india",
         "linkedin_loc": "India",
         "cities": INDIA_CITIES,
         "states": ["maharashtra", "karnataka", "telangana", "tamil nadu", "delhi", "haryana", "uttar pradesh"]
@@ -107,7 +107,7 @@ def get_indeed_country_code(location_str: str) -> str:
     country_key = detect_country_key(location_str)
     if country_key and country_key in LOCATION_HIERARCHY:
         return LOCATION_HIERARCHY[country_key]["indeed_code"]
-    return "in" if "india" in str(location_str).lower() else "usa"
+    return "india"
 
 def get_linkedin_location_string(location_str: str) -> str:
     """Returns a clean canonical location string for LinkedIn searches."""
