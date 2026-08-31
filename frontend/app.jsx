@@ -189,6 +189,38 @@ const RESTRICTION_PATTERNS = {
     india_only: ['india only', 'must reside in india', 'india based', 'remote - india', 'remote (india)', 'remote, in', 'remote - in']
 };
 
+// ==========================================
+// Comprehensive Foreign Locations Database for Zero-Leakage Filtering
+// ==========================================
+const FOREIGN_LOCATIONS_LIST = [
+    // Countries & Regions
+    'canada', 'brazil', 'colombia', 'uruguay', 'germany', 'deutschland', 'south africa',
+    'austria', 'united states', 'usa', 'u.s.', 'u.s.a.', 'uk', 'united kingdom', 'england',
+    'great britain', 'australia', 'netherlands', 'holland', 'singapore', 'uae', 'dubai',
+    'france', 'spain', 'italy', 'japan', 'latam', 'latin america', 'mexico', 'argentina',
+    'chile', 'peru', 'el salvador', 'nicaragua', 'costa rica', 'sweden', 'switzerland',
+    'poland', 'ireland', 'denmark', 'norway', 'finland', 'belgium', 'portugal', 'greece',
+    'czech', 'romania', 'hungary', 'new zealand', 'philippines', 'indonesia', 'vietnam',
+    'malaysia', 'thailand', 'taiwan', 'south korea', 'korea', 'egypt', 'israel', 'saudi',
+
+    // Major Foreign Cities & Tech Hubs
+    'san francisco', 'sf', 'san jose', 'palo alto', 'mountain view', 'sunnyvale',
+    'santa clara', 'cupertino', 'menlo park', 'redwood city', 'fremont', 'berkeley',
+    'oakland', 'san mateo', 'bay area', 'silicon valley', 'los angeles', 'la', 'san diego',
+    'irvine', 'new york', 'nyc', 'manhattan', 'brooklyn', 'austin', 'dallas', 'houston',
+    'san antonio', 'seattle', 'bellevue', 'redmond', 'boston', 'cambridge', 'chicago',
+    'denver', 'boulder', 'atlanta', 'raleigh', 'durham', 'charlotte', 'portland',
+    'phoenix', 'salt lake city', 'washington dc', 'philadelphia', 'minneapolis', 'miami',
+    'tampa', 'pittsburgh', 'london', 'manchester', 'birmingham', 'edinburgh', 'glasgow',
+    'oxford', 'bristol', 'leeds', 'belfast', 'berlin', 'munich', 'münchen', 'frankfurt',
+    'hamburg', 'cologne', 'köln', 'stuttgart', 'düsseldorf', 'dusseldorf', 'leipzig',
+    'toronto', 'vancouver', 'montreal', 'ottawa', 'calgary', 'edmonton', 'waterloo',
+    'sydney', 'melbourne', 'brisbane', 'perth', 'paris', 'madrid', 'barcelona',
+    'amsterdam', 'rotterdam', 'utrecht', 'dublin', 'zurich', 'stockholm', 'tokyo',
+    'seoul', 'beijing', 'shanghai', 'singapore', 'sao paulo', 'buenos aires', 'bogota',
+    'cape town', 'johannesburg', 'auckland', 'vienna', 'warsaw', 'lisbon', 'brussels'
+];
+
 function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") {
     const q = (locQuery || "").toLowerCase().trim();
     if (!q || q === 'worldwide' || q === 'global' || q === 'all' || q === 'any' || q === '') return true;
@@ -203,74 +235,66 @@ function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") 
         return isRemote;
     }
 
-    // Identify target region for query
-    let targetRegion = null;
-    for (const [regionKey, info] of Object.entries(LOCATION_HIERARCHY_MAP)) {
-        if (info.countryAliases.some(a => a === q || (a.length > 2 && q.includes(a)))) {
-            targetRegion = regionKey;
-            break;
-        }
-        if (info.cities.some(c => c === q || (c.length > 2 && q.includes(c)))) {
-            targetRegion = regionKey;
-            break;
-        }
-        if (info.states.some(s => s === q || (s.length > 2 && q.includes(s)))) {
-            targetRegion = regionKey;
-            break;
-        }
-    }
+    // Check if the job explicitly mentions a foreign country or foreign city
+    const hasForeignLocation = FOREIGN_LOCATIONS_LIST.some(loc => jLoc.includes(loc));
 
-    // Foreign Location Exclusions: List of foreign countries/regions that conflict with Indian/City queries
-    const FOREIGN_INDICATORS = [
-        'canada', 'brazil', 'colombia', 'uruguay', 'germany', 'south africa', 'austria',
-        'united states', 'usa', 'uk', 'united kingdom', 'australia', 'netherlands', 'singapore',
-        'uae', 'dubai', 'france', 'spain', 'italy', 'japan', 'latam', 'mexico', 'argentina', 'el salvador', 'nicaragua'
-    ];
+    const isIndiaTarget = q === 'india' || q === 'pune' || q === 'bangalore' || q === 'bengaluru' || q === 'mumbai' || q === 'hyderabad' || q === 'delhi' || q === 'noida' || q === 'gurgaon' || q === 'gurugram' || q === 'chennai';
 
-    const containsForeignIndicator = FOREIGN_INDICATORS.some(ind => jLoc.includes(ind));
+    // 1. If filtering for Pune / Bangalore / India:
+    if (isIndiaTarget) {
+        // Direct Indian city/region match
+        if (q === 'pune' && (jLoc.includes('pune') || jLoc.includes('hinjawadi') || jLoc.includes('kharadi') || jLoc.includes('magarpatta'))) {
+            return true;
+        }
+        if ((q === 'bangalore' || q === 'bengaluru') && (jLoc.includes('bangalore') || jLoc.includes('bengaluru') || jLoc.includes('whitefield') || jLoc.includes('electronic city'))) {
+            return true;
+        }
+        if (q === 'mumbai' && (jLoc.includes('mumbai') || jLoc.includes('bombay') || jLoc.includes('navi mumbai') || jLoc.includes('thane'))) {
+            return true;
+        }
+        if (q === 'hyderabad' && (jLoc.includes('hyderabad') || jLoc.includes('secunderabad') || jLoc.includes('hitec city') || jLoc.includes('cyberabad'))) {
+            return true;
+        }
+        if (q === 'delhi' && (jLoc.includes('delhi') || jLoc.includes('noida') || jLoc.includes('gurgaon') || jLoc.includes('gurugram') || jLoc.includes('ncr'))) {
+            return true;
+        }
 
-    // If query is for India or an Indian city (e.g. Pune, Bangalore):
-    if (targetRegion === 'india' || q === 'pune' || q === 'bangalore' || q === 'mumbai') {
-        // Drop any job explicitly located in a foreign country unless it explicitly mentions Pune/India/Worldwide
-        if (containsForeignIndicator && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+        // General India match
+        if (q === 'india') {
+            const indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
+            if (indiaTerms.some(term => jLoc.includes(term))) {
+                return true;
+            }
+        }
+
+        // If job mentions a foreign country/city and NOT Pune/India -> STRICT REJECT
+        if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('bengaluru') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
             return false;
         }
+
+        // US/EU only restriction strings in description
         if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
         if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
+
+        // Open Worldwide Remote fallback
+        if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global') || !hasForeignLocation)) {
+            return true;
+        }
+
+        return false;
     }
 
-    // Direct match (e.g., jobLoc contains "pune")
+    // 2. If filtering for US / UK / Germany or other regions:
     if (jLoc.includes(q)) return true;
 
-    // Hierarchy match
-    if (targetRegion && LOCATION_HIERARCHY_MAP[targetRegion]) {
-        const info = LOCATION_HIERARCHY_MAP[targetRegion];
-        const matchedCity = info.cities.find(c => c === q || q.includes(c));
-        if (matchedCity && jLoc.includes(matchedCity)) return true;
-
-        const isCountryQuery = info.countryAliases.some(a => a === q || q.includes(a));
-        if (isCountryQuery) {
-            if (info.cities.some(c => jLoc.includes(c))) return true;
-            if (info.states.some(s => jLoc.includes(s))) return true;
-            if (info.countryAliases.some(a => jLoc.includes(a))) return true;
-        }
-    }
-
-    // Token match
+    // Token match for other regions
     const tokens = q.split(/[,/\s-]+/).filter(t => t.length > 2);
     if (tokens.length > 0 && tokens.some(t => jLoc.includes(t))) {
         return true;
     }
 
-    // Remote Worldwide fallback (Only if no explicit foreign country lockouts exist)
-    if (isRemote) {
-        if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) {
-            return true;
-        }
-        // General Remote without foreign country mentions
-        if (!containsForeignIndicator && !RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) {
-            return true;
-        }
+    if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global'))) {
+        return true;
     }
 
     return false;
@@ -2336,11 +2360,32 @@ function JobSearchDashboard({
             const expReq = (job.experience_required || "").toLowerCase();
             const fit = (job.experience_fit || "").toLowerCase();
 
-            // 1. Keyword search (Title, Company, Description, Skills)
-            if (filterKeyword) {
+                        // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
+            if (filterKeyword && filterKeyword.trim()) {
                 const kw = filterKeyword.toLowerCase().trim();
+                const kwTokens = kw.split(/[,/\s+|\-]+/).filter(t => t.length > 1);
                 const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
-                if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
+                const fullText = `${title} ${company} ${jobLoc} ${desc} ${skillsStr}`;
+
+                // Direct full phrase match
+                const directMatch = fullText.includes(kw);
+
+                // Multi-token match (Every search word matches anywhere in title/company/skills/description)
+                const allTokensMatch = kwTokens.length > 0 && kwTokens.every(tok => fullText.includes(tok));
+
+                // Smart AI/ML Title abbreviations & domain expansion
+                let domainTitleMatch = false;
+                if (kw.includes("ai") || kw.includes("artificial intelligence") || kw.includes("ml") || kw.includes("machine learning")) {
+                    const hasAiDomain = title.includes("ai") || title.includes("ml") || title.includes("machine learning") || title.includes("artificial intelligence") || title.includes("llm") || title.includes("genai") || title.includes("rag") || title.includes("prompt");
+                    const hasInternTerm = kw.includes("intern") || kw.includes("internship");
+                    if (hasInternTerm) {
+                        domainTitleMatch = hasAiDomain && (title.includes("intern") || title.includes("trainee") || title.includes("co-op") || title.includes("student") || title.includes("fellow") || title.includes("apprentice"));
+                    } else {
+                        domainTitleMatch = hasAiDomain;
+                    }
+                }
+
+                if (!directMatch && !allTokensMatch && !domainTitleMatch) {
                     return false;
                 }
             }
@@ -4800,10 +4845,32 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             const desc = (job.description || "").toLowerCase();
             const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
 
-            // 1. Keyword search
-            if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
-                const kw = snapshotFilterKeyword.toLowerCase().trim();
-                if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
+                        // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
+            if (filterKeyword && filterKeyword.trim()) {
+                const kw = filterKeyword.toLowerCase().trim();
+                const kwTokens = kw.split(/[,/\s+|\-]+/).filter(t => t.length > 1);
+                const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
+                const fullText = `${title} ${company} ${jobLoc} ${desc} ${skillsStr}`;
+
+                // Direct full phrase match
+                const directMatch = fullText.includes(kw);
+
+                // Multi-token match (Every search word matches anywhere in title/company/skills/description)
+                const allTokensMatch = kwTokens.length > 0 && kwTokens.every(tok => fullText.includes(tok));
+
+                // Smart AI/ML Title abbreviations & domain expansion
+                let domainTitleMatch = false;
+                if (kw.includes("ai") || kw.includes("artificial intelligence") || kw.includes("ml") || kw.includes("machine learning")) {
+                    const hasAiDomain = title.includes("ai") || title.includes("ml") || title.includes("machine learning") || title.includes("artificial intelligence") || title.includes("llm") || title.includes("genai") || title.includes("rag") || title.includes("prompt");
+                    const hasInternTerm = kw.includes("intern") || kw.includes("internship");
+                    if (hasInternTerm) {
+                        domainTitleMatch = hasAiDomain && (title.includes("intern") || title.includes("trainee") || title.includes("co-op") || title.includes("student") || title.includes("fellow") || title.includes("apprentice"));
+                    } else {
+                        domainTitleMatch = hasAiDomain;
+                    }
+                }
+
+                if (!directMatch && !allTokensMatch && !domainTitleMatch) {
                     return false;
                 }
             }

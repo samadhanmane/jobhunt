@@ -9,14 +9,14 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(obj, key, value) { key = _toPropertyKey(key); if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
-function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _unsupportedIterableToArray(arr) || _nonIterableSpread(); }
-function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter); }
-function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) return _arrayLikeToArray(arr); }
 function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
+function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _unsupportedIterableToArray(arr) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter); }
+function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) return _arrayLikeToArray(arr); }
 function _createForOfIteratorHelper(o, allowArrayLike) { var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"]; if (!it) { if (Array.isArray(o) || (it = _unsupportedIterableToArray(o)) || allowArrayLike && o && typeof o.length === "number") { if (it) o = it; var i = 0; var F = function F() {}; return { s: F, n: function n() { if (i >= o.length) return { done: true }; return { done: false, value: o[i++] }; }, e: function e(_e) { throw _e; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var normalCompletion = true, didErr = false, err; return { s: function s() { it = it.call(o); }, n: function n() { var step = it.next(); normalCompletion = step.done; return step; }, e: function e(_e2) { didErr = true; err = _e2; }, f: function f() { try { if (!normalCompletion && it["return"] != null) it["return"](); } finally { if (didErr) throw err; } } }; }
 function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
 function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
@@ -219,6 +219,15 @@ var RESTRICTION_PATTERNS = {
   eu_only: ['eu only', 'europe only', 'emea only', 'must reside in europe', 'germany only', 'uk only', 'united kingdom only', 'must be in uk', 'must be in germany', 'remote - europe', 'remote (eu)', 'remote, uk', 'remote - uk'],
   india_only: ['india only', 'must reside in india', 'india based', 'remote - india', 'remote (india)', 'remote, in', 'remote - in']
 };
+
+// ==========================================
+// Comprehensive Foreign Locations Database for Zero-Leakage Filtering
+// ==========================================
+var FOREIGN_LOCATIONS_LIST = [
+// Countries & Regions
+'canada', 'brazil', 'colombia', 'uruguay', 'germany', 'deutschland', 'south africa', 'austria', 'united states', 'usa', 'u.s.', 'u.s.a.', 'uk', 'united kingdom', 'england', 'great britain', 'australia', 'netherlands', 'holland', 'singapore', 'uae', 'dubai', 'france', 'spain', 'italy', 'japan', 'latam', 'latin america', 'mexico', 'argentina', 'chile', 'peru', 'el salvador', 'nicaragua', 'costa rica', 'sweden', 'switzerland', 'poland', 'ireland', 'denmark', 'norway', 'finland', 'belgium', 'portugal', 'greece', 'czech', 'romania', 'hungary', 'new zealand', 'philippines', 'indonesia', 'vietnam', 'malaysia', 'thailand', 'taiwan', 'south korea', 'korea', 'egypt', 'israel', 'saudi',
+// Major Foreign Cities & Tech Hubs
+'san francisco', 'sf', 'san jose', 'palo alto', 'mountain view', 'sunnyvale', 'santa clara', 'cupertino', 'menlo park', 'redwood city', 'fremont', 'berkeley', 'oakland', 'san mateo', 'bay area', 'silicon valley', 'los angeles', 'la', 'san diego', 'irvine', 'new york', 'nyc', 'manhattan', 'brooklyn', 'austin', 'dallas', 'houston', 'san antonio', 'seattle', 'bellevue', 'redmond', 'boston', 'cambridge', 'chicago', 'denver', 'boulder', 'atlanta', 'raleigh', 'durham', 'charlotte', 'portland', 'phoenix', 'salt lake city', 'washington dc', 'philadelphia', 'minneapolis', 'miami', 'tampa', 'pittsburgh', 'london', 'manchester', 'birmingham', 'edinburgh', 'glasgow', 'oxford', 'bristol', 'leeds', 'belfast', 'berlin', 'munich', 'münchen', 'frankfurt', 'hamburg', 'cologne', 'köln', 'stuttgart', 'düsseldorf', 'dusseldorf', 'leipzig', 'toronto', 'vancouver', 'montreal', 'ottawa', 'calgary', 'edmonton', 'waterloo', 'sydney', 'melbourne', 'brisbane', 'perth', 'paris', 'madrid', 'barcelona', 'amsterdam', 'rotterdam', 'utrecht', 'dublin', 'zurich', 'stockholm', 'tokyo', 'seoul', 'beijing', 'shanghai', 'singapore', 'sao paulo', 'buenos aires', 'bogota', 'cape town', 'johannesburg', 'auckland', 'vienna', 'warsaw', 'lisbon', 'brussels'];
 function matchesLocationNLP() {
   var locQuery = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : "";
   var jobLoc = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : "";
@@ -234,79 +243,65 @@ function matchesLocationNLP() {
     return isRemote;
   }
 
-  // Identify target region for query
-  var targetRegion = null;
-  for (var _i = 0, _Object$entries = Object.entries(LOCATION_HIERARCHY_MAP); _i < _Object$entries.length; _i++) {
-    var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
-      regionKey = _Object$entries$_i[0],
-      info = _Object$entries$_i[1];
-    if (info.countryAliases.some(function (a) {
-      return a === q || a.length > 2 && q.includes(a);
-    })) {
-      targetRegion = regionKey;
-      break;
-    }
-    if (info.cities.some(function (c) {
-      return c === q || c.length > 2 && q.includes(c);
-    })) {
-      targetRegion = regionKey;
-      break;
-    }
-    if (info.states.some(function (s) {
-      return s === q || s.length > 2 && q.includes(s);
-    })) {
-      targetRegion = regionKey;
-      break;
-    }
-  }
-
-  // Foreign Location Exclusions: List of foreign countries/regions that conflict with Indian/City queries
-  var FOREIGN_INDICATORS = ['canada', 'brazil', 'colombia', 'uruguay', 'germany', 'south africa', 'austria', 'united states', 'usa', 'uk', 'united kingdom', 'australia', 'netherlands', 'singapore', 'uae', 'dubai', 'france', 'spain', 'italy', 'japan', 'latam', 'mexico', 'argentina', 'el salvador', 'nicaragua'];
-  var containsForeignIndicator = FOREIGN_INDICATORS.some(function (ind) {
-    return jLoc.includes(ind);
+  // Check if the job explicitly mentions a foreign country or foreign city
+  var hasForeignLocation = FOREIGN_LOCATIONS_LIST.some(function (loc) {
+    return jLoc.includes(loc);
   });
+  var isIndiaTarget = q === 'india' || q === 'pune' || q === 'bangalore' || q === 'bengaluru' || q === 'mumbai' || q === 'hyderabad' || q === 'delhi' || q === 'noida' || q === 'gurgaon' || q === 'gurugram' || q === 'chennai';
 
-  // If query is for India or an Indian city (e.g. Pune, Bangalore):
-  if (targetRegion === 'india' || q === 'pune' || q === 'bangalore' || q === 'mumbai') {
-    // Drop any job explicitly located in a foreign country unless it explicitly mentions Pune/India/Worldwide
-    if (containsForeignIndicator && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+  // 1. If filtering for Pune / Bangalore / India:
+  if (isIndiaTarget) {
+    // Direct Indian city/region match
+    if (q === 'pune' && (jLoc.includes('pune') || jLoc.includes('hinjawadi') || jLoc.includes('kharadi') || jLoc.includes('magarpatta'))) {
+      return true;
+    }
+    if ((q === 'bangalore' || q === 'bengaluru') && (jLoc.includes('bangalore') || jLoc.includes('bengaluru') || jLoc.includes('whitefield') || jLoc.includes('electronic city'))) {
+      return true;
+    }
+    if (q === 'mumbai' && (jLoc.includes('mumbai') || jLoc.includes('bombay') || jLoc.includes('navi mumbai') || jLoc.includes('thane'))) {
+      return true;
+    }
+    if (q === 'hyderabad' && (jLoc.includes('hyderabad') || jLoc.includes('secunderabad') || jLoc.includes('hitec city') || jLoc.includes('cyberabad'))) {
+      return true;
+    }
+    if (q === 'delhi' && (jLoc.includes('delhi') || jLoc.includes('noida') || jLoc.includes('gurgaon') || jLoc.includes('gurugram') || jLoc.includes('ncr'))) {
+      return true;
+    }
+
+    // General India match
+    if (q === 'india') {
+      var indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
+      if (indiaTerms.some(function (term) {
+        return jLoc.includes(term);
+      })) {
+        return true;
+      }
+    }
+
+    // If job mentions a foreign country/city and NOT Pune/India -> STRICT REJECT
+    if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('bengaluru') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
       return false;
     }
+
+    // US/EU only restriction strings in description
     if (RESTRICTION_PATTERNS.us_only.some(function (p) {
       return combined.includes(p);
     })) return false;
     if (RESTRICTION_PATTERNS.eu_only.some(function (p) {
       return combined.includes(p);
     })) return false;
+
+    // Open Worldwide Remote fallback
+    if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global') || !hasForeignLocation)) {
+      return true;
+    }
+    return false;
   }
 
-  // Direct match (e.g., jobLoc contains "pune")
+  // 2. If filtering for US / UK / Germany or other regions:
   if (jLoc.includes(q)) return true;
 
-  // Hierarchy match
-  if (targetRegion && LOCATION_HIERARCHY_MAP[targetRegion]) {
-    var _info = LOCATION_HIERARCHY_MAP[targetRegion];
-    var matchedCity = _info.cities.find(function (c) {
-      return c === q || q.includes(c);
-    });
-    if (matchedCity && jLoc.includes(matchedCity)) return true;
-    var isCountryQuery = _info.countryAliases.some(function (a) {
-      return a === q || q.includes(a);
-    });
-    if (isCountryQuery) {
-      if (_info.cities.some(function (c) {
-        return jLoc.includes(c);
-      })) return true;
-      if (_info.states.some(function (s) {
-        return jLoc.includes(s);
-      })) return true;
-      if (_info.countryAliases.some(function (a) {
-        return jLoc.includes(a);
-      })) return true;
-    }
-  }
-
-  // Token match
+  // Token match for other regions
   var tokens = q.split(/[,/\s-]+/).filter(function (t) {
     return t.length > 2;
   });
@@ -315,20 +310,8 @@ function matchesLocationNLP() {
   })) {
     return true;
   }
-
-  // Remote Worldwide fallback (Only if no explicit foreign country lockouts exist)
-  if (isRemote) {
-    if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) {
-      return true;
-    }
-    // General Remote without foreign country mentions
-    if (!containsForeignIndicator && !RESTRICTION_PATTERNS.us_only.some(function (p) {
-      return combined.includes(p);
-    }) && !RESTRICTION_PATTERNS.eu_only.some(function (p) {
-      return combined.includes(p);
-    })) {
-      return true;
-    }
+  if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global'))) {
+    return true;
   }
   return false;
 }
@@ -2827,11 +2810,35 @@ function JobSearchDashboard(_ref13) {
       var expReq = (job.experience_required || "").toLowerCase();
       var fit = (job.experience_fit || "").toLowerCase();
 
-      // 1. Keyword search (Title, Company, Description, Skills)
-      if (filterKeyword) {
+      // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
+      if (filterKeyword && filterKeyword.trim()) {
         var kw = filterKeyword.toLowerCase().trim();
+        var kwTokens = kw.split(/[,/\s+|\-]+/).filter(function (t) {
+          return t.length > 1;
+        });
         var skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
-        if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
+        var fullText = "".concat(title, " ").concat(company, " ").concat(jobLoc, " ").concat(desc, " ").concat(skillsStr);
+
+        // Direct full phrase match
+        var directMatch = fullText.includes(kw);
+
+        // Multi-token match (Every search word matches anywhere in title/company/skills/description)
+        var allTokensMatch = kwTokens.length > 0 && kwTokens.every(function (tok) {
+          return fullText.includes(tok);
+        });
+
+        // Smart AI/ML Title abbreviations & domain expansion
+        var domainTitleMatch = false;
+        if (kw.includes("ai") || kw.includes("artificial intelligence") || kw.includes("ml") || kw.includes("machine learning")) {
+          var hasAiDomain = title.includes("ai") || title.includes("ml") || title.includes("machine learning") || title.includes("artificial intelligence") || title.includes("llm") || title.includes("genai") || title.includes("rag") || title.includes("prompt");
+          var hasInternTerm = kw.includes("intern") || kw.includes("internship");
+          if (hasInternTerm) {
+            domainTitleMatch = hasAiDomain && (title.includes("intern") || title.includes("trainee") || title.includes("co-op") || title.includes("student") || title.includes("fellow") || title.includes("apprentice"));
+          } else {
+            domainTitleMatch = hasAiDomain;
+          }
+        }
+        if (!directMatch && !allTokensMatch && !domainTitleMatch) {
           return false;
         }
       }
@@ -5640,10 +5647,35 @@ function EmailAlertsView(_ref30) {
       var desc = (job.description || "").toLowerCase();
       var skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
 
-      // 1. Keyword search
-      if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
-        var kw = snapshotFilterKeyword.toLowerCase().trim();
-        if (!title.includes(kw) && !company.includes(kw) && !desc.includes(kw) && !skillsStr.includes(kw)) {
+      // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
+      if (filterKeyword && filterKeyword.trim()) {
+        var kw = filterKeyword.toLowerCase().trim();
+        var kwTokens = kw.split(/[,/\s+|\-]+/).filter(function (t) {
+          return t.length > 1;
+        });
+        var _skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
+        var fullText = "".concat(title, " ").concat(company, " ").concat(jobLoc, " ").concat(desc, " ").concat(_skillsStr);
+
+        // Direct full phrase match
+        var directMatch = fullText.includes(kw);
+
+        // Multi-token match (Every search word matches anywhere in title/company/skills/description)
+        var allTokensMatch = kwTokens.length > 0 && kwTokens.every(function (tok) {
+          return fullText.includes(tok);
+        });
+
+        // Smart AI/ML Title abbreviations & domain expansion
+        var domainTitleMatch = false;
+        if (kw.includes("ai") || kw.includes("artificial intelligence") || kw.includes("ml") || kw.includes("machine learning")) {
+          var hasAiDomain = title.includes("ai") || title.includes("ml") || title.includes("machine learning") || title.includes("artificial intelligence") || title.includes("llm") || title.includes("genai") || title.includes("rag") || title.includes("prompt");
+          var hasInternTerm = kw.includes("intern") || kw.includes("internship");
+          if (hasInternTerm) {
+            domainTitleMatch = hasAiDomain && (title.includes("intern") || title.includes("trainee") || title.includes("co-op") || title.includes("student") || title.includes("fellow") || title.includes("apprentice"));
+          } else {
+            domainTitleMatch = hasAiDomain;
+          }
+        }
+        if (!directMatch && !allTokensMatch && !domainTitleMatch) {
           return false;
         }
       }
