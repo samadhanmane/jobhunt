@@ -7,7 +7,11 @@ NEGATIVE_ROLE_KEYWORDS = [
     "bdr", "sdr", "account manager", "customer success", "customer support", "call center",
     "telemarketing", "inside sales", "recruiter", "talent acquisition", "sourcer",
     "marketing manager", "content creator", "copywriter", "office manager",
-    "paralegal", "nurse", "therapist", "warehouse", "driver", "cashier"
+    "paralegal", "nurse", "therapist", "warehouse", "driver", "cashier",
+    "microbiologist", "microbiology", "healthcare", "medical", "clinical", "pharmacist",
+    "legal engineer", "legal", "attorney", "coding specialist", "sap consultant", "sap",
+    "hr data", "payroll", "customer service", "operations manager", "field service engineer",
+    "mechanical designer", "document specialist", "claims specialist", "billing", "receptionist"
 ]
 
 AI_SUB_DOMAINS = {
@@ -127,32 +131,40 @@ def is_title_role_match(job_title: str, target_role: str) -> bool:
     if not t_role:
         return True
 
-    # 1. Negative Noise Gate: Drop sales/support roles unless specifically searching for them
-    if not any(k in t_role for k in ["sales", "support", "marketing", "recruiter"]):
+    # 1. Negative Noise Gate: Drop sales/support/healthcare/legal/admin roles unless specifically searching for them
+    if not any(k in t_role for k in ["sales", "support", "marketing", "recruiter", "medical", "legal", "microbiologist"]):
         if any(neg in j_title for neg in NEGATIVE_ROLE_KEYWORDS):
             return False
 
     # 2. Intern alignment
-    if "intern" in t_role and "intern" not in j_title:
-        # If user explicitly wants intern, give priority to intern or junior roles
-        if not any(k in j_title for k in ["intern", "trainee", "fellow", "junior", "co-op", "entry"]):
-            return False
+    if "intern" in t_role:
+        if not any(k in j_title for k in ["intern", "trainee", "fellow", "co-op", "student"]):
+            if "junior" not in j_title and "entry" not in j_title:
+                return False
 
-    # 3. Direct token overlap
-    role_tokens = [w for w in re.sub(r'[^a-zA-Z0-9]', ' ', t_role).split() if len(w) > 2]
-    if not role_tokens:
-        return True
+    # 3. Direct token overlap (ignoring generic words like 'engineer', 'developer', 'manager')
+    generic_words = {"engineer", "developer", "manager", "lead", "senior", "junior", "associate", "specialist", "analyst", "intern"}
+    role_tokens = [w for w in re.sub(r'[^a-zA-Z0-9]', ' ', t_role).split() if len(w) > 2 and w not in generic_words]
 
-    match_count = sum(1 for tok in role_tokens if tok in j_title)
-    if match_count >= 1:
-        return True
+    if role_tokens:
+        if any(tok in j_title for tok in role_tokens):
+            return True
 
-    # Common AI engineering synonyms
-    ai_synonyms = ["machine learning", "deep learning", "artificial intelligence", "data science", "llm", "genai", "prompt"]
-    if any(s in t_role for s in ai_synonyms) and any(s in j_title for s in ["ai", "ml", "engineer", "scientist", "developer"]):
-        return True
+    # AI / ML domain specific check
+    ai_targets = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science"]
+    is_ai_target = any(a in t_role for a in ai_targets)
+    if is_ai_target:
+        ai_title_indicators = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "data scientist", "prompt"]
+        if any(ind in j_title for ind in ai_title_indicators):
+            return True
+        # Allow general software engineering roles only if not conflicting
+        if any(sw in j_title for sw in ["software engineer", "full stack", "backend", "frontend", "python developer"]):
+            return True
+        return False
 
-    return False
+    # Fallback exact word check
+    return any(w in j_title for w in t_role.split() if len(w) > 3)
+
 
 def filter_curated_jobs_by_role(
     ranked_jobs: List[Dict[str, Any]],

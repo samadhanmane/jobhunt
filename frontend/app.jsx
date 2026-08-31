@@ -197,13 +197,13 @@ function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") 
     const jDesc = (desc || "").slice(0, 800).toLowerCase();
     const combined = `${jLoc} ${jDesc}`;
 
-    const isRemote = jLoc.includes('remote') || jLoc.includes('wfh') || jLoc.includes('work from home') || jLoc.includes('anywhere') || jLoc.includes('worldwide') || jLoc.includes('virtual') || jLoc.includes('distributed') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok';
+    const isRemote = jLoc.includes('remote') || jLoc.includes('wfh') || jLoc.includes('work from home') || jLoc.includes('anywhere') || jLoc.includes('worldwide') || jLoc.includes('virtual') || jLoc.includes('distributed');
 
     if (q === 'remote') {
         return isRemote;
     }
 
-    // Identify target region
+    // Identify target region for query
     let targetRegion = null;
     for (const [regionKey, info] of Object.entries(LOCATION_HIERARCHY_MAP)) {
         if (info.countryAliases.some(a => a === q || (a.length > 2 && q.includes(a)))) {
@@ -220,32 +220,34 @@ function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") 
         }
     }
 
-    // Check negative restriction violations
-    if (targetRegion === 'india') {
+    // Foreign Location Exclusions: List of foreign countries/regions that conflict with Indian/City queries
+    const FOREIGN_INDICATORS = [
+        'canada', 'brazil', 'colombia', 'uruguay', 'germany', 'south africa', 'austria',
+        'united states', 'usa', 'uk', 'united kingdom', 'australia', 'netherlands', 'singapore',
+        'uae', 'dubai', 'france', 'spain', 'italy', 'japan', 'latam', 'mexico', 'argentina', 'el salvador', 'nicaragua'
+    ];
+
+    const containsForeignIndicator = FOREIGN_INDICATORS.some(ind => jLoc.includes(ind));
+
+    // If query is for India or an Indian city (e.g. Pune, Bangalore):
+    if (targetRegion === 'india' || q === 'pune' || q === 'bangalore' || q === 'mumbai') {
+        // Drop any job explicitly located in a foreign country unless it explicitly mentions Pune/India/Worldwide
+        if (containsForeignIndicator && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+            return false;
+        }
         if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
         if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
-    } else if (targetRegion === 'usa' || targetRegion === 'canada') {
-        if (RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p))) return false;
-        if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
-    } else if (targetRegion === 'uk' || targetRegion === 'germany' || targetRegion === 'europe') {
-        if (RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p))) return false;
-        if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
     }
 
-    // Check direct substring
+    // Direct match (e.g., jobLoc contains "pune")
     if (jLoc.includes(q)) return true;
 
-    // Check Hierarchy match
+    // Hierarchy match
     if (targetRegion && LOCATION_HIERARCHY_MAP[targetRegion]) {
         const info = LOCATION_HIERARCHY_MAP[targetRegion];
-        
-        // If user typed a specific city (e.g. Pune)
         const matchedCity = info.cities.find(c => c === q || q.includes(c));
-        if (matchedCity) {
-            if (jLoc.includes(matchedCity)) return true;
-        }
+        if (matchedCity && jLoc.includes(matchedCity)) return true;
 
-        // If user typed a country (e.g. India)
         const isCountryQuery = info.countryAliases.some(a => a === q || q.includes(a));
         if (isCountryQuery) {
             if (info.cities.some(c => jLoc.includes(c))) return true;
@@ -260,13 +262,14 @@ function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") 
         return true;
     }
 
-    // Global remote fallback if no negative restriction violated
+    // Remote Worldwide fallback (Only if no explicit foreign country lockouts exist)
     if (isRemote) {
-        if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) return true;
-        if (source === 'himalayas' || source === 'jobicy' || source === 'remoteok') {
-            if (targetRegion === 'india' && !RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return true;
-            if (targetRegion === 'usa' && !RESTRICTION_PATTERNS.india_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return true;
-            if (!targetRegion) return true;
+        if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) {
+            return true;
+        }
+        // General Remote without foreign country mentions
+        if (!containsForeignIndicator && !RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p)) && !RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) {
+            return true;
         }
     }
 

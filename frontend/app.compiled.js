@@ -229,12 +229,12 @@ function matchesLocationNLP() {
   var jLoc = (jobLoc || "").toLowerCase();
   var jDesc = (desc || "").slice(0, 800).toLowerCase();
   var combined = "".concat(jLoc, " ").concat(jDesc);
-  var isRemote = jLoc.includes('remote') || jLoc.includes('wfh') || jLoc.includes('work from home') || jLoc.includes('anywhere') || jLoc.includes('worldwide') || jLoc.includes('virtual') || jLoc.includes('distributed') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok';
+  var isRemote = jLoc.includes('remote') || jLoc.includes('wfh') || jLoc.includes('work from home') || jLoc.includes('anywhere') || jLoc.includes('worldwide') || jLoc.includes('virtual') || jLoc.includes('distributed');
   if (q === 'remote') {
     return isRemote;
   }
 
-  // Identify target region
+  // Identify target region for query
   var targetRegion = null;
   for (var _i = 0, _Object$entries = Object.entries(LOCATION_HIERARCHY_MAP); _i < _Object$entries.length; _i++) {
     var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
@@ -260,46 +260,36 @@ function matchesLocationNLP() {
     }
   }
 
-  // Check negative restriction violations
-  if (targetRegion === 'india') {
+  // Foreign Location Exclusions: List of foreign countries/regions that conflict with Indian/City queries
+  var FOREIGN_INDICATORS = ['canada', 'brazil', 'colombia', 'uruguay', 'germany', 'south africa', 'austria', 'united states', 'usa', 'uk', 'united kingdom', 'australia', 'netherlands', 'singapore', 'uae', 'dubai', 'france', 'spain', 'italy', 'japan', 'latam', 'mexico', 'argentina', 'el salvador', 'nicaragua'];
+  var containsForeignIndicator = FOREIGN_INDICATORS.some(function (ind) {
+    return jLoc.includes(ind);
+  });
+
+  // If query is for India or an Indian city (e.g. Pune, Bangalore):
+  if (targetRegion === 'india' || q === 'pune' || q === 'bangalore' || q === 'mumbai') {
+    // Drop any job explicitly located in a foreign country unless it explicitly mentions Pune/India/Worldwide
+    if (containsForeignIndicator && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+      return false;
+    }
     if (RESTRICTION_PATTERNS.us_only.some(function (p) {
       return combined.includes(p);
     })) return false;
     if (RESTRICTION_PATTERNS.eu_only.some(function (p) {
-      return combined.includes(p);
-    })) return false;
-  } else if (targetRegion === 'usa' || targetRegion === 'canada') {
-    if (RESTRICTION_PATTERNS.india_only.some(function (p) {
-      return combined.includes(p);
-    })) return false;
-    if (RESTRICTION_PATTERNS.eu_only.some(function (p) {
-      return combined.includes(p);
-    })) return false;
-  } else if (targetRegion === 'uk' || targetRegion === 'germany' || targetRegion === 'europe') {
-    if (RESTRICTION_PATTERNS.india_only.some(function (p) {
-      return combined.includes(p);
-    })) return false;
-    if (RESTRICTION_PATTERNS.us_only.some(function (p) {
       return combined.includes(p);
     })) return false;
   }
 
-  // Check direct substring
+  // Direct match (e.g., jobLoc contains "pune")
   if (jLoc.includes(q)) return true;
 
-  // Check Hierarchy match
+  // Hierarchy match
   if (targetRegion && LOCATION_HIERARCHY_MAP[targetRegion]) {
     var _info = LOCATION_HIERARCHY_MAP[targetRegion];
-
-    // If user typed a specific city (e.g. Pune)
     var matchedCity = _info.cities.find(function (c) {
       return c === q || q.includes(c);
     });
-    if (matchedCity) {
-      if (jLoc.includes(matchedCity)) return true;
-    }
-
-    // If user typed a country (e.g. India)
+    if (matchedCity && jLoc.includes(matchedCity)) return true;
     var isCountryQuery = _info.countryAliases.some(function (a) {
       return a === q || q.includes(a);
     });
@@ -326,21 +316,18 @@ function matchesLocationNLP() {
     return true;
   }
 
-  // Global remote fallback if no negative restriction violated
+  // Remote Worldwide fallback (Only if no explicit foreign country lockouts exist)
   if (isRemote) {
-    if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) return true;
-    if (source === 'himalayas' || source === 'jobicy' || source === 'remoteok') {
-      if (targetRegion === 'india' && !RESTRICTION_PATTERNS.us_only.some(function (p) {
-        return combined.includes(p);
-      }) && !RESTRICTION_PATTERNS.eu_only.some(function (p) {
-        return combined.includes(p);
-      })) return true;
-      if (targetRegion === 'usa' && !RESTRICTION_PATTERNS.india_only.some(function (p) {
-        return combined.includes(p);
-      }) && !RESTRICTION_PATTERNS.eu_only.some(function (p) {
-        return combined.includes(p);
-      })) return true;
-      if (!targetRegion) return true;
+    if (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global')) {
+      return true;
+    }
+    // General Remote without foreign country mentions
+    if (!containsForeignIndicator && !RESTRICTION_PATTERNS.us_only.some(function (p) {
+      return combined.includes(p);
+    }) && !RESTRICTION_PATTERNS.eu_only.some(function (p) {
+      return combined.includes(p);
+    })) {
+      return true;
     }
   }
   return false;

@@ -52,13 +52,13 @@ class RankingAgent(BaseJobAgent):
 
         # 1. Negative Noise Check
         title_lower = title.lower()
-        if not any(k in target_role.lower() for k in ["sales", "support", "marketing"]):
+        if not any(k in target_role.lower() for k in ["sales", "support", "marketing", "medical", "legal"]):
             if any(neg in title_lower for neg in NEGATIVE_ROLE_KEYWORDS):
-                role_score = 10
+                role_score = 5
             else:
-                role_score = 90 if is_title_role_match(title, target_role) else 50
+                role_score = 90 if is_title_role_match(title, target_role) else 15
         else:
-            role_score = 80 if is_title_role_match(title, target_role) else 40
+            role_score = 80 if is_title_role_match(title, target_role) else 20
 
         # Sub-domain alignment boost
         pref_sub_domain = preferences.get("sub_domain")

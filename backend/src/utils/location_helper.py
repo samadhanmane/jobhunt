@@ -165,7 +165,7 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     d = str(description or "")[:800].lower()
 
     # 1. Explicit India indicators
-    for term in INDIA_CITIES:
+    for term in ["india", "in", "bharat"] + INDIA_CITIES:
         pattern = r'\b' + re.escape(term) + r'\b'
         if re.search(pattern, loc) or re.search(pattern, u) or re.search(pattern, t):
             return True
@@ -237,18 +237,14 @@ def is_job_location_match(
     if not pref_loc or pref_loc in ["worldwide", "global", "all", "any", "remote"]:
         return True
 
-    # If target location is India
-    if "india" in pref_loc or any(city in pref_loc for city in INDIA_CITIES):
+    # If target location is India or an Indian city (Pune, Bangalore, Mumbai, Delhi, etc.)
+    target_country = detect_country_key(pref_loc)
+    if target_country == "india" or "india" in pref_loc or any(city in pref_loc for city in INDIA_CITIES):
         return is_india_location(job_loc, job_url, job_title, job_desc)
 
     # Token match for city or country
     pref_tokens = [t.strip() for t in re.split(r'[,/\s-]+', pref_loc) if len(t.strip()) > 2]
     if any(t in job_loc for t in pref_tokens):
         return True
-
-    # Open remote fallback
-    if job_work_mode == "remote" and not any(p in f"{job_loc} {job_desc}" for p in RESTRICTION_PATTERNS["us_only"] + RESTRICTION_PATTERNS["eu_only"]):
-        if any(w in job_loc for w in ["worldwide", "global", "anywhere"]):
-            return True
 
     return False
