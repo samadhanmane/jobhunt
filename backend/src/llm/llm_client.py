@@ -37,25 +37,23 @@ class GeminiWrapper:
 def get_llm():
     """
     Primary LLM factory configured via backend/.env.
-    Configured strictly for Google Gemini API (gemini-3.6-flash).
+    Prioritizes GEMINI_MODEL and LLM_MODEL directly from environment variables.
+    Default active production model: gemini-3.5-flash.
     """
     api_key = (
-        settings.GEMINI_API_KEY
-        or settings.LLM_API_KEY
-        or os.getenv("GEMINI_API_KEY")
+        os.getenv("GEMINI_API_KEY")
         or os.getenv("LLM_API_KEY")
+        or getattr(settings, "GEMINI_API_KEY", None)
+        or getattr(settings, "LLM_API_KEY", None)
     )
     
     gemini_model = (
-        getattr(settings, "GEMINI_MODEL", None)
-        or settings.LLM_MODEL
-        or os.getenv("GEMINI_MODEL")
-        or "gemini-3.6-flash"
+        os.getenv("GEMINI_MODEL")
+        or os.getenv("LLM_MODEL")
+        or getattr(settings, "GEMINI_MODEL", None)
+        or getattr(settings, "LLM_MODEL", None)
+        or "gemini-3.5-flash"
     )
-
-    # Normalize any typos in model name from .env
-    if "3.5-flash-light" in gemini_model or "1.5-flash" in gemini_model or "2.0-flash" in gemini_model:
-        gemini_model = "gemini-3.6-flash"
 
     from langchain_google_genai import ChatGoogleGenerativeAI
     base_instance = ChatGoogleGenerativeAI(

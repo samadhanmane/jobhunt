@@ -14,8 +14,8 @@ class Settings(BaseSettings):
 
     # Google Gemini AI Settings (Configured via .env)
     LLM_PROVIDER: str = "gemini"
-    LLM_MODEL: str = "gemini-3.6-flash"
-    GEMINI_MODEL: Optional[str] = "gemini-3.6-flash"
+    LLM_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: Optional[str] = "gemini-3.5-flash"
     LLM_API_KEY: Optional[str] = None
     LLM_TEMPERATURE: float = 0.3
     LLM_BASE_URL: Optional[str] = None
