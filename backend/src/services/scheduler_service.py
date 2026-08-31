@@ -422,17 +422,41 @@ class SchedulerService:
                 return
 
             now_utc = datetime.utcnow()
-            now_hhmm_utc = now_utc.strftime("%H:%M")
             now_ist = now_utc + timedelta(hours=5, minutes=30)
+            now_hhmm_utc = now_utc.strftime("%H:%M")
             now_hhmm_ist = now_ist.strftime("%H:%M")
+
+            def is_time_due(pref_time_str: str) -> bool:
+                try:
+                    parts = pref_time_str.strip().split(":")
+                    ph, pm = int(parts[0]), int(parts[1])
+                    
+                    # 1. Primary check: IST Time difference (Indian Standard Time)
+                    ist_mins = now_ist.hour * 60 + now_ist.minute
+                    pref_mins = ph * 60 + pm
+                    diff_ist = abs(ist_mins - pref_mins)
+                    if diff_ist <= 3 or diff_ist >= 1437:
+                        return True
+
+                    # 2. Secondary check: UTC Time difference
+                    utc_mins = now_utc.hour * 60 + now_utc.minute
+                    diff_utc = abs(utc_mins - pref_mins)
+                    if diff_utc <= 3 or diff_utc >= 1437:
+                        return True
+                except Exception:
+                    pass
+                return False
 
             for alert in active_alerts:
                 if alert.last_sent_at and (now_utc - alert.last_sent_at).total_seconds() < 20 * 3600:
                     continue
 
                 pref_time = (alert.preferred_time or "09:00").strip()
-                if pref_time in [now_hhmm_utc, now_hhmm_ist]:
-                    print(f"[Scheduler] Time match ({pref_time}) for alert '{alert.email}' (Role: {alert.role}). Dispatching now...")
+                if is_time_due(pref_time):
+                    print(f"[Scheduler] IST Time match ({pref_time} IST) for alert '{alert.email}' (Role: {alert.role}). Dispatching email alert now...")
+                    # Update last_sent_at immediately to prevent duplicate dispatch during long runs
+                    alert.last_sent_at = now_utc
+                    db.commit()
                     asyncio.create_task(self.execute_alert_run(alert.id))
         except Exception as e:
             print(f"[Scheduler] Background polling notice: {e}")
