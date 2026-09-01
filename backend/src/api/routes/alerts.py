@@ -583,3 +583,19 @@ async def get_application_followups(
         "due_count": sum(1 for f in followups if f["cadence"]["is_due"]),
         "followups": followups
     }
+
+@router.post("/trigger-due")
+@router.get("/trigger-due")
+async def trigger_due_alerts_endpoint():
+    """
+    Manually or cron-triggered check that fires any due daily digests.
+    """
+    try:
+        count = await scheduler_service.check_and_trigger_due_alerts()
+        return {
+            "status": "success",
+            "message": f"Checked active alerts. Dispatched {count} due daily digest(s).",
+            "dispatched_count": count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

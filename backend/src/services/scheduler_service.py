@@ -412,58 +412,68 @@ class SchedulerService:
 
     async def check_and_trigger_due_alerts(self):
         """
-        Polls active email alerts and triggers execution if current time
-        matches preferred_time and alert hasn't been dispatched in the last 20 hours.
+        Polls active email alerts and triggers execution if current IST time
+        has reached or passed preferred_time and alert hasn't been dispatched today.
+        Guarantees reliable delivery even if the server was sleeping or restarted.
         """
         db = SessionLocal()
+        dispatched_count = 0
         try:
             active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
             if not active_alerts:
-                return
+                return 0
 
             now_utc = datetime.utcnow()
             now_ist = now_utc + timedelta(hours=5, minutes=30)
-            now_hhmm_utc = now_utc.strftime("%H:%M")
-            now_hhmm_ist = now_ist.strftime("%H:%M")
 
-            def is_time_due(pref_time_str: str) -> bool:
+            def is_daily_alert_due(pref_time_str: str, last_sent_at: Optional[datetime]) -> bool:
                 try:
-                    parts = pref_time_str.strip().split(":")
+                    parts = (pref_time_str or "09:00").strip().split(":")
                     ph, pm = int(parts[0]), int(parts[1])
-                    
-                    # 1. Primary check: IST Time difference (Indian Standard Time)
-                    ist_mins = now_ist.hour * 60 + now_ist.minute
-                    pref_mins = ph * 60 + pm
-                    diff_ist = abs(ist_mins - pref_mins)
-                    if diff_ist <= 3 or diff_ist >= 1437:
-                        return True
-
-                    # 2. Secondary check: UTC Time difference
-                    utc_mins = now_utc.hour * 60 + now_utc.minute
-                    diff_utc = abs(utc_mins - pref_mins)
-                    if diff_utc <= 3 or diff_utc >= 1437:
-                        return True
                 except Exception:
-                    pass
+                    ph, pm = 9, 0
+
+                now_ist_mins = now_ist.hour * 60 + now_ist.minute
+                pref_mins = ph * 60 + pm
+
+                # If current IST time has not yet reached scheduled time today -> not due yet
+                if now_ist_mins < pref_mins:
+                    return False
+
+                # Scheduled time today has arrived or passed!
+                if not last_sent_at:
+                    return True
+
+                # If last sent was more than 20 hours ago -> definitely due
+                if (now_utc - last_sent_at).total_seconds() >= 20 * 3600:
+                    return True
+
+                # If last sent was before today's scheduled time in IST -> due today
+                last_sent_ist = last_sent_at + timedelta(hours=5, minutes=30)
+                today_scheduled_ist = now_ist.replace(hour=ph, minute=pm, second=0, microsecond=0)
+                if last_sent_ist < today_scheduled_ist:
+                    return True
+
                 return False
 
             for alert in active_alerts:
-                if alert.last_sent_at and (now_utc - alert.last_sent_at).total_seconds() < 20 * 3600:
-                    continue
-
                 pref_time = (alert.preferred_time or "09:00").strip()
-                if is_time_due(pref_time):
-                    print(f"[Scheduler] IST Time match ({pref_time} IST) for alert '{alert.email}' (Role: {alert.role}). Dispatching email alert now...")
+                if is_daily_alert_due(pref_time, alert.last_sent_at):
+                    print(f"[Scheduler] Daily Digest Due (Scheduled: {pref_time} IST | Now: {now_ist.strftime('%H:%M')} IST) for '{alert.email}' (Role: {alert.role}). Dispatching now...")
                     # Update last_sent_at immediately to prevent duplicate dispatch during long runs
                     alert.last_sent_at = now_utc
                     db.commit()
                     asyncio.create_task(self.execute_alert_run(alert.id))
+                    dispatched_count += 1
+
+            return dispatched_count
         except Exception as e:
             print(f"[Scheduler] Background polling notice: {e}")
             try:
                 db.rollback()
             except Exception:
                 pass
+            return 0
         finally:
             try:
                 db.close()
@@ -641,36 +651,37 @@ class SchedulerService:
     async def start_background_scheduler(self):
         """
         Runs continuous background scheduler loop:
-        1. Checks daily email alerts every 60s.
-        2. Runs continuous background auto-discovery crawler every 3 minutes.
-        3. Runs cookie health check every 10 minutes.
+        1. Checks daily email alerts every 60s without blocking.
+        2. Spawns background auto-discovery crawler every 5 minutes in a separate task.
+        3. Spawns cookie health sentinel every 15 minutes in a separate task.
         """
         print("[Scheduler] Automated background worker & continuous job discovery engine started.")
         discovery_counter = 0
         health_check_counter = 0
 
-        # Run an initial background discovery 15 seconds after server boot
-        await asyncio.sleep(15)
+        # Initial quick alert check 5s after boot
+        await asyncio.sleep(5)
         try:
-            await self.run_continuous_background_job_discovery()
+            await self.check_and_trigger_due_alerts()
         except Exception as e:
-            print(f"[Scheduler] Initial discovery notice: {e}")
+            print(f"[Scheduler] Initial alert check notice: {e}")
 
         while True:
             try:
+                # 1. Alert check runs strictly every 60s
                 await self.check_and_trigger_due_alerts()
                 
-                # Run Continuous Background Job Discovery every 3 minutes (3 * 60s)
+                # 2. Continuous Background Job Discovery spawned as non-blocking task every 5 minutes
                 discovery_counter += 1
-                if discovery_counter >= 3:
+                if discovery_counter >= 5:
                     discovery_counter = 0
-                    await self.run_continuous_background_job_discovery()
+                    asyncio.create_task(self.run_continuous_background_job_discovery())
 
-                # Run Cookie Health Sentinel every 10 minutes (10 * 60s)
+                # 3. Cookie Health Sentinel spawned as non-blocking task every 15 minutes
                 health_check_counter += 1
-                if health_check_counter >= 10:
+                if health_check_counter >= 15:
                     health_check_counter = 0
-                    await self.check_scheduled_alerts_cookie_health()
+                    asyncio.create_task(self.check_scheduled_alerts_cookie_health())
 
             except Exception as loop_err:
                 print(f"[Scheduler] Background loop error: {loop_err}")
