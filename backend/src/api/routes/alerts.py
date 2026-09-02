@@ -555,32 +555,38 @@ async def get_application_followups(
     """
     Returns automated follow-up cadence status for applied jobs
     based on career-ops Day 5, Day 12, Day 21 milestones.
+    Reads synced applied jobs from current_user.applied_jobs safely.
     """
-    from src.models.user_application import UserApplication
-    try:
-        apps = db.query(UserApplication).filter(UserApplication.user_id == current_user.id).all()
-    except Exception:
-        apps = []
+    applied_list = []
+    if current_user and current_user.applied_jobs:
+        try:
+            applied_list = json.loads(current_user.applied_jobs)
+            if not isinstance(applied_list, list):
+                applied_list = []
+        except Exception:
+            applied_list = []
 
     followups = []
-    for app in apps:
-        app_date = str(app.applied_date or app.created_at or "")[:10]
+    for idx, app in enumerate(applied_list):
+        if not isinstance(app, dict):
+            continue
+        app_date = str(app.get("applied_at") or app.get("applied_date") or app.get("date") or "")[:10]
         milestone = calculate_followup_milestone(app_date)
         followups.append({
-            "application_id": app.id,
-            "company": app.company_name,
-            "role": app.job_title,
+            "application_id": app.get("id") or str(idx),
+            "company": app.get("company") or app.get("company_name") or "Target Company",
+            "role": app.get("title") or app.get("job_title") or "Target Role",
             "applied_date": app_date,
-            "job_url": app.job_url,
+            "job_url": app.get("url") or app.get("job_url") or "",
             "cadence": milestone
         })
 
     # Sort so due and overdue appear first
-    followups.sort(key=lambda x: (not x["cadence"]["is_due"], x["cadence"]["days_until_next"] if "days_until_next" in x["cadence"] else 99))
+    followups.sort(key=lambda x: (not x["cadence"].get("is_due", False), x["cadence"].get("days_until_next", 99)))
     return {
         "status": "success",
         "total_tracked": len(followups),
-        "due_count": sum(1 for f in followups if f["cadence"]["is_due"]),
+        "due_count": sum(1 for f in followups if f["cadence"].get("is_due", False)),
         "followups": followups
     }
 
