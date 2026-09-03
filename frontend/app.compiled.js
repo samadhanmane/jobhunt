@@ -2811,8 +2811,8 @@ function JobSearchDashboard(_ref13) {
       var fit = (job.experience_fit || "").toLowerCase();
 
       // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
-      if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
-        var kw = snapshotFilterKeyword.toLowerCase().trim();
+      if (filterKeyword && filterKeyword.trim()) {
+        var kw = filterKeyword.toLowerCase().trim();
         var kwTokens = kw.split(/[,/\s+|\-]+/).filter(function (t) {
           return t.length > 1;
         });
@@ -5648,8 +5648,8 @@ function EmailAlertsView(_ref30) {
       var skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
 
       // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
-      if (filterKeyword && filterKeyword.trim()) {
-        var kw = filterKeyword.toLowerCase().trim();
+      if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
+        var kw = snapshotFilterKeyword.toLowerCase().trim();
         var kwTokens = kw.split(/[,/\s+|\-]+/).filter(function (t) {
           return t.length > 1;
         });

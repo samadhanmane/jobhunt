@@ -2361,8 +2361,8 @@ function JobSearchDashboard({
             const fit = (job.experience_fit || "").toLowerCase();
 
                         // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
-            if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
-                const kw = snapshotFilterKeyword.toLowerCase().trim();
+            if (filterKeyword && filterKeyword.trim()) {
+                const kw = filterKeyword.toLowerCase().trim();
                 const kwTokens = kw.split(/[,/\s+|\-]+/).filter(t => t.length > 1);
                 const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
                 const fullText = `${title} ${company} ${jobLoc} ${desc} ${skillsStr}`;
@@ -4846,8 +4846,8 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
 
                         // 1. Smart Multi-Token & Domain Keyword Search (Title, Company, Description, Skills)
-            if (filterKeyword && filterKeyword.trim()) {
-                const kw = filterKeyword.toLowerCase().trim();
+            if (snapshotFilterKeyword && snapshotFilterKeyword.trim()) {
+                const kw = snapshotFilterKeyword.toLowerCase().trim();
                 const kwTokens = kw.split(/[,/\s+|\-]+/).filter(t => t.length > 1);
                 const skillsStr = (job.matching_skills || []).join(" ").toLowerCase();
                 const fullText = `${title} ${company} ${jobLoc} ${desc} ${skillsStr}`;
