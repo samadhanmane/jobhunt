@@ -1,109 +1,86 @@
 # -*- coding: utf-8 -*-
 """
-Master catalog of 90+ verified AI, DeepTech, and Enterprise ATS job boards.
-Ported from career-ops portals catalog.
+Master catalog of verified AI, DeepTech, and Enterprise ATS job boards.
+Categorized by ATS provider: Greenhouse, Ashby, Lever, Workday, Workable, Phenom.
 """
 
+# Dedicated Top-Tier Direct AI & ML Company Registry
+AI_COMPANIES = [
+    {"name": "OpenAI", "provider": "ashby", "slug": "openai", "careers_url": "https://jobs.ashbyhq.com/openai", "category": "ai_ml"},
+    {"name": "Anthropic", "provider": "greenhouse", "slug": "anthropic", "careers_url": "https://job-boards.greenhouse.io/anthropic", "api": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs", "category": "ai_ml"},
+    {"name": "NVIDIA", "provider": "workday", "tenant": "nvidia", "site": "NVIDIAExternalCareerSite", "wd_num": 1, "careers_url": "https://nvidia.wd1.myworkdayjobs.com/NVIDIAExternalCareerSite", "category": "ai_ml"},
+    {"name": "Mistral AI", "provider": "lever", "slug": "mistral", "careers_url": "https://jobs.lever.co/mistral", "category": "ai_ml"},
+    {"name": "Cohere", "provider": "ashby", "slug": "cohere", "careers_url": "https://jobs.ashbyhq.com/cohere", "category": "ai_ml"},
+    {"name": "Hugging Face", "provider": "workable", "slug": "huggingface", "careers_url": "https://apply.workable.com/huggingface/", "category": "ai_ml"},
+    {"name": "xAI", "provider": "ashby", "slug": "xai", "careers_url": "https://jobs.ashbyhq.com/xai", "category": "ai_ml"},
+    {"name": "Perplexity", "provider": "ashby", "slug": "perplexity", "careers_url": "https://jobs.ashbyhq.com/perplexity", "category": "ai_ml"},
+    {"name": "Scale AI", "provider": "greenhouse", "slug": "scaleai", "careers_url": "https://job-boards.greenhouse.io/scaleai", "api": "https://boards-api.greenhouse.io/v1/boards/scaleai/jobs", "category": "ai_ml"},
+    {"name": "Together AI", "provider": "ashby", "slug": "togetherai", "careers_url": "https://jobs.ashbyhq.com/togetherai", "category": "ai_ml"},
+    {"name": "Replicate", "provider": "ashby", "slug": "replicate", "careers_url": "https://jobs.ashbyhq.com/replicate", "category": "ai_ml"},
+    {"name": "Cursor", "provider": "ashby", "slug": "anysphere", "careers_url": "https://jobs.ashbyhq.com/anysphere", "category": "ai_ml"},
+    {"name": "Runway", "provider": "ashby", "slug": "runwayml", "careers_url": "https://jobs.ashbyhq.com/runwayml", "category": "ai_ml"},
+    {"name": "ElevenLabs", "provider": "ashby", "slug": "elevenlabs", "careers_url": "https://jobs.ashbyhq.com/elevenlabs", "category": "ai_ml"},
+    {"name": "Deepgram", "provider": "ashby", "slug": "deepgram", "careers_url": "https://jobs.ashbyhq.com/deepgram", "category": "ai_ml"},
+    {"name": "Pinecone", "provider": "ashby", "slug": "pinecone", "careers_url": "https://jobs.ashbyhq.com/pinecone", "category": "ai_ml"},
+    {"name": "LangChain", "provider": "ashby", "slug": "langchain", "careers_url": "https://jobs.ashbyhq.com/langchain", "category": "ai_ml"},
+    {"name": "Decagon", "provider": "ashby", "slug": "decagon", "careers_url": "https://jobs.ashbyhq.com/decagon", "category": "ai_ml"},
+    {"name": "Sierra", "provider": "ashby", "slug": "sierra", "careers_url": "https://jobs.ashbyhq.com/sierra", "category": "ai_ml"},
+    {"name": "Lindy", "provider": "ashby", "slug": "lindy", "careers_url": "https://jobs.ashbyhq.com/lindy", "category": "ai_ml"},
+    {"name": "Vapi", "provider": "ashby", "slug": "vapi", "careers_url": "https://jobs.ashbyhq.com/vapi", "category": "ai_ml"},
+    {"name": "Bland AI", "provider": "ashby", "slug": "bland", "careers_url": "https://jobs.ashbyhq.com/bland", "category": "ai_ml"},
+]
+
 COMPANY_CATALOG = [
-    {"name": "Anthropic", "provider": "greenhouse", "slug": "anthropic", "careers_url": "https://job-boards.greenhouse.io/anthropic", "api": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs"},
+    # Direct AI Companies
+    *AI_COMPANIES,
+    # High-growth & DeepTech
     {"name": "PolyAI", "provider": "greenhouse", "slug": "polyai", "careers_url": "https://job-boards.eu.greenhouse.io/polyai", "api": "https://boards-api.greenhouse.io/v1/boards/polyai/jobs"},
     {"name": "Parloa", "provider": "greenhouse", "slug": "parloa", "careers_url": "https://job-boards.eu.greenhouse.io/parloa", "api": "https://boards-api.greenhouse.io/v1/boards/parloa/jobs"},
     {"name": "Intercom", "provider": "greenhouse", "slug": "intercom", "careers_url": "https://job-boards.greenhouse.io/intercom", "api": "https://boards-api.greenhouse.io/v1/boards/intercom/jobs"},
     {"name": "Hume AI", "provider": "greenhouse", "slug": "humeai", "careers_url": "https://job-boards.greenhouse.io/humeai", "api": "https://boards-api.greenhouse.io/v1/boards/humeai/jobs"},
-    {"name": "ElevenLabs", "provider": "ashby", "slug": "elevenlabs", "careers_url": "https://jobs.ashbyhq.com/elevenlabs", "api": ""},
-    {"name": "Deepgram", "provider": "ashby", "slug": "deepgram", "careers_url": "https://jobs.ashbyhq.com/deepgram", "api": ""},
-    {"name": "Vapi", "provider": "ashby", "slug": "vapi", "careers_url": "https://jobs.ashbyhq.com/vapi", "api": ""},
-    {"name": "Bland AI", "provider": "ashby", "slug": "bland", "careers_url": "https://jobs.ashbyhq.com/bland", "api": ""},
-    {"name": "Retool", "provider": "gem", "slug": "retool", "careers_url": "https://jobs.gem.com/retool", "api": ""},
     {"name": "Airtable", "provider": "greenhouse", "slug": "airtable", "careers_url": "https://job-boards.greenhouse.io/airtable", "api": "https://boards-api.greenhouse.io/v1/boards/airtable/jobs"},
     {"name": "Vercel", "provider": "greenhouse", "slug": "vercel", "careers_url": "https://job-boards.greenhouse.io/vercel", "api": "https://boards-api.greenhouse.io/v1/boards/vercel/jobs"},
     {"name": "Temporal", "provider": "greenhouse", "slug": "temporal", "careers_url": "https://job-boards.greenhouse.io/temporal", "api": "https://boards-api.greenhouse.io/v1/boards/temporal/jobs"},
     {"name": "Arize AI", "provider": "greenhouse", "slug": "arizeai", "careers_url": "https://job-boards.greenhouse.io/arizeai", "api": "https://boards-api.greenhouse.io/v1/boards/arizeai/jobs"},
     {"name": "RunPod", "provider": "greenhouse", "slug": "runpod", "careers_url": "https://job-boards.greenhouse.io/runpod", "api": "https://boards-api.greenhouse.io/v1/boards/runpod/jobs"},
-    {"name": "Weights & Biases (CoreWeave)", "provider": "greenhouse", "slug": "coreweave", "careers_url": "https://job-boards.greenhouse.io/coreweave", "api": "https://boards-api.greenhouse.io/v1/boards/coreweave/jobs"},
     {"name": "Glean", "provider": "greenhouse", "slug": "gleanwork", "careers_url": "https://job-boards.greenhouse.io/gleanwork", "api": "https://boards-api.greenhouse.io/v1/boards/gleanwork/jobs"},
-    {"name": "Ada", "provider": "greenhouse", "slug": "ada", "careers_url": "https://job-boards.greenhouse.io/ada", "api": ""},
-    {"name": "Sierra", "provider": "ashby", "slug": "sierra", "careers_url": "https://jobs.ashbyhq.com/sierra", "api": ""},
-    {"name": "Decagon", "provider": "ashby", "slug": "decagon", "careers_url": "https://jobs.ashbyhq.com/decagon", "api": ""},
-    {"name": "Lindy", "provider": "ashby", "slug": "lindy", "careers_url": "https://jobs.ashbyhq.com/lindy", "api": ""},
     {"name": "Speechmatics", "provider": "greenhouse", "slug": "speechmatics", "careers_url": "https://job-boards.greenhouse.io/speechmatics", "api": "https://boards-api.greenhouse.io/v1/boards/speechmatics/jobs"},
     {"name": "n8n", "provider": "ashby", "slug": "n8n", "careers_url": "https://jobs.ashbyhq.com/n8n", "api": ""},
     {"name": "Zapier", "provider": "ashby", "slug": "zapier", "careers_url": "https://jobs.ashbyhq.com/zapier", "api": ""},
-    {"name": "Boomi", "provider": "greenhouse", "slug": "boomilp", "careers_url": "https://job-boards.greenhouse.io/boomilp", "api": "https://boards-api.greenhouse.io/v1/boards/boomilp/jobs"},
-    {"name": "Cohere", "provider": "ashby", "slug": "cohere", "careers_url": "https://jobs.ashbyhq.com/cohere", "api": ""},
-    {"name": "LangChain", "provider": "ashby", "slug": "langchain", "careers_url": "https://jobs.ashbyhq.com/langchain", "api": ""},
-    {"name": "Pinecone", "provider": "ashby", "slug": "pinecone", "careers_url": "https://jobs.ashbyhq.com/pinecone", "api": ""},
-    {"name": "Mistral AI", "provider": "lever", "slug": "mistral", "careers_url": "https://jobs.lever.co/mistral", "api": ""},
     {"name": "Palantir", "provider": "lever", "slug": "palantir", "careers_url": "https://jobs.lever.co/palantir", "api": ""},
-    {"name": "Later", "provider": "greenhouse", "slug": "later", "careers_url": "https://job-boards.greenhouse.io/later", "api": "https://boards-api.greenhouse.io/v1/boards/later/jobs"},
-    {"name": "Safari AI", "provider": "greenhouse", "slug": "safariai", "careers_url": "https://job-boards.greenhouse.io/safariai", "api": "https://boards-api.greenhouse.io/v1/boards/safariai/jobs"},
-    {"name": "Hootsuite", "provider": "greenhouse", "slug": "hootsuite", "careers_url": "https://job-boards.greenhouse.io/hootsuite", "api": "https://boards-api.greenhouse.io/v1/boards/hootsuite/jobs"},
-    {"name": "Klue", "provider": "ashby", "slug": "klue", "careers_url": "https://jobs.ashbyhq.com/klue", "api": ""},
-    {"name": "Glacis AI", "provider": "ashby", "slug": "glacis-ai", "careers_url": "https://jobs.ashbyhq.com/glacis-ai", "api": ""},
     {"name": "Sanctuary AI", "provider": "lever", "slug": "sanctuary", "careers_url": "https://jobs.lever.co/sanctuary", "api": ""},
     {"name": "Semios", "provider": "workable", "slug": "semios", "careers_url": "https://apply.workable.com/semios/", "api": ""},
     {"name": "Attio", "provider": "ashby", "slug": "attio", "careers_url": "https://jobs.ashbyhq.com/attio", "api": ""},
     {"name": "Tinybird", "provider": "ashby", "slug": "tinybird", "careers_url": "https://jobs.ashbyhq.com/tinybird", "api": ""},
     {"name": "Clarity AI", "provider": "lever", "slug": "clarity-ai", "careers_url": "https://jobs.lever.co/clarity-ai", "api": ""},
-    {"name": "Travelperk", "provider": "ashby", "slug": "perk", "careers_url": "https://jobs.ashbyhq.com/perk", "api": ""},
     {"name": "Aleph Alpha", "provider": "ashby", "slug": "AlephAlpha", "careers_url": "https://jobs.ashbyhq.com/AlephAlpha", "api": ""},
     {"name": "DeepL", "provider": "ashby", "slug": "DeepL", "careers_url": "https://jobs.ashbyhq.com/DeepL", "api": ""},
-    {"name": "Black Forest Labs", "provider": "greenhouse", "slug": "blackforestlabs", "careers_url": "https://job-boards.greenhouse.io/blackforestlabs", "api": "https://boards-api.greenhouse.io/v1/boards/blackforestlabs/jobs"},
-    {"name": "Helsing", "provider": "greenhouse", "slug": "helsing", "careers_url": "https://job-boards.greenhouse.io/helsing", "api": "https://boards-api.greenhouse.io/v1/boards/helsing/jobs"},
-    {"name": "Celonis", "provider": "greenhouse", "slug": "celonis", "careers_url": "https://job-boards.greenhouse.io/celonis", "api": "https://boards-api.greenhouse.io/v1/boards/celonis/jobs"},
-    {"name": "Contentful", "provider": "greenhouse", "slug": "contentful", "careers_url": "https://job-boards.greenhouse.io/contentful", "api": "https://boards-api.greenhouse.io/v1/boards/contentful/jobs"},
-    {"name": "GetYourGuide", "provider": "greenhouse", "slug": "getyourguide", "careers_url": "https://job-boards.greenhouse.io/getyourguide", "api": "https://boards-api.greenhouse.io/v1/boards/getyourguide/jobs"},
-    {"name": "HelloFresh", "provider": "greenhouse", "slug": "hellofresh", "careers_url": "https://job-boards.greenhouse.io/hellofresh", "api": "https://boards-api.greenhouse.io/v1/boards/hellofresh/jobs"},
-    {"name": "Allianz", "provider": "phenom", "slug": "careers.allianz.com", "careers_url": "https://careers.allianz.com", "api": ""},
-    {"name": "N26", "provider": "greenhouse", "slug": "n26", "careers_url": "https://job-boards.greenhouse.io/n26", "api": "https://boards-api.greenhouse.io/v1/boards/n26/jobs"},
-    {"name": "Trade Republic", "provider": "greenhouse", "slug": "traderepublicbank", "careers_url": "https://job-boards.greenhouse.io/traderepublicbank", "api": "https://boards-api.greenhouse.io/v1/boards/traderepublicbank/jobs"},
-    {"name": "SumUp", "provider": "greenhouse", "slug": "sumup", "careers_url": "https://job-boards.greenhouse.io/sumup", "api": "https://boards-api.greenhouse.io/v1/boards/sumup/jobs"},
-    {"name": "Qonto", "provider": "lever", "slug": "qonto", "careers_url": "https://jobs.lever.co/qonto", "api": ""},
-    {"name": "Forto", "provider": "ashby", "slug": "forto", "careers_url": "https://jobs.ashbyhq.com/forto", "api": ""},
-    {"name": "Nortal", "provider": "icims", "slug": "search?ss=1", "careers_url": "https://careers-en-nortal.icims.com/jobs/search?ss=1", "api": ""},
-    {"name": "Lakera", "provider": "ashby", "slug": "lakera.ai", "careers_url": "https://jobs.ashbyhq.com/lakera.ai", "api": ""},
-    {"name": "Scandit", "provider": "greenhouse", "slug": "scandit", "careers_url": "https://job-boards.greenhouse.io/scandit", "api": "https://boards-api.greenhouse.io/v1/boards/scandit/jobs"},
-    {"name": "Cradle", "provider": "ashby", "slug": "cradlebio", "careers_url": "https://jobs.ashbyhq.com/cradlebio", "api": ""},
-    {"name": "Hugging Face", "provider": "workable", "slug": "huggingface", "careers_url": "https://apply.workable.com/huggingface/", "api": ""},
-    {"name": "Photoroom", "provider": "ashby", "slug": "photoroom", "careers_url": "https://jobs.ashbyhq.com/photoroom", "api": ""},
-    {"name": "Pigment", "provider": "lever", "slug": "pigment", "careers_url": "https://jobs.lever.co/pigment", "api": ""},
-    {"name": "Diabolocom", "provider": "lever", "slug": "diabolocom", "careers_url": "https://jobs.eu.lever.co/diabolocom", "api": ""},
     {"name": "Wayve", "provider": "greenhouse", "slug": "wayve", "careers_url": "https://job-boards.greenhouse.io/wayve", "api": "https://boards-api.greenhouse.io/v1/boards/wayve/jobs"},
-    {"name": "Isomorphic Labs", "provider": "greenhouse", "slug": "isomorphiclabs", "careers_url": "https://job-boards.greenhouse.io/isomorphiclabs", "api": "https://boards-api.greenhouse.io/v1/boards/isomorphiclabs/jobs"},
-    {"name": "PhysicsX", "provider": "greenhouse", "slug": "physicsx", "careers_url": "https://job-boards.greenhouse.io/physicsx", "api": "https://boards-api.greenhouse.io/v1/boards/physicsx/jobs"},
-    {"name": "Stability AI", "provider": "greenhouse", "slug": "stabilityai", "careers_url": "https://job-boards.greenhouse.io/stabilityai", "api": "https://boards-api.greenhouse.io/v1/boards/stabilityai/jobs"},
     {"name": "Synthesia", "provider": "ashby", "slug": "synthesia", "careers_url": "https://jobs.ashbyhq.com/synthesia", "api": ""},
-    {"name": "Faculty", "provider": "ashby", "slug": "faculty", "careers_url": "https://jobs.ashbyhq.com/faculty", "api": ""},
-    {"name": "Causaly", "provider": "ashby", "slug": "causaly", "careers_url": "https://jobs.ashbyhq.com/causaly", "api": ""},
     {"name": "Lovable", "provider": "ashby", "slug": "lovable", "careers_url": "https://jobs.ashbyhq.com/lovable", "api": ""},
-    {"name": "Legora", "provider": "ashby", "slug": "legora", "careers_url": "https://jobs.ashbyhq.com/legora", "api": ""},
-    {"name": "Spotify", "provider": "lever", "slug": "spotify", "careers_url": "https://jobs.lever.co/spotify", "api": ""},
-    {"name": "Bolt", "provider": "ashby", "slug": "bolt", "careers_url": "https://jobs.ashbyhq.com/bolt", "api": ""},
-    {"name": "BMW Group", "provider": "successfactors", "slug": "jobs.bmwgroup.com", "careers_url": "https://jobs.bmwgroup.com", "api": "https://jobs.bmwgroup.com"},
-    {"name": "CARIAD (Volkswagen)", "provider": "successfactors", "slug": "cariad", "careers_url": "https://jobs.volkswagen-group.com/cariad", "api": "https://jobs.volkswagen-group.com"},
-    {"name": "Mollie", "provider": "ashby", "slug": "mollie", "careers_url": "https://jobs.ashbyhq.com/mollie", "api": ""},
-    {"name": "Hotjar", "provider": "lever", "slug": "contentsquare", "careers_url": "https://jobs.lever.co/contentsquare", "api": ""},
-    {"name": "Toggl", "provider": "workable", "slug": "toggl", "careers_url": "https://apply.workable.com/toggl", "api": ""},
-    {"name": "Doist", "provider": "workable", "slug": "doist", "careers_url": "https://apply.workable.com/doist", "api": ""},
-    {"name": "Corti", "provider": "ashby", "slug": "corti", "careers_url": "https://jobs.ashbyhq.com/corti", "api": ""},
-    {"name": "Pleo", "provider": "ashby", "slug": "pleo", "careers_url": "https://jobs.ashbyhq.com/pleo", "api": ""},
-    {"name": "Templafy", "provider": "greenhouse", "slug": "templafy", "careers_url": "https://job-boards.greenhouse.io/templafy", "api": "https://boards-api.greenhouse.io/v1/boards/templafy/jobs"},
-    {"name": "Amplemarket", "provider": "greenhouse", "slug": "amplemarket", "careers_url": "https://job-boards.greenhouse.io/amplemarket", "api": "https://boards-api.greenhouse.io/v1/boards/amplemarket/jobs"},
-    {"name": "Perplexity", "provider": "ashby", "slug": "perplexity", "careers_url": "https://jobs.ashbyhq.com/perplexity", "api": ""},
-    {"name": "Clay Labs", "provider": "ashby", "slug": "claylabs", "careers_url": "https://jobs.ashbyhq.com/claylabs", "api": ""},
-    {"name": "Runway", "provider": "greenhouse", "slug": "runwayml", "careers_url": "https://job-boards.greenhouse.io/runwayml", "api": "https://boards-api.greenhouse.io/v1/boards/runwayml/jobs"},
-    {"name": "Hightouch", "provider": "greenhouse", "slug": "hightouch", "careers_url": "https://job-boards.greenhouse.io/hightouch", "api": "https://boards-api.greenhouse.io/v1/boards/hightouch/jobs"},
-    {"name": "WorkOS", "provider": "ashby", "slug": "workos", "careers_url": "https://jobs.ashbyhq.com/workos", "api": ""},
     {"name": "Supabase", "provider": "ashby", "slug": "supabase", "careers_url": "https://jobs.ashbyhq.com/supabase", "api": ""},
     {"name": "Resend", "provider": "ashby", "slug": "resend", "careers_url": "https://jobs.ashbyhq.com/resend", "api": ""},
     {"name": "Clerk", "provider": "ashby", "slug": "clerk", "careers_url": "https://jobs.ashbyhq.com/clerk", "api": ""},
     {"name": "Inngest", "provider": "ashby", "slug": "inngest", "careers_url": "https://jobs.ashbyhq.com/inngest", "api": ""},
-    {"name": "PlanetScale", "provider": "greenhouse", "slug": "planetscale", "careers_url": "https://job-boards.greenhouse.io/planetscale", "api": "https://boards-api.greenhouse.io/v1/boards/planetscale/jobs"},
+    {"name": "Toggl", "provider": "workable", "slug": "toggl", "careers_url": "https://apply.workable.com/toggl", "api": ""},
+    {"name": "Doist", "provider": "workable", "slug": "doist", "careers_url": "https://apply.workable.com/doist", "api": ""},
+    {"name": "Allianz", "provider": "phenom", "slug": "careers.allianz.com", "careers_url": "https://careers.allianz.com", "api": ""},
 ]
 
-GREENHOUSE_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "greenhouse"]
-ASHBY_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "ashby"]
-LEVER_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "lever"]
-PHENOM_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "phenom"]
-WORKABLE_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "workable"]
-GEM_COMPANIES = [c for c in COMPANY_CATALOG if c["provider"] == "gem"]
+# Deduplicate catalog by provider + slug
+_seen_keys = set()
+_deduped_catalog = []
+for c in COMPANY_CATALOG:
+    k = (c.get("provider"), c.get("slug") or c.get("tenant"))
+    if k not in _seen_keys:
+        _seen_keys.add(k)
+        _deduped_catalog.append(c)
+COMPANY_CATALOG = _deduped_catalog
+
+GREENHOUSE_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "greenhouse"]
+ASHBY_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "ashby"]
+LEVER_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "lever"]
+PHENOM_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "phenom"]
+WORKABLE_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "workable"]
+WORKDAY_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "workday"]
+

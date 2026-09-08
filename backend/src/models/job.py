@@ -47,5 +47,12 @@ class Job(Base):
     experience_required = Column(String(100), nullable=True)
     min_experience_years = Column(Float, nullable=True)
     seniority_level = Column(String(50), nullable=True)
+    experience_comparison = Column(JSON, nullable=True)
+    
+    # 6-Factor Match Breakdown & Source Metadata
+    match_breakdown = Column(JSON, nullable=True)
+    source_category = Column(String(50), nullable=True, index=True)
+    freshness_label = Column(String(100), nullable=True)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+

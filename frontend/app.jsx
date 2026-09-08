@@ -1692,6 +1692,7 @@ function JobSearchDashboard({
     const [filterLocationInput, setFilterLocationInput] = useState("");
     const [filterExpYears, setFilterExpYears] = useState("all");
     const [filterWorkMode, setFilterWorkMode] = useState("all");
+    const [filterCategory, setFilterCategory] = useState("all"); // 'all' | 'india' | 'ai_registry' | 'enterprise_workday' | 'startups' | 'remote'
     const [minScore, setMinScore] = useState(0);
     const [filterSeniority, setFilterSeniority] = useState("all");
     const [filterDate, setFilterDate] = useState("all");
@@ -2435,7 +2436,18 @@ function JobSearchDashboard({
             if (filterDate === '7d' && !isWithinDays(job.posted_date, 7)) return false;
             if (filterDate === '30d' && !isWithinDays(job.posted_date, 30)) return false;
 
-            // 7. Source Platform
+            // 7. Source Category
+            if (filterCategory !== 'all') {
+                const jobCat = (job.source_category || '').toLowerCase();
+                const jobSrc = (job.source || '').toLowerCase();
+                if (filterCategory === 'india' && jobCat !== 'india' && !jobSrc.includes('instahyre') && !jobLoc.includes('india')) return false;
+                if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'remote' && jobCat !== 'remote' && !['remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow'].some(s => jobSrc.includes(s))) return false;
+            }
+
+            // 8. Source Platform
             if (filterSource !== 'all' && !source.includes(filterSource)) return false;
 
             return true;
@@ -2444,7 +2456,7 @@ function JobSearchDashboard({
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
             return (b.match_score || 0) - (a.match_score || 0);
         });
-    }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, appliedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+    }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, appliedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, filterCategory, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
     // RAG AI Query Handler
     const handleAskAI = async (e) => {
@@ -3040,7 +3052,7 @@ function JobSearchDashboard({
                                 </span>
                             </div>
 
-                            {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0 || sortBy !== 'score') && (
+                            {(filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterCategory !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0 || sortBy !== 'score') && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -3048,6 +3060,7 @@ function JobSearchDashboard({
                                         setFilterLocationInput("");
                                         setFilterExpYears("all");
                                         setFilterWorkMode("all");
+                                        setFilterCategory("all");
                                         setMinScore(0);
                                         setFilterSeniority("all");
                                         setFilterDate("all");
@@ -3191,6 +3204,32 @@ function JobSearchDashboard({
                                         }`}
                                 >
                                     {hub.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Source Inventory / Ecosystem Category Chips */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[11px]">
+                            <span className="text-slate-400 text-[10px] font-medium uppercase mr-1">Source Ecosystem:</span>
+                            {[
+                                { label: "🌐 All Sources", val: "all" },
+                                { label: "🇮🇳 India Tech", val: "india" },
+                                { label: "🤖 Direct AI Labs", val: "ai_registry" },
+                                { label: "🏢 Enterprise Workday", val: "enterprise_workday" },
+                                { label: "🚀 Startups (YC)", val: "startups" },
+                                { label: "🏠 Remote Global", val: "remote" }
+                            ].map((cat, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setFilterCategory(cat.val)}
+                                    className={`px-2 py-0.5 rounded-md transition-all font-semibold text-xs ${
+                                        filterCategory === cat.val
+                                            ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border border-emerald-400 shadow-sm"
+                                            : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.08]"
+                                    }`}
+                                >
+                                    {cat.label}
                                 </button>
                             ))}
                         </div>
@@ -3529,10 +3568,32 @@ function JobCard({ job, jobScope = "curated", resumeSkills = [], isApplied = fal
 
                 {/* Metadata Pills */}
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    {/* Source Category Badge */}
+                    {job.source_category && job.source_category !== 'all' && (
+                        <span className="px-2 py-0.5 rounded-full font-bold bg-indigo-950/70 text-indigo-300 border border-indigo-500/40 flex items-center gap-1 shadow-sm">
+                            {job.source_category === 'india' && '🇮🇳 India Tech'}
+                            {job.source_category === 'ai_registry' && '🤖 Direct AI Lab'}
+                            {job.source_category === 'enterprise_workday' && '🏢 Enterprise Workday'}
+                            {job.source_category === 'startups' && '🚀 YC Startup'}
+                            {job.source_category === 'remote' && '🌐 Remote Global'}
+                        </span>
+                    )}
+
                     {/* Exact Required Experience Badge */}
                     <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
-                        ⏳ Exp: {getJobExperienceBadge(job)}
+                        ⏳ Exp: {job.experience_comparison?.required || getJobExperienceBadge(job)} {job.experience_comparison?.candidate ? `(You: ${job.experience_comparison.candidate})` : ''}
                     </span>
+
+                    {/* Work Mode */}
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
+                        💼 {job.work_mode || 'Remote'}
+                    </span>
+
+                    {/* Freshness Label */}
+                    <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
+                        ⏰ {job.freshness_label || 'Recently posted'}
+                    </span>
+
                     <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
                         🔗 {job.source || 'Direct'}
                     </span>
@@ -3548,6 +3609,45 @@ function JobCard({ job, jobScope = "curated", resumeSkills = [], isApplied = fal
                     )}
                 </div>
 
+                {/* 6-Factor Relevance Breakdown Bar */}
+                {job.match_breakdown && (
+                    <div className="p-2 rounded-lg bg-slate-950/70 border border-white/[0.06] space-y-1.5 shadow-inner">
+                        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-300">
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                                <span>🎯</span>
+                                <span>6-Factor Match Breakdown</span>
+                            </span>
+                            <span className="text-slate-300 font-mono text-[11px] font-bold">{score}% Total Fit</span>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 text-[10px] text-center">
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Skills (30%)</div>
+                                <div className="font-bold text-emerald-300">{job.match_breakdown.skills || 0}%</div>
+                            </div>
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Role (25%)</div>
+                                <div className="font-bold text-indigo-300">{job.match_breakdown.role || 0}%</div>
+                            </div>
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Exp (15%)</div>
+                                <div className="font-bold text-amber-300">{job.match_breakdown.experience || 0}%</div>
+                            </div>
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Loc (10%)</div>
+                                <div className="font-bold text-sky-300">{job.match_breakdown.location || 0}%</div>
+                            </div>
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Mode (10%)</div>
+                                <div className="font-bold text-teal-300">{job.match_breakdown.work_mode || 0}%</div>
+                            </div>
+                            <div className="bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]">
+                                <div className="text-[9px] text-slate-400">Fresh (10%)</div>
+                                <div className="font-bold text-purple-300">{job.match_breakdown.freshness || 0}%</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Key Requirements Summary */}
                 {job.key_requirements ? (
                     <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed bg-slate-950/40 p-2 rounded-lg border border-white/[0.04]">
@@ -3561,19 +3661,22 @@ function JobCard({ job, jobScope = "curated", resumeSkills = [], isApplied = fal
                     )
                 )}
 
-                {/* Skills Preview */}
-                {cardMatchingSkills.length > 0 && (
-                    <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                        {cardMatchingSkills.slice(0, 3).map((s, idx) => (
-                            <span key={idx} className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 text-[10px] border border-emerald-500/20">
-                                ✓ {s}
-                            </span>
-                        ))}
-                        {cardMatchingSkills.length > 3 && (
-                            <span className="text-[10px] text-slate-500">+{cardMatchingSkills.length - 3} more</span>
-                        )}
-                    </div>
-                )}
+                {/* Skills Checklist & Missing Skills Badges */}
+                <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                    {cardMatchingSkills.slice(0, 5).map((s, idx) => (
+                        <span key={idx} className="px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30 flex items-center gap-0.5">
+                            <span>✓</span> {s}
+                        </span>
+                    ))}
+                    {cardMatchingSkills.length > 5 && (
+                        <span className="text-[10px] text-slate-500 font-medium">+{cardMatchingSkills.length - 5} more</span>
+                    )}
+                    {Array.isArray(job.missing_skills) && job.missing_skills.slice(0, 2).map((s, idx) => (
+                        <span key={`miss-${idx}`} className="px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-medium border border-white/10 flex items-center gap-0.5">
+                            <span>+</span> {s}
+                        </span>
+                    ))}
+                </div>
             </div>
 
             {/* Bottom Contact & Action Strip */}

@@ -58,6 +58,7 @@ async def search_jobs(
     remote_preference: Optional[str] = Form(None),
     max_age_days: Optional[int] = Form(None),
     source_platform: Optional[str] = Form(None),
+    source_category: Optional[str] = Form(None),
     sub_domain: Optional[str] = Form(None),
     experience_tier: Optional[str] = Form(None),
     work_mode: Optional[str] = Form(None),
@@ -138,6 +139,8 @@ async def search_jobs(
             pref_dict["ai_facets"] = [ai_facets.strip()]
     if source_platform:
         pref_dict["source_platform"] = source_platform.strip().lower()
+    if source_category:
+        pref_dict["source_category"] = source_category.strip().lower()
 
     if not pref_dict.get("role"):
         pref_dict["role"] = "Software Engineer"

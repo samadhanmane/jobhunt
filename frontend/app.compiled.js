@@ -1847,30 +1847,34 @@ function JobSearchDashboard(_ref13) {
     _useState112 = _slicedToArray(_useState111, 2),
     filterWorkMode = _useState112[0],
     setFilterWorkMode = _useState112[1];
-  var _useState113 = useState(0),
+  var _useState113 = useState("all"),
     _useState114 = _slicedToArray(_useState113, 2),
-    minScore = _useState114[0],
-    setMinScore = _useState114[1];
-  var _useState115 = useState("all"),
+    filterCategory = _useState114[0],
+    setFilterCategory = _useState114[1]; // 'all' | 'india' | 'ai_registry' | 'enterprise_workday' | 'startups' | 'remote'
+  var _useState115 = useState(0),
     _useState116 = _slicedToArray(_useState115, 2),
-    filterSeniority = _useState116[0],
-    setFilterSeniority = _useState116[1];
+    minScore = _useState116[0],
+    setMinScore = _useState116[1];
   var _useState117 = useState("all"),
     _useState118 = _slicedToArray(_useState117, 2),
-    filterDate = _useState118[0],
-    setFilterDate = _useState118[1];
+    filterSeniority = _useState118[0],
+    setFilterSeniority = _useState118[1];
   var _useState119 = useState("all"),
     _useState120 = _slicedToArray(_useState119, 2),
-    filterSource = _useState120[0],
-    setFilterSource = _useState120[1];
-  var _useState121 = useState("curated"),
+    filterDate = _useState120[0],
+    setFilterDate = _useState120[1];
+  var _useState121 = useState("all"),
     _useState122 = _slicedToArray(_useState121, 2),
-    jobScope = _useState122[0],
-    setJobScope = _useState122[1]; // 'curated' | 'unique' | 'raw' | 'applied'
-  var _useState123 = useState("score"),
+    filterSource = _useState122[0],
+    setFilterSource = _useState122[1];
+  var _useState123 = useState("curated"),
     _useState124 = _slicedToArray(_useState123, 2),
-    sortBy = _useState124[0],
-    setSortBy = _useState124[1]; // 'score' | 'date'
+    jobScope = _useState124[0],
+    setJobScope = _useState124[1]; // 'curated' | 'unique' | 'raw' | 'applied'
+  var _useState125 = useState("score"),
+    _useState126 = _slicedToArray(_useState125, 2),
+    sortBy = _useState126[0],
+    setSortBy = _useState126[1]; // 'score' | 'date'
 
   var getJobKey = function getJobKey(job) {
     if (!job) return "";
@@ -1914,36 +1918,36 @@ function JobSearchDashboard(_ref13) {
   }, [activeSnapshot]);
 
   // RAG AI Query State
-  var _useState125 = useState(false),
-    _useState126 = _slicedToArray(_useState125, 2),
-    ragModalOpen = _useState126[0],
-    setRagModalOpen = _useState126[1];
-  var _useState127 = useState(""),
+  var _useState127 = useState(false),
     _useState128 = _slicedToArray(_useState127, 2),
-    ragQuery = _useState128[0],
-    setRagQuery = _useState128[1];
+    ragModalOpen = _useState128[0],
+    setRagModalOpen = _useState128[1];
   var _useState129 = useState(""),
     _useState130 = _slicedToArray(_useState129, 2),
-    ragAnswer = _useState130[0],
-    setRagAnswer = _useState130[1];
-  var _useState131 = useState(false),
+    ragQuery = _useState130[0],
+    setRagQuery = _useState130[1];
+  var _useState131 = useState(""),
     _useState132 = _slicedToArray(_useState131, 2),
-    ragLoading = _useState132[0],
-    setRagLoading = _useState132[1];
-
-  // Exporting Insights CSV State
+    ragAnswer = _useState132[0],
+    setRagAnswer = _useState132[1];
   var _useState133 = useState(false),
     _useState134 = _slicedToArray(_useState133, 2),
-    exportingInsights = _useState134[0],
-    setExportingInsights = _useState134[1];
+    ragLoading = _useState134[0],
+    setRagLoading = _useState134[1];
+
+  // Exporting Insights CSV State
   var _useState135 = useState(false),
     _useState136 = _slicedToArray(_useState135, 2),
-    isHarvestingLive = _useState136[0],
-    setIsHarvestingLive = _useState136[1];
+    exportingInsights = _useState136[0],
+    setExportingInsights = _useState136[1];
   var _useState137 = useState(false),
     _useState138 = _slicedToArray(_useState137, 2),
-    csvMenuOpen = _useState138[0],
-    setCsvMenuOpen = _useState138[1];
+    isHarvestingLive = _useState138[0],
+    setIsHarvestingLive = _useState138[1];
+  var _useState139 = useState(false),
+    _useState140 = _slicedToArray(_useState139, 2),
+    csvMenuOpen = _useState140[0],
+    setCsvMenuOpen = _useState140[1];
 
   // ==========================================
   // High-Capacity Offline Storage (IndexedDB + LocalStorage Fallback)
@@ -2894,7 +2898,26 @@ function JobSearchDashboard(_ref13) {
       if (filterDate === '7d' && !isWithinDays(job.posted_date, 7)) return false;
       if (filterDate === '30d' && !isWithinDays(job.posted_date, 30)) return false;
 
-      // 7. Source Platform
+      // 7. Source Category
+      if (filterCategory !== 'all') {
+        var jobCat = (job.source_category || '').toLowerCase();
+        var jobSrc = (job.source || '').toLowerCase();
+        if (filterCategory === 'india' && jobCat !== 'india' && !jobSrc.includes('instahyre') && !jobLoc.includes('india')) return false;
+        if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable'].some(function (s) {
+          return jobSrc.includes(s);
+        })) return false;
+        if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom'].some(function (s) {
+          return jobSrc.includes(s);
+        })) return false;
+        if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn'].some(function (s) {
+          return jobSrc.includes(s);
+        })) return false;
+        if (filterCategory === 'remote' && jobCat !== 'remote' && !['remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow'].some(function (s) {
+          return jobSrc.includes(s);
+        })) return false;
+      }
+
+      // 8. Source Platform
       if (filterSource !== 'all' && !source.includes(filterSource)) return false;
       return true;
     }).sort(function (a, b) {
@@ -2902,7 +2925,7 @@ function JobSearchDashboard(_ref13) {
       if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
       return (b.match_score || 0) - (a.match_score || 0);
     });
-  }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, appliedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, minScore, filterSeniority, filterDate, filterSource, sortBy]);
+  }, [jobScope, allMatchedJobs, allUniqueJobs, allRawJobs, appliedJobs, filterKeyword, filterLocationInput, filterExpYears, filterWorkMode, filterCategory, minScore, filterSeniority, filterDate, filterSource, sortBy]);
 
   // RAG AI Query Handler
   var handleAskAI = /*#__PURE__*/function () {
@@ -3457,13 +3480,14 @@ function JobSearchDashboard(_ref13) {
     className: "text-xs font-bold text-white uppercase tracking-wider"
   }, "In-Memory Result Filters"), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded-md bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-[11px] font-mono font-semibold"
-  }, "Showing ", filteredJobs.length, " of ", allRawJobs.length, " Jobs")), (filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0 || sortBy !== 'score') && /*#__PURE__*/React.createElement("button", {
+  }, "Showing ", filteredJobs.length, " of ", allRawJobs.length, " Jobs")), (filterKeyword || filterLocationInput || filterExpYears !== 'all' || filterWorkMode !== 'all' || filterCategory !== 'all' || filterDate !== 'all' || filterSeniority !== 'all' || filterSource !== 'all' || minScore > 0 || sortBy !== 'score') && /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: function onClick() {
       setFilterKeyword("");
       setFilterLocationInput("");
       setFilterExpYears("all");
       setFilterWorkMode("all");
+      setFilterCategory("all");
       setMinScore(0);
       setFilterSeniority("all");
       setFilterDate("all");
@@ -3612,6 +3636,37 @@ function JobSearchDashboard(_ref13) {
       },
       className: "px-2 py-0.5 rounded-md transition-all font-medium ".concat(filterLocationInput.toLowerCase() === hub.val || !filterLocationInput && hub.val === "" ? "bg-indigo-600 text-white border border-indigo-400 shadow-sm" : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.06]")
     }, hub.label);
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-1.5 pt-1.5 text-[11px]"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 text-[10px] font-medium uppercase mr-1"
+  }, "Source Ecosystem:"), [{
+    label: "🌐 All Sources",
+    val: "all"
+  }, {
+    label: "🇮🇳 India Tech",
+    val: "india"
+  }, {
+    label: "🤖 Direct AI Labs",
+    val: "ai_registry"
+  }, {
+    label: "🏢 Enterprise Workday",
+    val: "enterprise_workday"
+  }, {
+    label: "🚀 Startups (YC)",
+    val: "startups"
+  }, {
+    label: "🏠 Remote Global",
+    val: "remote"
+  }].map(function (cat, idx) {
+    return /*#__PURE__*/React.createElement("button", {
+      key: idx,
+      type: "button",
+      onClick: function onClick() {
+        return setFilterCategory(cat.val);
+      },
+      className: "px-2 py-0.5 rounded-md transition-all font-semibold text-xs ".concat(filterCategory === cat.val ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border border-emerald-400 shadow-sm" : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/[0.08]")
+    }, cat.label);
   })), /*#__PURE__*/React.createElement("div", {
     className: "pt-3 border-t border-white/[0.05] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-center text-xs"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
@@ -3837,6 +3892,7 @@ function getJobSkillLists(job) {
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
 function JobCard(_ref19) {
+  var _job$experience_compa, _job$experience_compa2;
   var job = _ref19.job,
     _ref19$jobScope = _ref19.jobScope,
     jobScope = _ref19$jobScope === void 0 ? "curated" : _ref19$jobScope,
@@ -3911,28 +3967,85 @@ function JobCard(_ref19) {
     className: "px-2 py-0.5 rounded-md border font-bold text-xs shrink-0 ".concat(scoreColor)
   }, badgeText))), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap items-center gap-1.5 text-[11px]"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, job.source_category && job.source_category !== 'all' && /*#__PURE__*/React.createElement("span", {
+    className: "px-2 py-0.5 rounded-full font-bold bg-indigo-950/70 text-indigo-300 border border-indigo-500/40 flex items-center gap-1 shadow-sm"
+  }, job.source_category === 'india' && '🇮🇳 India Tech', job.source_category === 'ai_registry' && '🤖 Direct AI Lab', job.source_category === 'enterprise_workday' && '🏢 Enterprise Workday', job.source_category === 'startups' && '🚀 YC Startup', job.source_category === 'remote' && '🌐 Remote Global'), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm"
-  }, "\u23F3 Exp: ", getJobExperienceBadge(job)), /*#__PURE__*/React.createElement("span", {
+  }, "\u23F3 Exp: ", ((_job$experience_compa = job.experience_comparison) === null || _job$experience_compa === void 0 ? void 0 : _job$experience_compa.required) || getJobExperienceBadge(job), " ", (_job$experience_compa2 = job.experience_comparison) !== null && _job$experience_compa2 !== void 0 && _job$experience_compa2.candidate ? "(You: ".concat(job.experience_comparison.candidate, ")") : ''), /*#__PURE__*/React.createElement("span", {
+    className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
+  }, "\uD83D\uDCBC ", job.work_mode || 'Remote'), /*#__PURE__*/React.createElement("span", {
+    className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
+  }, "\u23F0 ", job.freshness_label || 'Recently posted'), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
   }, "\uD83D\uDD17 ", job.source || 'Direct'), salaryDisplay !== 'Salary: N/A' && /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/30 font-medium"
   }, "\uD83D\uDCB0 ", salaryDisplay), insights.size_indicator && insights.size_indicator !== 'Unknown' && /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-white/[0.06]"
-  }, "\uD83D\uDC65 ", insights.size_indicator)), job.key_requirements ? /*#__PURE__*/React.createElement("p", {
+  }, "\uD83D\uDC65 ", insights.size_indicator)), job.match_breakdown && /*#__PURE__*/React.createElement("div", {
+    className: "p-2 rounded-lg bg-slate-950/70 border border-white/[0.06] space-y-1.5 shadow-inner"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between text-[10px] font-semibold text-slate-300"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-emerald-400 font-bold flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFAF"), /*#__PURE__*/React.createElement("span", null, "6-Factor Match Breakdown")), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-300 font-mono text-[11px] font-bold"
+  }, score, "% Total Fit")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-3 sm:grid-cols-6 gap-1 text-[10px] text-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Skills (30%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-emerald-300"
+  }, job.match_breakdown.skills || 0, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Role (25%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-indigo-300"
+  }, job.match_breakdown.role || 0, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Exp (15%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-amber-300"
+  }, job.match_breakdown.experience || 0, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Loc (10%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-sky-300"
+  }, job.match_breakdown.location || 0, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Mode (10%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-teal-300"
+  }, job.match_breakdown.work_mode || 0, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/90 rounded px-1 py-0.5 border border-white/[0.04]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] text-slate-400"
+  }, "Fresh (10%)"), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-purple-300"
+  }, job.match_breakdown.freshness || 0, "%")))), job.key_requirements ? /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-300 line-clamp-2 leading-relaxed bg-slate-950/40 p-2 rounded-lg border border-white/[0.04]"
   }, job.key_requirements) : job.match_reason && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400 italic line-clamp-2 leading-relaxed"
-  }, "\uD83D\uDCA1 ", job.match_reason), cardMatchingSkills.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCA1 ", job.match_reason), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1 items-center pt-0.5"
-  }, cardMatchingSkills.slice(0, 3).map(function (s, idx) {
+  }, cardMatchingSkills.slice(0, 5).map(function (s, idx) {
     return /*#__PURE__*/React.createElement("span", {
       key: idx,
-      className: "px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 text-[10px] border border-emerald-500/20"
-    }, "\u2713 ", s);
-  }), cardMatchingSkills.length > 3 && /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-500"
-  }, "+", cardMatchingSkills.length - 3, " more"))), /*#__PURE__*/React.createElement("div", {
+      className: "px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30 flex items-center gap-0.5"
+    }, /*#__PURE__*/React.createElement("span", null, "\u2713"), " ", s);
+  }), cardMatchingSkills.length > 5 && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-500 font-medium"
+  }, "+", cardMatchingSkills.length - 5, " more"), Array.isArray(job.missing_skills) && job.missing_skills.slice(0, 2).map(function (s, idx) {
+    return /*#__PURE__*/React.createElement("span", {
+      key: "miss-".concat(idx),
+      className: "px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-medium border border-white/10 flex items-center gap-0.5"
+    }, /*#__PURE__*/React.createElement("span", null, "+"), " ", s);
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-xs"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] text-slate-400 flex items-center gap-1.5"
@@ -3968,14 +4081,14 @@ function JobDetailModal(_ref20) {
     onUpdateJob = _ref20.onUpdateJob,
     onOpenCookieModal = _ref20.onOpenCookieModal,
     showToast = _ref20.showToast;
-  var _useState139 = useState(false),
-    _useState140 = _slicedToArray(_useState139, 2),
-    fetchingContacts = _useState140[0],
-    setFetchingContacts = _useState140[1];
-  var _useState141 = useState("overview"),
+  var _useState141 = useState(false),
     _useState142 = _slicedToArray(_useState141, 2),
-    activeTab = _useState142[0],
-    setActiveTab = _useState142[1]; // 'overview' | 'contacts' | 'outreach'
+    fetchingContacts = _useState142[0],
+    setFetchingContacts = _useState142[1];
+  var _useState143 = useState("overview"),
+    _useState144 = _slicedToArray(_useState143, 2),
+    activeTab = _useState144[0],
+    setActiveTab = _useState144[1]; // 'overview' | 'contacts' | 'outreach'
 
   var score = Math.round(job.match_score || 0);
   var insights = job.company_insights || {};
@@ -4434,14 +4547,14 @@ function CompanyDossierModal(_ref23) {
     token = _ref23.token,
     onClose = _ref23.onClose,
     showToast = _ref23.showToast;
-  var _useState143 = useState(null),
-    _useState144 = _slicedToArray(_useState143, 2),
-    dossier = _useState144[0],
-    setDossier = _useState144[1];
-  var _useState145 = useState(true),
+  var _useState145 = useState(null),
     _useState146 = _slicedToArray(_useState145, 2),
-    loading = _useState146[0],
-    setLoading = _useState146[1];
+    dossier = _useState146[0],
+    setDossier = _useState146[1];
+  var _useState147 = useState(true),
+    _useState148 = _slicedToArray(_useState147, 2),
+    loading = _useState148[0],
+    setLoading = _useState148[1];
   useEffect(function () {
     if (!companyName) return;
     var fetchDossier = /*#__PURE__*/function () {
@@ -4586,18 +4699,18 @@ function PipelineAnalyticsView(_ref25) {
   var token = _ref25.token,
     _ref25$appliedJobs = _ref25.appliedJobs,
     appliedJobs = _ref25$appliedJobs === void 0 ? [] : _ref25$appliedJobs;
-  var _useState147 = useState(null),
-    _useState148 = _slicedToArray(_useState147, 2),
-    metrics = _useState148[0],
-    setMetrics = _useState148[1];
-  var _useState149 = useState([]),
+  var _useState149 = useState(null),
     _useState150 = _slicedToArray(_useState149, 2),
-    heatmap = _useState150[0],
-    setHeatmap = _useState150[1];
-  var _useState151 = useState(true),
+    metrics = _useState150[0],
+    setMetrics = _useState150[1];
+  var _useState151 = useState([]),
     _useState152 = _slicedToArray(_useState151, 2),
-    loading = _useState152[0],
-    setLoading = _useState152[1];
+    heatmap = _useState152[0],
+    setHeatmap = _useState152[1];
+  var _useState153 = useState(true),
+    _useState154 = _slicedToArray(_useState153, 2),
+    loading = _useState154[0],
+    setLoading = _useState154[1];
   useEffect(function () {
     var fetchAnalytics = /*#__PURE__*/function () {
       var _ref26 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee17() {
@@ -4722,42 +4835,42 @@ function PipelineAnalyticsView(_ref25) {
 function StoryBankView(_ref27) {
   var token = _ref27.token,
     showToast = _ref27.showToast;
-  var _useState153 = useState([]),
-    _useState154 = _slicedToArray(_useState153, 2),
-    stories = _useState154[0],
-    setStories = _useState154[1];
-  var _useState155 = useState(true),
+  var _useState155 = useState([]),
     _useState156 = _slicedToArray(_useState155, 2),
-    loading = _useState156[0],
-    setLoading = _useState156[1];
-  var _useState157 = useState(false),
+    stories = _useState156[0],
+    setStories = _useState156[1];
+  var _useState157 = useState(true),
     _useState158 = _slicedToArray(_useState157, 2),
-    showCreate = _useState158[0],
-    setShowCreate = _useState158[1];
-  var _useState159 = useState(""),
+    loading = _useState158[0],
+    setLoading = _useState158[1];
+  var _useState159 = useState(false),
     _useState160 = _slicedToArray(_useState159, 2),
-    title = _useState160[0],
-    setTitle = _useState160[1];
+    showCreate = _useState160[0],
+    setShowCreate = _useState160[1];
   var _useState161 = useState(""),
     _useState162 = _slicedToArray(_useState161, 2),
-    situation = _useState162[0],
-    setSituation = _useState162[1];
+    title = _useState162[0],
+    setTitle = _useState162[1];
   var _useState163 = useState(""),
     _useState164 = _slicedToArray(_useState163, 2),
-    task = _useState164[0],
-    setTask = _useState164[1];
+    situation = _useState164[0],
+    setSituation = _useState164[1];
   var _useState165 = useState(""),
     _useState166 = _slicedToArray(_useState165, 2),
-    action = _useState166[0],
-    setAction = _useState166[1];
+    task = _useState166[0],
+    setTask = _useState166[1];
   var _useState167 = useState(""),
     _useState168 = _slicedToArray(_useState167, 2),
-    result = _useState168[0],
-    setResult = _useState168[1];
-  var _useState169 = useState("Python, LangGraph, FastAPI"),
+    action = _useState168[0],
+    setAction = _useState168[1];
+  var _useState169 = useState(""),
     _useState170 = _slicedToArray(_useState169, 2),
-    techs = _useState170[0],
-    setTechs = _useState170[1];
+    result = _useState170[0],
+    setResult = _useState170[1];
+  var _useState171 = useState("Python, LangGraph, FastAPI"),
+    _useState172 = _slicedToArray(_useState171, 2),
+    techs = _useState172[0],
+    setTechs = _useState172[1];
   var fetchStories = /*#__PURE__*/function () {
     var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee18() {
       var res, data;
@@ -4978,132 +5091,132 @@ function EmailAlertsView(_ref30) {
     appliedJobs = _ref30$appliedJobs === void 0 ? [] : _ref30$appliedJobs,
     onToggleApplied = _ref30.onToggleApplied,
     onInspectSnapshot = _ref30.onInspectSnapshot;
-  var _useState171 = useState(user.email || ""),
-    _useState172 = _slicedToArray(_useState171, 2),
-    email = _useState172[0],
-    setEmail = _useState172[1];
-  var _useState173 = useState("AI ML Intern"),
+  var _useState173 = useState(user.email || ""),
     _useState174 = _slicedToArray(_useState173, 2),
-    role = _useState174[0],
-    setRole = _useState174[1];
-  var _useState175 = useState("Pune"),
+    email = _useState174[0],
+    setEmail = _useState174[1];
+  var _useState175 = useState("AI ML Intern"),
     _useState176 = _slicedToArray(_useState175, 2),
-    location = _useState176[0],
-    setLocation = _useState176[1];
-  var _useState177 = useState("any"),
+    role = _useState176[0],
+    setRole = _useState176[1];
+  var _useState177 = useState("Pune"),
     _useState178 = _slicedToArray(_useState177, 2),
-    workMode = _useState178[0],
-    setWorkMode = _useState178[1];
-  var _useState179 = useState("intern"),
+    location = _useState178[0],
+    setLocation = _useState178[1];
+  var _useState179 = useState("any"),
     _useState180 = _slicedToArray(_useState179, 2),
-    experienceLevel = _useState180[0],
-    setExperienceLevel = _useState180[1];
-  var _useState181 = useState(3),
+    workMode = _useState180[0],
+    setWorkMode = _useState180[1];
+  var _useState181 = useState("intern"),
     _useState182 = _slicedToArray(_useState181, 2),
-    maxAgeDays = _useState182[0],
-    setMaxAgeDays = _useState182[1];
-  var _useState183 = useState("09:00"),
+    experienceLevel = _useState182[0],
+    setExperienceLevel = _useState182[1];
+  var _useState183 = useState(3),
     _useState184 = _slicedToArray(_useState183, 2),
-    preferredTime = _useState184[0],
-    setPreferredTime = _useState184[1];
-  var _useState185 = useState("All"),
+    maxAgeDays = _useState184[0],
+    setMaxAgeDays = _useState184[1];
+  var _useState185 = useState("09:00"),
     _useState186 = _slicedToArray(_useState185, 2),
-    subDomain = _useState186[0],
-    setSubDomain = _useState186[1];
-  var _useState187 = useState([]),
+    preferredTime = _useState186[0],
+    setPreferredTime = _useState186[1];
+  var _useState187 = useState("All"),
     _useState188 = _slicedToArray(_useState187, 2),
-    aiFacets = _useState188[0],
-    setAiFacets = _useState188[1];
-  var _useState189 = useState(""),
+    subDomain = _useState188[0],
+    setSubDomain = _useState188[1];
+  var _useState189 = useState([]),
     _useState190 = _slicedToArray(_useState189, 2),
-    stipendRange = _useState190[0],
-    setStipendRange = _useState190[1];
-  var _useState191 = useState([]),
+    aiFacets = _useState190[0],
+    setAiFacets = _useState190[1];
+  var _useState191 = useState(""),
     _useState192 = _slicedToArray(_useState191, 2),
-    followupsList = _useState192[0],
-    setFollowupsList = _useState192[1];
-  var _useState193 = useState(false),
+    stipendRange = _useState192[0],
+    setStipendRange = _useState192[1];
+  var _useState193 = useState([]),
     _useState194 = _slicedToArray(_useState193, 2),
-    loadingFollowups = _useState194[0],
-    setLoadingFollowups = _useState194[1];
-  var _useState195 = useState(null),
+    followupsList = _useState194[0],
+    setFollowupsList = _useState194[1];
+  var _useState195 = useState(false),
     _useState196 = _slicedToArray(_useState195, 2),
-    resumeFile = _useState196[0],
-    setResumeFile = _useState196[1];
+    loadingFollowups = _useState196[0],
+    setLoadingFollowups = _useState196[1];
   var _useState197 = useState(null),
     _useState198 = _slicedToArray(_useState197, 2),
-    resumeProfile = _useState198[0],
-    setResumeProfile = _useState198[1];
-  var _useState199 = useState(false),
+    resumeFile = _useState198[0],
+    setResumeFile = _useState198[1];
+  var _useState199 = useState(null),
     _useState200 = _slicedToArray(_useState199, 2),
-    parsingResume = _useState200[0],
-    setParsingResume = _useState200[1];
+    resumeProfile = _useState200[0],
+    setResumeProfile = _useState200[1];
   var _useState201 = useState(false),
     _useState202 = _slicedToArray(_useState201, 2),
-    saving = _useState202[0],
-    setSaving = _useState202[1];
+    parsingResume = _useState202[0],
+    setParsingResume = _useState202[1];
   var _useState203 = useState(false),
     _useState204 = _slicedToArray(_useState203, 2),
-    testing = _useState204[0],
-    setTesting = _useState204[1];
-  var _useState205 = useState([]),
+    saving = _useState204[0],
+    setSaving = _useState204[1];
+  var _useState205 = useState(false),
     _useState206 = _slicedToArray(_useState205, 2),
-    activeAlerts = _useState206[0],
-    setActiveAlerts = _useState206[1];
-  var _useState207 = useState(true),
+    testing = _useState206[0],
+    setTesting = _useState206[1];
+  var _useState207 = useState([]),
     _useState208 = _slicedToArray(_useState207, 2),
-    loadingAlerts = _useState208[0],
-    setLoadingAlerts = _useState208[1];
-  var _useState209 = useState([]),
+    activeAlerts = _useState208[0],
+    setActiveAlerts = _useState208[1];
+  var _useState209 = useState(true),
     _useState210 = _slicedToArray(_useState209, 2),
-    historyList = _useState210[0],
-    setHistoryList = _useState210[1];
-  var _useState211 = useState(true),
+    loadingAlerts = _useState210[0],
+    setLoadingAlerts = _useState210[1];
+  var _useState211 = useState([]),
     _useState212 = _slicedToArray(_useState211, 2),
-    loadingHistory = _useState212[0],
-    setLoadingHistory = _useState212[1];
-  var _useState213 = useState(null),
+    historyList = _useState212[0],
+    setHistoryList = _useState212[1];
+  var _useState213 = useState(true),
     _useState214 = _slicedToArray(_useState213, 2),
-    inspectingId = _useState214[0],
-    setInspectingId = _useState214[1];
-
-  // Direct In-Page Historical Automation Snapshot Viewer State
+    loadingHistory = _useState214[0],
+    setLoadingHistory = _useState214[1];
   var _useState215 = useState(null),
     _useState216 = _slicedToArray(_useState215, 2),
-    viewingSnapshot = _useState216[0],
-    setViewingSnapshot = _useState216[1];
-  var _useState217 = useState("curated"),
+    inspectingId = _useState216[0],
+    setInspectingId = _useState216[1];
+
+  // Direct In-Page Historical Automation Snapshot Viewer State
+  var _useState217 = useState(null),
     _useState218 = _slicedToArray(_useState217, 2),
-    snapshotScope = _useState218[0],
-    setSnapshotScope = _useState218[1]; // 'curated' | 'unique' | 'raw'
-  var _useState219 = useState(""),
+    viewingSnapshot = _useState218[0],
+    setViewingSnapshot = _useState218[1];
+  var _useState219 = useState("curated"),
     _useState220 = _slicedToArray(_useState219, 2),
-    snapshotFilterKeyword = _useState220[0],
-    setSnapshotFilterKeyword = _useState220[1];
+    snapshotScope = _useState220[0],
+    setSnapshotScope = _useState220[1]; // 'curated' | 'unique' | 'raw'
   var _useState221 = useState(""),
     _useState222 = _slicedToArray(_useState221, 2),
-    snapshotFilterLocation = _useState222[0],
-    setSnapshotFilterLocation = _useState222[1];
-  var _useState223 = useState("all"),
+    snapshotFilterKeyword = _useState222[0],
+    setSnapshotFilterKeyword = _useState222[1];
+  var _useState223 = useState(""),
     _useState224 = _slicedToArray(_useState223, 2),
-    snapshotFilterWorkMode = _useState224[0],
-    setSnapshotFilterWorkMode = _useState224[1];
+    snapshotFilterLocation = _useState224[0],
+    setSnapshotFilterLocation = _useState224[1];
   var _useState225 = useState("all"),
     _useState226 = _slicedToArray(_useState225, 2),
-    snapshotFilterExperience = _useState226[0],
-    setSnapshotFilterExperience = _useState226[1];
-  var _useState227 = useState(0),
+    snapshotFilterWorkMode = _useState226[0],
+    setSnapshotFilterWorkMode = _useState226[1];
+  var _useState227 = useState("all"),
     _useState228 = _slicedToArray(_useState227, 2),
-    snapshotMinScore = _useState228[0],
-    setSnapshotMinScore = _useState228[1];
-  var _useState229 = useState("score"),
+    snapshotFilterExperience = _useState228[0],
+    setSnapshotFilterExperience = _useState228[1];
+  var _useState229 = useState(0),
     _useState230 = _slicedToArray(_useState229, 2),
-    snapshotSortBy = _useState230[0],
-    setSnapshotSortBy = _useState230[1]; // 'score' | 'date'
-  var _useState231 = useState(null),
+    snapshotMinScore = _useState230[0],
+    setSnapshotMinScore = _useState230[1];
+  var _useState231 = useState("score"),
     _useState232 = _slicedToArray(_useState231, 2),
-    selectedJob = _useState232[0],
-    setSelectedJob = _useState232[1];
+    snapshotSortBy = _useState232[0],
+    setSnapshotSortBy = _useState232[1]; // 'score' | 'date'
+  var _useState233 = useState(null),
+    _useState234 = _slicedToArray(_useState233, 2),
+    selectedJob = _useState234[0],
+    setSelectedJob = _useState234[1];
   var fetchAlerts = /*#__PURE__*/function () {
     var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee20() {
       var res, data;
@@ -6178,30 +6291,30 @@ function AdminPortal(_ref41) {
   var token = _ref41.token,
     user = _ref41.user,
     showToast = _ref41.showToast;
-  var _useState233 = useState([]),
-    _useState234 = _slicedToArray(_useState233, 2),
-    users = _useState234[0],
-    setUsers = _useState234[1];
-  var _useState235 = useState(true),
+  var _useState235 = useState([]),
     _useState236 = _slicedToArray(_useState235, 2),
-    loading = _useState236[0],
-    setLoading = _useState236[1];
-  var _useState237 = useState(""),
+    users = _useState236[0],
+    setUsers = _useState236[1];
+  var _useState237 = useState(true),
     _useState238 = _slicedToArray(_useState237, 2),
-    newEmail = _useState238[0],
-    setNewEmail = _useState238[1];
+    loading = _useState238[0],
+    setLoading = _useState238[1];
   var _useState239 = useState(""),
     _useState240 = _slicedToArray(_useState239, 2),
-    newPassword = _useState240[0],
-    setNewPassword = _useState240[1];
-  var _useState241 = useState("user"),
+    newEmail = _useState240[0],
+    setNewEmail = _useState240[1];
+  var _useState241 = useState(""),
     _useState242 = _slicedToArray(_useState241, 2),
-    newRole = _useState242[0],
-    setNewRole = _useState242[1];
-  var _useState243 = useState(false),
+    newPassword = _useState242[0],
+    setNewPassword = _useState242[1];
+  var _useState243 = useState("user"),
     _useState244 = _slicedToArray(_useState243, 2),
-    creating = _useState244[0],
-    setCreating = _useState244[1];
+    newRole = _useState244[0],
+    setNewRole = _useState244[1];
+  var _useState245 = useState(false),
+    _useState246 = _slicedToArray(_useState245, 2),
+    creating = _useState246[0],
+    setCreating = _useState246[1];
   var fetchUsers = /*#__PURE__*/function () {
     var _ref42 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee30() {
       var res, data;

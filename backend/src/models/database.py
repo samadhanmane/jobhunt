@@ -73,6 +73,10 @@ def init_and_migrate_db():
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_required VARCHAR(100)",
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS min_experience_years DOUBLE PRECISION",
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS seniority_level VARCHAR(50)",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS experience_comparison JSON",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS match_breakdown JSON",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source_category VARCHAR(50)",
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS freshness_label VARCHAR(100)",
 
             # Email alerts
             "ALTER TABLE email_alerts ADD COLUMN IF NOT EXISTS experience_level VARCHAR(50) DEFAULT 'all'",

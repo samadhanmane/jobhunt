@@ -13,6 +13,12 @@ from src.integrations.greenhouse.client import GreenhouseClient
 from src.integrations.lever.client import LeverClient
 from src.integrations.ashby.client import AshbyClient
 from src.integrations.phenom.client import PhenomClient
+from src.integrations.workday.client import WorkdayClient
+from src.integrations.smartrecruiters.client import SmartRecruitersClient
+from src.integrations.workable.client import WorkableClient
+from src.integrations.remotive.client import RemotiveClient
+from src.integrations.instahyre.client import InstahyreClient
+from src.integrations.ycombinator.client import YCombinatorClient
 from src.llm.prompts.search import QUERY_PLANNER_SYSTEM_PROMPT
 
 class OrchestratorAgent(BaseJobAgent):
@@ -28,6 +34,12 @@ class OrchestratorAgent(BaseJobAgent):
         self.lever = LeverClient()
         self.ashby = AshbyClient()
         self.phenom = PhenomClient()
+        self.workday = WorkdayClient()
+        self.smartrecruiters = SmartRecruitersClient()
+        self.workable = WorkableClient()
+        self.remotive = RemotiveClient()
+        self.instahyre = InstahyreClient()
+        self.ycombinator = YCombinatorClient()
 
     def _extract_json(self, raw_content: str) -> Dict[str, Any]:
         """Safely extract JSON object from LLM response."""
@@ -192,33 +204,55 @@ Candidate Background:
                 finally:
                     gc.collect()
 
-        target_src = (preferences.get("source_platform") or preferences.get("sources") or "all").lower().strip()
-        run_all = target_src in ["all", "", "any", "all platforms"]
+        target_src = (preferences.get("source_platform") or preferences.get("sources") or "").lower().strip()
+        target_cat = (preferences.get("source_category") or preferences.get("category") or "all").lower().strip()
 
         tasks = []
         for idx, q_title in enumerate(target_queries):
-            # Run JobSpy on primary anchor query to keep memory lean (< 50MB RAM)
-            if run_all or target_src in ["jobspy", "linkedin", "indeed"]:
+            # 1. India Platforms (Instahyre, JobSpy India)
+            if target_cat in ["all", "india"] and (not target_src or target_src in ["instahyre"]):
+                if idx == 0:
+                    tasks.append(run_guarded(self.instahyre.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "india"] and (not target_src or target_src in ["jobspy", "linkedin", "indeed"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.jobspy.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["himalayas"]:
-                tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["arbeitnow"]:
-                tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
-            if run_all or target_src in ["freehire"]:
-                tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
-            if run_all or target_src in ["jobicy"]:
-                tasks.append(run_guarded(self.jobicy.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["remoteok"]:
-                tasks.append(run_guarded(self.remoteok.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["greenhouse"]:
-                tasks.append(run_guarded(self.greenhouse.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["lever"]:
-                tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["ashby"]:
-                tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
-            if run_all or target_src in ["phenom"]:
+
+            # 2. Enterprise Workday & Global ATS
+            if target_cat in ["all", "enterprise_workday"] and (not target_src or target_src in ["workday"]):
+                tasks.append(run_guarded(self.workday.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "enterprise_workday"] and (not target_src or target_src in ["smartrecruiters"]):
+                tasks.append(run_guarded(self.smartrecruiters.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "enterprise_workday"] and (not target_src or target_src in ["phenom"]):
                 tasks.append(run_guarded(self.phenom.search(query=q_title, location=location, remote=remote)))
+
+            # 3. Direct AI Registry & ATS (Ashby, Greenhouse, Lever, Workable)
+            if target_cat in ["all", "ai_registry", "startups"] and (not target_src or target_src in ["ashby"]):
+                tasks.append(run_guarded(self.ashby.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "ai_registry"] and (not target_src or target_src in ["greenhouse"]):
+                tasks.append(run_guarded(self.greenhouse.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "ai_registry"] and (not target_src or target_src in ["lever"]):
+                tasks.append(run_guarded(self.lever.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "ai_registry"] and (not target_src or target_src in ["workable"]):
+                tasks.append(run_guarded(self.workable.search(query=q_title, location=location, remote=remote)))
+
+            # 4. Startups & High-Growth Ecosystems (Y Combinator)
+            if target_cat in ["all", "startups"] and (not target_src or target_src in ["ycombinator", "yc"]):
+                if idx == 0:
+                    tasks.append(run_guarded(self.ycombinator.search(query=q_title, location=location, remote=remote)))
+
+            # 5. Remote Global Feeds
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["remotive"]):
+                tasks.append(run_guarded(self.remotive.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["himalayas"]):
+                tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["remoteok"]):
+                tasks.append(run_guarded(self.remoteok.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["jobicy"]):
+                tasks.append(run_guarded(self.jobicy.search(query=q_title, location=location, remote=remote)))
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["arbeitnow"]):
+                tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
+            if target_cat in ["all", "remote"] and (not target_src or target_src in ["freehire"]):
+                tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -229,8 +263,23 @@ Candidate Background:
                 for job in res:
                     if job.get("description") and len(job["description"]) > 3000:
                         job["description"] = job["description"][:3000]
-                    source = job.get("source", "unknown")
+                    source = (job.get("source") or "unknown").lower()
                     platform_counts[source] = platform_counts.get(source, 0) + 1
+
+                    # Normalize source_category
+                    if "instahyre" in source or ("jobspy" in source and "india" in str(job.get("location", "")).lower()):
+                        job["source_category"] = "india"
+                    elif any(s in source for s in ["workday", "smartrecruiters", "phenom"]):
+                        job["source_category"] = "enterprise_workday"
+                    elif any(s in source for s in ["ycombinator", "yc", "hn"]):
+                        job["source_category"] = "startups"
+                    elif any(s in source for s in ["remotive", "remoteok", "himalayas", "jobicy", "arbeitnow"]):
+                        job["source_category"] = "remote"
+                    elif any(s in source for s in ["ashby", "greenhouse", "lever", "workable"]):
+                        job["source_category"] = "ai_registry"
+                    else:
+                        job["source_category"] = "all"
+
                     all_jobs.append(job)
             else:
                 print(f"[Orchestrator] Task {idx} notice: {res}")
