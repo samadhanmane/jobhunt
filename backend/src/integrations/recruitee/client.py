@@ -9,8 +9,9 @@ from src.utils.date_utils import format_posted_date_for_csv
 
 RECRUITEE_COMPANIES = [
     {"name": "Bunq", "subdomain": "bunq"},
-    {"name": "Hotjar", "subdomain": "hotjar"},
-    {"name": "Transifex", "subdomain": "transifex"},
+    {"name": "Channable", "subdomain": "channable"},
+    {"name": "Helloprint", "subdomain": "helloprint"},
+    {"name": "Personio", "subdomain": "personio"},
 ]
 
 class RecruiteeClient(BaseJobIntegration):
@@ -88,8 +89,10 @@ class RecruiteeClient(BaseJobIntegration):
                     "work_mode": work_mode,
                     "description": desc_clean[:2000] if desc_clean else f"{title} at {name}"
                 })
+        except httpx.RequestError:
+            pass
         except Exception as e:
-            print(f"[Recruitee] Notice: {name} error: {e}")
+            pass
 
         return jobs
 

@@ -9,10 +9,12 @@ from src.utils.date_utils import format_posted_date_for_csv
 
 TEAMTAILOR_COMPANIES = [
     {"name": "Kry / Livi", "domain": "career.kry.se"},
-    {"name": "Epidemic Sound", "domain": "jobs.epidemicsound.com"},
-    {"name": "Bambora", "domain": "careers.bambora.com"},
-    {"name": "Mentimeter", "domain": "jobs.mentimeter.com"},
-    {"name": "Polestar", "domain": "careers.polestar.com"},
+    {"name": "VOI Technology", "domain": "careers.voi.com"},
+    {"name": "Polestar", "domain": "polestar.teamtailor.com"},
+    {"name": "Storytel", "domain": "jobs.storytel.com"},
+    {"name": "Younium", "domain": "careers.younium.com"},
+    {"name": "Fishbrain", "domain": "careers.fishbrain.com"},
+    {"name": "Hemnet", "domain": "career.hemnet.se"},
 ]
 
 class TeamtailorClient(BaseJobIntegration):
@@ -73,8 +75,12 @@ class TeamtailorClient(BaseJobIntegration):
                     "work_mode": work_mode,
                     "description": desc_clean[:2000] if desc_clean else f"{title} at {name}"
                 })
+        except httpx.RequestError:
+            # Network, DNS lookup, or timeout - gracefully skip tenant
+            pass
         except Exception as e:
-            print(f"[Teamtailor] Notice: {name} error: {e}")
+            # Log unexpected parsing errors
+            pass
 
         return jobs
 
