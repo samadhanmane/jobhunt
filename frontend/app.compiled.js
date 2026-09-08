@@ -3962,43 +3962,339 @@ function JobSearchDashboard(_ref13) {
 }
 
 // ==========================================
-// Helper: Extract & Format Matched / Missing Skills from Parsed Resume
+// Helper: Extract & Format Matched / Missing / Extra Skills
 // ==========================================
+var TECH_SKILL_KEYWORDS = [{
+  name: "Python",
+  regex: /\bpython\b/i
+}, {
+  name: "PyTorch",
+  regex: /\b(pytorch|torch)\b/i
+}, {
+  name: "TensorFlow",
+  regex: /\b(tensorflow|tf)\b/i
+}, {
+  name: "Keras",
+  regex: /\bkeras\b/i
+}, {
+  name: "JAX",
+  regex: /\bjax\b/i
+}, {
+  name: "Scikit-Learn",
+  regex: /\b(scikit-learn|sklearn)\b/i
+}, {
+  name: "Pandas",
+  regex: /\bpandas\b/i
+}, {
+  name: "NumPy",
+  regex: /\bnumpy\b/i
+}, {
+  name: "OpenCV",
+  regex: /\b(opencv|cv2)\b/i
+}, {
+  name: "Deep Learning",
+  regex: /\b(deep learning|dl)\b/i
+}, {
+  name: "Machine Learning",
+  regex: /\b(machine learning|ml)\b/i
+}, {
+  name: "Data Science",
+  regex: /\b(data science|data scientist)\b/i
+}, {
+  name: "Data Engineering",
+  regex: /\b(data engineering|data engineer)\b/i
+}, {
+  name: "NLP",
+  regex: /\b(natural language processing|nlp)\b/i
+}, {
+  name: "Computer Vision",
+  regex: /\b(computer vision|cv)\b/i
+}, {
+  name: "Transformers",
+  regex: /\b(transformers|hugging\s*face|huggingface)\b/i
+}, {
+  name: "LangChain",
+  regex: /\blangchain\b/i
+}, {
+  name: "LangGraph",
+  regex: /\blanggraph\b/i
+}, {
+  name: "LlamaIndex",
+  regex: /\b(llamaindex|llama-index)\b/i
+}, {
+  name: "RAG",
+  regex: /\b(rag|retrieval[-\s]augmented generation)\b/i
+}, {
+  name: "Agentic AI",
+  regex: /\b(agentic|ai agents?|multi-agent)\b/i
+}, {
+  name: "OpenAI API",
+  regex: /\b(openai|gpt-?4o?|chatgpt)\b/i
+}, {
+  name: "Gemini API",
+  regex: /\b(gemini|google gemini)\b/i
+}, {
+  name: "Groq",
+  regex: /\bgroq\b/i
+}, {
+  name: "Mistral AI",
+  regex: /\bmistral\b/i
+}, {
+  name: "Pinecone",
+  regex: /\bpinecone\b/i
+}, {
+  name: "ChromaDB",
+  regex: /\b(chromadb|chroma)\b/i
+}, {
+  name: "Weaviate",
+  regex: /\bweaviate\b/i
+}, {
+  name: "Qdrant",
+  regex: /\bqdrant\b/i
+}, {
+  name: "FAISS",
+  regex: /\bfaiss\b/i
+}, {
+  name: "FastAPI",
+  regex: /\bfastapi\b/i
+}, {
+  name: "Flask",
+  regex: /\bflask\b/i
+}, {
+  name: "Django",
+  regex: /\bdjango\b/i
+}, {
+  name: "Node.js",
+  regex: /\b(node(\.js)?|nodejs)\b/i
+}, {
+  name: "Express",
+  regex: /\bexpress(\.js)?\b/i
+}, {
+  name: "Spring Boot",
+  regex: /\bspring boot\b/i
+}, {
+  name: "GraphQL",
+  regex: /\bgraphql\b/i
+}, {
+  name: "REST APIs",
+  regex: /\brest(ful)?\s*apis?\b/i
+}, {
+  name: "Microservices",
+  regex: /\bmicroservices?\b/i
+}, {
+  name: "PostgreSQL",
+  regex: /\bpostgres(ql)?\b/i
+}, {
+  name: "MySQL",
+  regex: /\bmysql\b/i
+}, {
+  name: "MongoDB Atlas",
+  regex: /\bmongodb(\s*atlas)?|\bmongo\b/i
+}, {
+  name: "Redis",
+  regex: /\bredis\b/i
+}, {
+  name: "SQL",
+  regex: /\bsql\b/i
+}, {
+  name: "Docker",
+  regex: /\bdocker\b/i
+}, {
+  name: "Kubernetes",
+  regex: /\b(kubernetes|k8s)\b/i
+}, {
+  name: "AWS",
+  regex: /\b(aws|amazon web services)\b/i
+}, {
+  name: "GCP",
+  regex: /\b(gcp|google cloud)\b/i
+}, {
+  name: "Azure",
+  regex: /\bazure\b/i
+}, {
+  name: "Git",
+  regex: /\b(git|github|gitlab)\b/i
+}, {
+  name: "CI/CD",
+  regex: /\bci[\s/-]?cd\b/i
+}, {
+  name: "Linux",
+  regex: /\blinux\b/i
+}, {
+  name: "React",
+  regex: /\breact(\.js|js)?(?!\s+native)\b/i
+}, {
+  name: "TypeScript",
+  regex: /\b(typescript|ts)\b/i
+}, {
+  name: "JavaScript",
+  regex: /\b(javascript|js)\b/i
+}, {
+  name: "C++",
+  regex: /(?:^|[^\w])c\+\+(?:$|[^\w])/i
+}, {
+  name: "C#",
+  regex: /(?:^|[^\w])c#(?:$|[^\w])/i
+}, {
+  name: "C",
+  regex: /(?<![a-zA-Z0-9_#+])c(?![+#a-zA-Z0-9_])/i
+}, {
+  name: "Go",
+  regex: /\bgolang\b|(?<!\w)go(?!\w)(?=\s*(?:,|and|\/|developer|engineer|cloud))/i
+}, {
+  name: "Rust",
+  regex: /\brust\b/i
+}, {
+  name: "Java",
+  regex: /\bjava\b/i
+}, {
+  name: "Kafka",
+  regex: /\bkafka\b/i
+}, {
+  name: "Apache Spark",
+  regex: /\b(spark|pyspark)\b/i
+}];
+function extractSkillsFromJobText(text) {
+  if (!text) return [];
+  var found = [];
+  var _iterator7 = _createForOfIteratorHelper(TECH_SKILL_KEYWORDS),
+    _step7;
+  try {
+    for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
+      var item = _step7.value;
+      if (item.regex.test(text)) {
+        if (!found.includes(item.name)) found.push(item.name);
+      }
+    }
+  } catch (err) {
+    _iterator7.e(err);
+  } finally {
+    _iterator7.f();
+  }
+  return found;
+}
 function getJobSkillLists(job) {
   var resumeSkills = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
   if (!job) return {
     matched: [],
-    missing: []
+    missing: [],
+    extras: []
   };
-  var matched = job.matching_skills && Array.isArray(job.matching_skills) && job.matching_skills.length > 0 ? _toConsumableArray(job.matching_skills) : [];
-  var missing = job.missing_skills && Array.isArray(job.missing_skills) && job.missing_skills.length > 0 ? _toConsumableArray(job.missing_skills) : [];
+  var candSkillsLower = new Set((resumeSkills || []).map(function (s) {
+    return String(s || '').trim().toLowerCase();
+  }).filter(Boolean));
+  var matched = job.matching_skills && Array.isArray(job.matching_skills) ? _toConsumableArray(job.matching_skills) : [];
+  var rawMissing = job.missing_skills && Array.isArray(job.missing_skills) ? _toConsumableArray(job.missing_skills) : [];
+  var extras = job.supported_skills && Array.isArray(job.supported_skills) ? _toConsumableArray(job.supported_skills) : [];
 
-  // Match directly against candidate's parsed resume skills
+  // CRITICAL CORRECTION: Skills present on candidate's resume are NEVER missing skills!
+  var missing = [];
+  var _iterator8 = _createForOfIteratorHelper(rawMissing),
+    _step8;
+  try {
+    var _loop = function _loop() {
+      var m = _step8.value;
+      var mClean = String(m || '').trim();
+      if (!mClean) return 1; // continue
+      if (candSkillsLower.has(mClean.toLowerCase())) {
+        // Candidate possesses this skill - move to extras if not already matched
+        if (!matched.some(function (s) {
+          return s.toLowerCase() === mClean.toLowerCase();
+        })) {
+          extras.push(mClean);
+        }
+      } else {
+        missing.push(mClean);
+      }
+    };
+    for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
+      if (_loop()) continue;
+    }
+  } catch (err) {
+    _iterator8.e(err);
+  } finally {
+    _iterator8.f();
+  }
+  var jobText = "".concat(job.title || '', " ").concat(job.description || '', " ").concat(job.key_requirements || '');
+  var extractedJobSkills = extractSkillsFromJobText(jobText);
+
+  // If matched is empty (e.g. raw or unranked jobs), compute fresh two-way alignment
   if (matched.length === 0 && resumeSkills && resumeSkills.length > 0) {
-    var text = "".concat(job.title || '', " ").concat(job.description || '', " ").concat(job.key_requirements || '').toLowerCase();
-    var _iterator7 = _createForOfIteratorHelper(resumeSkills),
-      _step7;
+    var _iterator9 = _createForOfIteratorHelper(resumeSkills),
+      _step9;
     try {
-      for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
-        var s = _step7.value;
+      for (_iterator9.s(); !(_step9 = _iterator9.n()).done;) {
+        var s = _step9.value;
         if (!s) continue;
         var sClean = String(s).trim();
         if (!sClean) continue;
-        if (text.includes(sClean.toLowerCase())) {
+        var escaped = sClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var pattern = sClean.length <= 4 ? new RegExp("(?:^|[^\\w])".concat(escaped, "(?:$|[^\\w])"), 'i') : new RegExp(escaped, 'i');
+        if (pattern.test(jobText)) {
           if (!matched.includes(sClean)) matched.push(sClean);
         } else {
-          if (!missing.includes(sClean)) missing.push(sClean);
+          if (!extras.includes(sClean)) extras.push(sClean);
         }
       }
     } catch (err) {
-      _iterator7.e(err);
+      _iterator9.e(err);
     } finally {
-      _iterator7.f();
+      _iterator9.f();
+    }
+    var PARENT_SKILL_IMPLICATIONS = {
+      "Data Science": ["python", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "keras", "sql", "r"],
+      "Machine Learning": ["python", "tensorflow", "pytorch", "keras", "scikit-learn", "xgboost", "lightgbm", "jax"],
+      "Deep Learning": ["tensorflow", "pytorch", "keras", "jax", "transformers"],
+      "Data Engineering": ["python", "sql", "spark", "kafka", "hadoop", "airflow", "postgresql", "mysql", "mongodb"],
+      "NLP": ["transformers", "spacy", "nltk", "langchain", "rag", "hugging face", "llm"],
+      "Computer Vision": ["opencv", "pytorch", "tensorflow", "yolo", "diffusion"],
+      "REST APIs": ["fastapi", "flask", "django", "express", "spring boot", "nodejs", "nestjs"],
+      "Microservices": ["docker", "kubernetes", "fastapi", "express", "spring boot", "grpc"]
+    };
+    var _iterator10 = _createForOfIteratorHelper(extractedJobSkills),
+      _step10;
+    try {
+      for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
+        var js = _step10.value;
+        if (candSkillsLower.has(js.toLowerCase())) continue;
+        var impls = PARENT_SKILL_IMPLICATIONS[js] || [];
+        if (impls.some(function (impl) {
+          return candSkillsLower.has(impl.toLowerCase());
+        })) {
+          if (!matched.includes(js)) matched.push(js);
+          continue;
+        }
+        if (!missing.includes(js)) missing.push(js);
+      }
+    } catch (err) {
+      _iterator10.e(err);
+    } finally {
+      _iterator10.f();
+    }
+  } else if (resumeSkills && resumeSkills.length > 0 && extras.length === 0) {
+    var matchedLower = new Set(matched.map(function (s) {
+      return s.toLowerCase();
+    }));
+    var _iterator11 = _createForOfIteratorHelper(resumeSkills),
+      _step11;
+    try {
+      for (_iterator11.s(); !(_step11 = _iterator11.n()).done;) {
+        var _s = _step11.value;
+        var _sClean = String(_s || '').trim();
+        if (_sClean && !matchedLower.has(_sClean.toLowerCase())) {
+          if (!extras.includes(_sClean)) extras.push(_sClean);
+        }
+      }
+    } catch (err) {
+      _iterator11.e(err);
+    } finally {
+      _iterator11.f();
     }
   }
   return {
     matched: matched,
-    missing: missing
+    missing: missing,
+    extras: extras
   };
 }
 
@@ -4408,8 +4704,10 @@ function JobDetailModal(_ref20) {
     }, "Matched: ", /*#__PURE__*/React.createElement("strong", {
       className: "text-emerald-400"
     }, skillData.matched.length), " \u2022 Skill Gaps: ", /*#__PURE__*/React.createElement("strong", {
-      className: "text-amber-400"
-    }, skillData.missing.length))), /*#__PURE__*/React.createElement("div", {
+      className: skillData.missing.length > 0 ? "text-amber-400" : "text-emerald-400"
+    }, skillData.missing.length), skillData.extras && skillData.extras.length > 0 && /*#__PURE__*/React.createElement("span", null, " \u2022 Candidate Extras: ", /*#__PURE__*/React.createElement("strong", {
+      className: "text-sky-400"
+    }, skillData.extras.length)))), /*#__PURE__*/React.createElement("div", {
       className: "space-y-2.5"
     }, skillData.matched.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] text-emerald-400 font-semibold flex items-center gap-1 mb-1.5"
@@ -4422,7 +4720,7 @@ function JobDetailModal(_ref20) {
       }, /*#__PURE__*/React.createElement("span", {
         className: "text-emerald-400 font-bold"
       }, "\u2713"), " ", s);
-    }))), skillData.missing.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }))), skillData.missing.length > 0 ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] text-amber-400 font-semibold flex items-center gap-1 mb-1.5"
     }, /*#__PURE__*/React.createElement("span", null, "!"), /*#__PURE__*/React.createElement("span", null, "Target Gaps & Secondary Requirements (", skillData.missing.length, "):")), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-wrap gap-1.5"
@@ -4433,6 +4731,19 @@ function JobDetailModal(_ref20) {
       }, /*#__PURE__*/React.createElement("span", {
         className: "text-amber-400 font-bold"
       }, "!"), " ", s);
+    }))) : skillData.matched.length > 0 && /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-emerald-400/90 font-medium flex items-center gap-1.5 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/20"
+    }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDF1F"), /*#__PURE__*/React.createElement("span", null, "All Detected Job Requirements Met (0 Skill Gaps Identified)")), skillData.extras && skillData.extras.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-sky-400 font-semibold flex items-center gap-1 mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", null, "\u26A1"), /*#__PURE__*/React.createElement("span", null, "Additional Candidate Strengths (", skillData.extras.length, "):")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-1.5 max-h-32 overflow-y-auto"
+    }, skillData.extras.map(function (s, i) {
+      return /*#__PURE__*/React.createElement("span", {
+        key: i,
+        className: "px-2.5 py-0.5 rounded bg-sky-950/60 border border-sky-500/30 text-sky-300 text-[11px] font-medium shadow-sm flex items-center gap-1"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-sky-400 font-bold"
+      }, "\u26A1"), " ", s);
     })))));
   }(), /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-1.5"

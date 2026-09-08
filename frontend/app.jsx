@@ -3503,34 +3503,170 @@ function JobSearchDashboard({
 }
 
 // ==========================================
-// Helper: Extract & Format Matched / Missing Skills from Parsed Resume
+// Helper: Extract & Format Matched / Missing / Extra Skills
 // ==========================================
-function getJobSkillLists(job, resumeSkills = []) {
-    if (!job) return { matched: [], missing: [] };
+const TECH_SKILL_KEYWORDS = [
+    { name: "Python", regex: /\bpython\b/i },
+    { name: "PyTorch", regex: /\b(pytorch|torch)\b/i },
+    { name: "TensorFlow", regex: /\b(tensorflow|tf)\b/i },
+    { name: "Keras", regex: /\bkeras\b/i },
+    { name: "JAX", regex: /\bjax\b/i },
+    { name: "Scikit-Learn", regex: /\b(scikit-learn|sklearn)\b/i },
+    { name: "Pandas", regex: /\bpandas\b/i },
+    { name: "NumPy", regex: /\bnumpy\b/i },
+    { name: "OpenCV", regex: /\b(opencv|cv2)\b/i },
+    { name: "Deep Learning", regex: /\b(deep learning|dl)\b/i },
+    { name: "Machine Learning", regex: /\b(machine learning|ml)\b/i },
+    { name: "Data Science", regex: /\b(data science|data scientist)\b/i },
+    { name: "Data Engineering", regex: /\b(data engineering|data engineer)\b/i },
+    { name: "NLP", regex: /\b(natural language processing|nlp)\b/i },
+    { name: "Computer Vision", regex: /\b(computer vision|cv)\b/i },
+    { name: "Transformers", regex: /\b(transformers|hugging\s*face|huggingface)\b/i },
+    { name: "LangChain", regex: /\blangchain\b/i },
+    { name: "LangGraph", regex: /\blanggraph\b/i },
+    { name: "LlamaIndex", regex: /\b(llamaindex|llama-index)\b/i },
+    { name: "RAG", regex: /\b(rag|retrieval[-\s]augmented generation)\b/i },
+    { name: "Agentic AI", regex: /\b(agentic|ai agents?|multi-agent)\b/i },
+    { name: "OpenAI API", regex: /\b(openai|gpt-?4o?|chatgpt)\b/i },
+    { name: "Gemini API", regex: /\b(gemini|google gemini)\b/i },
+    { name: "Groq", regex: /\bgroq\b/i },
+    { name: "Mistral AI", regex: /\bmistral\b/i },
+    { name: "Pinecone", regex: /\bpinecone\b/i },
+    { name: "ChromaDB", regex: /\b(chromadb|chroma)\b/i },
+    { name: "Weaviate", regex: /\bweaviate\b/i },
+    { name: "Qdrant", regex: /\bqdrant\b/i },
+    { name: "FAISS", regex: /\bfaiss\b/i },
+    { name: "FastAPI", regex: /\bfastapi\b/i },
+    { name: "Flask", regex: /\bflask\b/i },
+    { name: "Django", regex: /\bdjango\b/i },
+    { name: "Node.js", regex: /\b(node(\.js)?|nodejs)\b/i },
+    { name: "Express", regex: /\bexpress(\.js)?\b/i },
+    { name: "Spring Boot", regex: /\bspring boot\b/i },
+    { name: "GraphQL", regex: /\bgraphql\b/i },
+    { name: "REST APIs", regex: /\brest(ful)?\s*apis?\b/i },
+    { name: "Microservices", regex: /\bmicroservices?\b/i },
+    { name: "PostgreSQL", regex: /\bpostgres(ql)?\b/i },
+    { name: "MySQL", regex: /\bmysql\b/i },
+    { name: "MongoDB Atlas", regex: /\bmongodb(\s*atlas)?|\bmongo\b/i },
+    { name: "Redis", regex: /\bredis\b/i },
+    { name: "SQL", regex: /\bsql\b/i },
+    { name: "Docker", regex: /\bdocker\b/i },
+    { name: "Kubernetes", regex: /\b(kubernetes|k8s)\b/i },
+    { name: "AWS", regex: /\b(aws|amazon web services)\b/i },
+    { name: "GCP", regex: /\b(gcp|google cloud)\b/i },
+    { name: "Azure", regex: /\bazure\b/i },
+    { name: "Git", regex: /\b(git|github|gitlab)\b/i },
+    { name: "CI/CD", regex: /\bci[\s/-]?cd\b/i },
+    { name: "Linux", regex: /\blinux\b/i },
+    { name: "React", regex: /\breact(\.js|js)?(?!\s+native)\b/i },
+    { name: "TypeScript", regex: /\b(typescript|ts)\b/i },
+    { name: "JavaScript", regex: /\b(javascript|js)\b/i },
+    { name: "C++", regex: /(?:^|[^\w])c\+\+(?:$|[^\w])/i },
+    { name: "C#", regex: /(?:^|[^\w])c#(?:$|[^\w])/i },
+    { name: "C", regex: /(?<![a-zA-Z0-9_#+])c(?![+#a-zA-Z0-9_])/i },
+    { name: "Go", regex: /\bgolang\b|(?<!\w)go(?!\w)(?=\s*(?:,|and|\/|developer|engineer|cloud))/i },
+    { name: "Rust", regex: /\brust\b/i },
+    { name: "Java", regex: /\bjava\b/i },
+    { name: "Kafka", regex: /\bkafka\b/i },
+    { name: "Apache Spark", regex: /\b(spark|pyspark)\b/i }
+];
 
-    let matched = (job.matching_skills && Array.isArray(job.matching_skills) && job.matching_skills.length > 0)
+function extractSkillsFromJobText(text) {
+    if (!text) return [];
+    const found = [];
+    for (const item of TECH_SKILL_KEYWORDS) {
+        if (item.regex.test(text)) {
+            if (!found.includes(item.name)) found.push(item.name);
+        }
+    }
+    return found;
+}
+
+function getJobSkillLists(job, resumeSkills = []) {
+    if (!job) return { matched: [], missing: [], extras: [] };
+
+    const candSkillsLower = new Set(
+        (resumeSkills || []).map(s => String(s || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    let matched = (job.matching_skills && Array.isArray(job.matching_skills))
         ? [...job.matching_skills]
         : [];
-    let missing = (job.missing_skills && Array.isArray(job.missing_skills) && job.missing_skills.length > 0)
+    let rawMissing = (job.missing_skills && Array.isArray(job.missing_skills))
         ? [...job.missing_skills]
         : [];
+    let extras = (job.supported_skills && Array.isArray(job.supported_skills))
+        ? [...job.supported_skills]
+        : [];
 
-    // Match directly against candidate's parsed resume skills
+    // CRITICAL CORRECTION: Skills present on candidate's resume are NEVER missing skills!
+    let missing = [];
+    for (const m of rawMissing) {
+        const mClean = String(m || '').trim();
+        if (!mClean) continue;
+        if (candSkillsLower.has(mClean.toLowerCase())) {
+            // Candidate possesses this skill - move to extras if not already matched
+            if (!matched.some(s => s.toLowerCase() === mClean.toLowerCase())) {
+                extras.push(mClean);
+            }
+        } else {
+            missing.push(mClean);
+        }
+    }
+
+    const jobText = `${job.title || ''} ${job.description || ''} ${job.key_requirements || ''}`;
+    const extractedJobSkills = extractSkillsFromJobText(jobText);
+
+    // If matched is empty (e.g. raw or unranked jobs), compute fresh two-way alignment
     if (matched.length === 0 && resumeSkills && resumeSkills.length > 0) {
-        const text = `${job.title || ''} ${job.description || ''} ${job.key_requirements || ''}`.toLowerCase();
         for (const s of resumeSkills) {
             if (!s) continue;
             const sClean = String(s).trim();
             if (!sClean) continue;
-            if (text.includes(sClean.toLowerCase())) {
+
+            const escaped = sClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = sClean.length <= 4
+                ? new RegExp(`(?:^|[^\\w])${escaped}(?:$|[^\\w])`, 'i')
+                : new RegExp(escaped, 'i');
+
+            if (pattern.test(jobText)) {
                 if (!matched.includes(sClean)) matched.push(sClean);
             } else {
-                if (!missing.includes(sClean)) missing.push(sClean);
+                if (!extras.includes(sClean)) extras.push(sClean);
+            }
+        }
+
+const PARENT_SKILL_IMPLICATIONS = {
+    "Data Science": ["python", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "keras", "sql", "r"],
+    "Machine Learning": ["python", "tensorflow", "pytorch", "keras", "scikit-learn", "xgboost", "lightgbm", "jax"],
+    "Deep Learning": ["tensorflow", "pytorch", "keras", "jax", "transformers"],
+    "Data Engineering": ["python", "sql", "spark", "kafka", "hadoop", "airflow", "postgresql", "mysql", "mongodb"],
+    "NLP": ["transformers", "spacy", "nltk", "langchain", "rag", "hugging face", "llm"],
+    "Computer Vision": ["opencv", "pytorch", "tensorflow", "yolo", "diffusion"],
+    "REST APIs": ["fastapi", "flask", "django", "express", "spring boot", "nodejs", "nestjs"],
+    "Microservices": ["docker", "kubernetes", "fastapi", "express", "spring boot", "grpc"]
+};
+
+        for (const js of extractedJobSkills) {
+            if (candSkillsLower.has(js.toLowerCase())) continue;
+            const impls = PARENT_SKILL_IMPLICATIONS[js] || [];
+            if (impls.some(impl => candSkillsLower.has(impl.toLowerCase()))) {
+                if (!matched.includes(js)) matched.push(js);
+                continue;
+            }
+            if (!missing.includes(js)) missing.push(js);
+        }
+    } else if (resumeSkills && resumeSkills.length > 0 && extras.length === 0) {
+        const matchedLower = new Set(matched.map(s => s.toLowerCase()));
+        for (const s of resumeSkills) {
+            const sClean = String(s || '').trim();
+            if (sClean && !matchedLower.has(sClean.toLowerCase())) {
+                if (!extras.includes(sClean)) extras.push(sClean);
             }
         }
     }
 
-    return { matched, missing };
+    return { matched, missing, extras };
 }
 
 // ==========================================
@@ -4000,7 +4136,10 @@ function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onT
                                         <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
                                             <span>🛠️ Skill Alignment Matrix</span>
                                             <span className="text-[10px] text-slate-400 font-normal">
-                                                Matched: <strong className="text-emerald-400">{skillData.matched.length}</strong> • Skill Gaps: <strong className="text-amber-400">{skillData.missing.length}</strong>
+                                                Matched: <strong className="text-emerald-400">{skillData.matched.length}</strong> • Skill Gaps: <strong className={skillData.missing.length > 0 ? "text-amber-400" : "text-emerald-400"}>{skillData.missing.length}</strong>
+                                                {skillData.extras && skillData.extras.length > 0 && (
+                                                    <span> • Candidate Extras: <strong className="text-sky-400">{skillData.extras.length}</strong></span>
+                                                )}
                                             </span>
                                         </div>
                                         <div className="space-y-2.5">
@@ -4020,7 +4159,7 @@ function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onT
                                                 </div>
                                             )}
 
-                                            {skillData.missing.length > 0 && (
+                                            {skillData.missing.length > 0 ? (
                                                 <div>
                                                     <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-1 mb-1.5">
                                                         <span>!</span>
@@ -4030,6 +4169,29 @@ function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onT
                                                         {skillData.missing.map((s, i) => (
                                                             <span key={i} className="px-2.5 py-0.5 rounded bg-amber-950/90 border border-amber-500/40 text-amber-300 text-[11px] font-medium shadow-sm flex items-center gap-1">
                                                                 <span className="text-amber-400 font-bold">!</span> {s}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                skillData.matched.length > 0 && (
+                                                    <div className="text-[11px] text-emerald-400/90 font-medium flex items-center gap-1.5 py-1 px-2 rounded bg-emerald-950/40 border border-emerald-500/20">
+                                                        <span>🌟</span>
+                                                        <span>All Detected Job Requirements Met (0 Skill Gaps Identified)</span>
+                                                    </div>
+                                                )
+                                            )}
+
+                                            {skillData.extras && skillData.extras.length > 0 && (
+                                                <div>
+                                                    <span className="text-[11px] text-sky-400 font-semibold flex items-center gap-1 mb-1.5">
+                                                        <span>⚡</span>
+                                                        <span>Additional Candidate Strengths ({skillData.extras.length}):</span>
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                                                        {skillData.extras.map((s, i) => (
+                                                            <span key={i} className="px-2.5 py-0.5 rounded bg-sky-950/60 border border-sky-500/30 text-sky-300 text-[11px] font-medium shadow-sm flex items-center gap-1">
+                                                                <span className="text-sky-400 font-bold">⚡</span> {s}
                                                             </span>
                                                         ))}
                                                     </div>

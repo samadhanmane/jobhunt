@@ -12,6 +12,7 @@ from src.utils.role_helper import (
     NEGATIVE_ROLE_KEYWORDS
 )
 from src.utils.text_cleaner import extract_job_experience_metadata
+from src.utils.skill_helper import compute_skill_alignment, extract_skills_from_text
 
 TECH_STACK_CLUSTERS = {
     "python": ["python", "fastapi", "flask", "django", "asyncio"],
@@ -54,25 +55,23 @@ class RankingAgent(BaseJobAgent):
         # Factor 1: Skills & Tech Stack Fit (30%)
         # ------------------------------------------------------------------
         cand_skills = [s.strip() for s in (candidate_profile.get("skills", []) or []) if s and s.strip()]
-        matched_skills = []
-        missing_skills = []
-        desc_lower = desc.lower()
-        title_lower = title.lower()
+        key_reqs = str(job.get("key_requirements", "") or "")
+        combined_text = f"{title}\n{desc}\n{key_reqs}"
 
-        for s in cand_skills:
-            s_low = s.lower()
-            if len(s_low) <= 4:
-                pattern = r'\b' + re.escape(s_low) + r'\b'
-                matched = bool(re.search(pattern, desc_lower) or re.search(pattern, title_lower))
-            else:
-                matched = bool((s_low in desc_lower) or (s_low in title_lower))
-
-            if matched:
-                matched_skills.append(s)
-            else:
-                missing_skills.append(s)
+        alignment = compute_skill_alignment(
+            job_text=combined_text,
+            candidate_skills=cand_skills,
+            existing_job_skills=job.get("matching_skills") or []
+        )
+        matched_skills = alignment["matched"]
+        missing_skills = alignment["missing"]
+        job_skills = alignment["job_skills"]
+        extras = alignment["extras"]
+        skill_coverage_pct = alignment["coverage_pct"]
 
         # Cluster coverage boost
+        desc_lower = desc.lower()
+        title_lower = title.lower()
         cluster_matches = 0
         for cluster_name, keywords in TECH_STACK_CLUSTERS.items():
             matched_cluster = False
@@ -88,11 +87,18 @@ class RankingAgent(BaseJobAgent):
             if matched_cluster:
                 cluster_matches += 1
 
-        if cand_skills:
-            match_ratio = len(matched_skills) / len(cand_skills)
-            skill_score = min(100, int(round((match_ratio * 80) + min(20, cluster_matches * 5))))
+        if job_skills:
+            # Score based on candidate coverage of the job's actual required skills
+            req_coverage = len(matched_skills) / len(job_skills)
+            skill_score = min(100, int(round((req_coverage * 85) + min(15, cluster_matches * 5))))
             if not matched_skills and cluster_matches == 0:
                 skill_score = max(15, skill_score)
+        elif cand_skills:
+            # If job description was brief and didn't name tools, award credit for role/cluster alignment
+            if cluster_matches > 0:
+                skill_score = min(100, 70 + (cluster_matches * 6))
+            else:
+                skill_score = 65
         else:
             skill_score = min(100, 50 + (cluster_matches * 10))
 
@@ -292,8 +298,10 @@ class RankingAgent(BaseJobAgent):
             "ai_facets": facets,
             "experience_fit": job_exp_tier,
             "work_mode": work_mode,
-            "matching_skills": matched_skills[:10],
+            "matching_skills": matched_skills[:12],
             "missing_skills": missing_skills[:8],
+            "supported_skills": extras[:12],
+            "skill_coverage_pct": skill_coverage_pct,
             "experience_comparison": {
                 "required": req_clean_label,
                 "candidate": cand_exp_label,
