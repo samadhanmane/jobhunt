@@ -66,8 +66,11 @@ class BuiltInClient(BaseJobIntegration):
                                 work_mode = "Hybrid"
                             elif "remote" in p_lower:
                                 work_mode = "Remote"
-                            if any(k in p_lower for k in ["india", "bengaluru", "delhi", "mumbai", "pune", "hyderabad", "ca", "ny", "tx", "wa", "usa"]):
-                                job_loc = p
+                            
+                            # Location must be a concise geographic string, not a description paragraph
+                            if len(p) <= 80 and not any(v in p_lower for v in ["internship", "develop", "engineer", "build", "lead", "manage", "research", "undergraduate", "phd", "hourly", "support"]):
+                                if any(re.search(r'\b' + re.escape(k) + r'\b', p_lower) for k in ["india", "bengaluru", "bangalore", "delhi", "mumbai", "pune", "hyderabad", "ca", "ny", "tx", "wa", "pa", "il", "ma", "usa", "us", "san francisco", "new york", "austin"]):
+                                    job_loc = p.strip()[:80]
 
                         if remote:
                             work_mode = "Remote"

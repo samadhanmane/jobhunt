@@ -77,6 +77,21 @@ def init_and_migrate_db():
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS match_breakdown JSON",
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source_category VARCHAR(50)",
             "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS freshness_label VARCHAR(100)",
+            
+            # Widen character varying fields to TEXT to prevent truncation errors
+            "ALTER TABLE jobs ALTER COLUMN location TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN title TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN company TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN url TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN source TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN work_mode TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN experience_fit TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN seniority_level TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN source_category TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN repost_badge TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN freshness_label TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN sub_domain TYPE TEXT",
+            "ALTER TABLE jobs ALTER COLUMN experience_required TYPE TEXT",
 
             # Email alerts
             "ALTER TABLE email_alerts ADD COLUMN IF NOT EXISTS experience_level VARCHAR(50) DEFAULT 'all'",

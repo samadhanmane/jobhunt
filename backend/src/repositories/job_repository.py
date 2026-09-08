@@ -3,6 +3,29 @@ from src.models.job import Job
 from src.models.database import SessionLocal
 from typing import List, Optional
 
+def _sanitize_job(job: Job):
+    """Guarantees no field exceeds database column boundaries."""
+    if job.title and len(str(job.title)) > 255:
+        job.title = str(job.title)[:255]
+    if job.company and len(str(job.company)) > 255:
+        job.company = str(job.company)[:255]
+    if job.location and len(str(job.location)) > 255:
+        job.location = str(job.location)[:255]
+    if job.source and len(str(job.source)) > 50:
+        job.source = str(job.source)[:50]
+    if job.work_mode and len(str(job.work_mode)) > 50:
+        job.work_mode = str(job.work_mode)[:50]
+    if job.experience_fit and len(str(job.experience_fit)) > 50:
+        job.experience_fit = str(job.experience_fit)[:50]
+    if job.seniority_level and len(str(job.seniority_level)) > 50:
+        job.seniority_level = str(job.seniority_level)[:50]
+    if job.source_category and len(str(job.source_category)) > 50:
+        job.source_category = str(job.source_category)[:50]
+    if job.freshness_label and len(str(job.freshness_label)) > 100:
+        job.freshness_label = str(job.freshness_label)[:100]
+    if job.repost_badge and len(str(job.repost_badge)) > 100:
+        job.repost_badge = str(job.repost_badge)[:100]
+
 class JobRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -12,6 +35,7 @@ class JobRepository:
             return []
         try:
             for job in jobs:
+                _sanitize_job(job)
                 self.db.merge(job)
             self.db.commit()
             return jobs

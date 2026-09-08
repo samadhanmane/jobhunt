@@ -10,12 +10,12 @@ class Job(Base):
     )
     
     id = Column(String(100), primary_key=True)
-    title = Column(String(255), nullable=False, index=True)
-    company = Column(String(255), nullable=False, index=True)
-    location = Column(String(255), nullable=True)
+    title = Column(Text, nullable=False, index=True)
+    company = Column(Text, nullable=False, index=True)
+    location = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
-    url = Column(String(1000), nullable=True, index=True)
-    source = Column(String(50), nullable=True)
+    url = Column(Text, nullable=True, index=True)
+    source = Column(String(100), nullable=True)
     posted_date = Column(String(100), nullable=True, index=True)  # Formatted date string e.g. "2026-08-19" or "N/A"
     salary_range = Column(JSON, nullable=True)
     match_score = Column(Float, nullable=True)
