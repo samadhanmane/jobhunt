@@ -67,22 +67,38 @@ class RankingAgent(BaseJobAgent):
                 role_score = min(100, role_score + 15)
 
         # 2. Skills & Tech Stack Score (30%)
-        cand_skills = [s.lower().strip() for s in (candidate_profile.get("skills", []) or [])]
+        cand_skills = [s.lower().strip() for s in (candidate_profile.get("skills", []) or []) if s and s.strip()]
         matched_skills = []
         missing_skills = []
         desc_lower = desc.lower()
 
-        # Check candidate skills in description
+        # Check candidate skills in description with word boundary protection for short skills
         for s in cand_skills:
-            if s and s in desc_lower or s in title_lower:
+            if len(s) <= 4:
+                pattern = r'\b' + re.escape(s) + r'\b'
+                matched = bool(re.search(pattern, desc_lower) or re.search(pattern, title_lower))
+            else:
+                matched = bool((s in desc_lower) or (s in title_lower))
+
+            if matched:
                 matched_skills.append(s.title())
-            elif s:
+            else:
                 missing_skills.append(s.title())
 
-        # Check cluster coverage
+        # Check cluster coverage with word boundary protection
         cluster_matches = 0
         for cluster_name, keywords in TECH_STACK_CLUSTERS.items():
-            if any(kw in desc_lower for kw in keywords):
+            matched_cluster = False
+            for kw in keywords:
+                if len(kw) <= 4:
+                    if re.search(r'\b' + re.escape(kw) + r'\b', desc_lower):
+                        matched_cluster = True
+                        break
+                else:
+                    if kw in desc_lower:
+                        matched_cluster = True
+                        break
+            if matched_cluster:
                 cluster_matches += 1
 
         skill_score = min(100, int((len(matched_skills) * 15) + (cluster_matches * 10)))
@@ -107,22 +123,23 @@ class RankingAgent(BaseJobAgent):
 
         # 4. Location & Work Mode Fit (15%)
         loc_score = 70
-        is_target_india = "india" in target_loc.lower() or any(c in target_loc.lower() for c in ["pune", "bengaluru", "bangalore", "hyderabad", "mumbai", "delhi"])
-        if is_target_india:
-            if is_india_location(loc, u, title, desc):
-                loc_score = 100
-            else:
-                loc_score = 25
-        elif target_loc.lower() in ["remote", "worldwide", "global", "any"]:
+        is_worldwide_target = target_loc.lower().strip() in ["", "remote", "worldwide", "global", "any", "all"]
+
+        if is_worldwide_target:
             if work_mode == "Remote":
                 loc_score = 100
             else:
-                loc_score = 70
+                loc_score = 80
         else:
+            # User targeted a specific city, state, or country (e.g., "Pune", "Bengaluru", "India")
             if is_job_location_match(loc, target_loc, pref_work_mode, "", desc, title, u):
-                loc_score = 95
+                loc_score = 100 if (work_mode == "Remote" or pref_work_mode == "any") else 95
             else:
-                loc_score = 40
+                # Job is outside the requested location or metro region
+                if "india" in target_loc.lower() and is_india_location(loc, u, title, desc):
+                    loc_score = 85
+                else:
+                    loc_score = 25
 
         # Final Weighted Match Score
         total_score = round(

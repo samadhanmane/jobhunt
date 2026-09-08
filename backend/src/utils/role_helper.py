@@ -144,23 +144,25 @@ def is_title_role_match(job_title: str, target_role: str) -> bool:
 
     # 3. Direct token overlap (ignoring generic words like 'engineer', 'developer', 'manager')
     generic_words = {"engineer", "developer", "manager", "lead", "senior", "junior", "associate", "specialist", "analyst", "intern"}
-    role_tokens = [w for w in re.sub(r'[^a-zA-Z0-9]', ' ', t_role).split() if len(w) > 2 and w not in generic_words]
+    role_tokens = [w for w in re.sub(r'[^a-zA-Z0-9]', ' ', t_role).split() if len(w) >= 2 and w not in generic_words]
+
+    # AI / ML domain specific check
+    ai_targets = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "artificial intelligence"]
+    is_ai_target = any(a in t_role for a in ai_targets)
+    if is_ai_target:
+        ai_title_indicators = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "data scientist", "prompt", "artificial intelligence"]
+        for ind in ai_title_indicators:
+            if len(ind) <= 3:
+                if re.search(r'\b' + re.escape(ind) + r'\b', j_title):
+                    return True
+            else:
+                if ind in j_title:
+                    return True
+        return False
 
     if role_tokens:
         if any(tok in j_title for tok in role_tokens):
             return True
-
-    # AI / ML domain specific check
-    ai_targets = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science"]
-    is_ai_target = any(a in t_role for a in ai_targets)
-    if is_ai_target:
-        ai_title_indicators = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "data scientist", "prompt"]
-        if any(ind in j_title for ind in ai_title_indicators):
-            return True
-        # Allow general software engineering roles only if not conflicting
-        if any(sw in j_title for sw in ["software engineer", "full stack", "backend", "frontend", "python developer"]):
-            return True
-        return False
 
     # Fallback exact word check
     return any(w in j_title for w in t_role.split() if len(w) > 3)

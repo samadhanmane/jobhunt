@@ -11,7 +11,8 @@ class JobRepository:
         if not jobs:
             return []
         try:
-            self.db.add_all(jobs)
+            for job in jobs:
+                self.db.merge(job)
             self.db.commit()
             return jobs
         except Exception:

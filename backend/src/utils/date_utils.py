@@ -57,16 +57,17 @@ def is_within_days(raw_date: Any, max_days: int) -> bool:
     """
     Checks if a given raw date is within max_days from now.
     If max_days is 0 or >= 999, returns True.
-    If date is missing/N/A, returns True to avoid over-filtering.
+    If max_days is specified (<= 7 days) and date is missing/N/A, returns False
+    to prevent ancient undated jobs from bypassing freshness filters.
     """
     if not max_days or max_days <= 0 or max_days >= 999:
         return True
     if not raw_date:
-        return True
+        return False if max_days <= 7 else True
     
     formatted = format_posted_date_for_csv(raw_date)
     if formatted == "N/A":
-        return True
+        return False if max_days <= 7 else True
         
     try:
         dt = datetime.datetime.strptime(formatted, "%Y-%m-%d")
@@ -75,4 +76,4 @@ def is_within_days(raw_date: Any, max_days: int) -> bool:
         # Allow up to 1.5 days future timezone leeway
         return -1.5 <= diff_days <= float(max_days)
     except Exception:
-        return True
+        return False if max_days <= 7 else True

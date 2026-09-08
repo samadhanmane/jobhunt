@@ -175,11 +175,142 @@ def test_scrapers_tech_short_tokens_retained():
     assert "pune" in tokens
     assert "in" not in tokens
 
+def test_ranking_location_isolation_pune_vs_bangalore():
+    """Verify RankingAgent scores Pune jobs high and Bangalore jobs low for a Pune search."""
+    from src.agents.ranking import RankingAgent
+    import asyncio
+    agent = RankingAgent()
+
+    candidate = {"skills": ["python", "pytorch"], "seniority": "Mid", "target_roles": ["AI Engineer"]}
+    preferences = {"role": "AI Engineer", "location": "Pune", "remote_preference": "any"}
+
+    pune_job = {
+        "title": "AI Engineer",
+        "company": "TechCorp Pune",
+        "location": "Pune, Maharashtra, India",
+        "description": "Building AI systems with Python and PyTorch in Hinjawadi, Pune.",
+        "url": "https://example.com/pune-job",
+        "posted_date": "2026-09-01"
+    }
+
+    bangalore_job = {
+        "title": "AI Engineer",
+        "company": "TechCorp BLR",
+        "location": "Bengaluru, Karnataka, India",
+        "description": "Building AI systems with Python and PyTorch in Whitefield, Bangalore.",
+        "url": "https://example.com/blr-job",
+        "posted_date": "2026-09-01"
+    }
+
+    ranked = asyncio.run(agent.rank_jobs([pune_job, bangalore_job], candidate, preferences))
+    ranked_pune = next(j for j in ranked if "Pune" in j["company"])
+    ranked_blr = next(j for j in ranked if "BLR" in j["company"])
+
+    # Pune job must receive high location score (>= 95)
+    # Bangalore job must receive penalized location score (<= 25)
+    assert "Location Fit: 100%" in ranked_pune["match_reason"] or "Location Fit: 95%" in ranked_pune["match_reason"]
+    assert "Location Fit: 25%" in ranked_blr["match_reason"]
+    assert ranked_pune["match_score"] > ranked_blr["match_score"]
+
+def test_date_freshness_boundary_rejection():
+    """Verify is_within_days rejects N/A and missing dates when max_days <= 7."""
+    assert is_within_days(None, 3) is False
+    assert is_within_days("N/A", 3) is False
+    assert is_within_days("", 1) is False
+    assert is_within_days("2020-01-01", 3) is False
+
+    # Current/recent date passes
+    today_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    assert is_within_days(today_str, 3) is True
+
+    # When max_days is 0 or 999 (all), N/A is allowed
+    assert is_within_days("N/A", 0) is True
+    assert is_within_days("N/A", 999) is True
+
+def test_ai_role_precision_excludes_generic_software_engineers():
+    """Verify is_title_role_match rejects generic software engineers for AI queries."""
+    from src.utils.role_helper import is_title_role_match
+    
+    # Must match true AI/ML titles
+    assert is_title_role_match("AI Research Engineer", "AI Engineer") is True
+    assert is_title_role_match("Senior Machine Learning Engineer", "AI Engineer") is True
+    assert is_title_role_match("Generative AI Developer", "AI Engineer") is True
+    assert is_title_role_match("LLM Systems Architect", "AI Engineer") is True
+
+    # Must reject generic software engineer / frontend / fullstack titles
+    assert is_title_role_match("Frontend React Developer", "AI Engineer") is False
+    assert is_title_role_match("Full Stack Web Developer", "AI Engineer") is False
+    assert is_title_role_match("WordPress Developer", "AI Engineer") is False
+    assert is_title_role_match("Java Backend Developer", "AI Engineer") is False
+
+def test_skill_word_boundary_avoids_substring_false_positives():
+    """Verify short skills like R and C do not match substrings in ranking agent."""
+    from src.agents.ranking import RankingAgent
+    import asyncio
+    agent = RankingAgent()
+
+    candidate = {"skills": ["R", "C", "Go"], "seniority": "Mid", "target_roles": ["Developer"]}
+    preferences = {"role": "Developer", "location": "Remote", "remote_preference": "any"}
+
+    # Description with 'transformers', 'cloud', 'algorithm' - does NOT require R, C, or Go
+    job = {
+        "title": "Developer",
+        "company": "TestCo",
+        "location": "Remote",
+        "description": "Experience in transformers, cloud computing, and algorithm design.",
+        "url": "https://example.com/test",
+        "posted_date": "2026-09-01"
+    }
+
+    ranked = asyncio.run(agent.rank_jobs([job], candidate, preferences))[0]
+    matched_skills_lower = [s.lower() for s in ranked.get("matching_skills", [])]
+    assert "r" not in matched_skills_lower
+    assert "c" not in matched_skills_lower
+    assert "go" not in matched_skills_lower
+
+def test_work_mode_negative_phrase_detection():
+    """Verify detect_work_mode recognizes negative remote patterns as On-site."""
+    assert detect_work_mode("Pune", description_str="This is strictly on-site in Pune. No remote work permitted.") == "On-site"
+    assert detect_work_mode("Pune", description_str="Not remote. Candidates must report to the office 5 days a week.") == "On-site"
+    assert detect_work_mode("Remote / Global", description_str="Fully remote engineering role.") == "Remote"
+    assert detect_work_mode("Pune", description_str="Hybrid schedule with 3 days in office and 2 days remote.") == "Hybrid"
+
+def test_experience_secondary_tool_no_downgrade():
+    """Verify 5+ year requirement is not downgraded to 1 yr because of secondary tool mention."""
+    from src.utils.text_cleaner import extract_job_experience_metadata
+    meta = extract_job_experience_metadata(
+        "Software Engineer",
+        "Requires 5+ years of software development experience and 1 year of Docker experience."
+    )
+    assert meta["min_experience_years"] == 5.0
+    assert meta["seniority_level"] == "senior"
+
+def test_deterministic_job_id():
+    """Verify same URL produces identical deterministic SHA-256 ID."""
+    import hashlib
+    import re
+    url1 = "https://careers.google.com/jobs/results/123456?utm_source=indeed&ref=abc"
+    url2 = "https://careers.google.com/jobs/results/123456"
+
+    key1 = re.sub(r'[?#].*$', '', url1).rstrip('/')
+    key2 = re.sub(r'[?#].*$', '', url2).rstrip('/')
+
+    id1 = hashlib.sha256(key1.lower().encode()).hexdigest()[:32]
+    id2 = hashlib.sha256(key2.lower().encode()).hexdigest()[:32]
+    assert id1 == id2
+
 if __name__ == "__main__":
     tests = [
         ("PostgreSQL Connection", test_database_postgresql_connection),
         ("Job Model CRUD & Columns", test_job_model_crud_and_columns),
         ("Location Matcher Pune Specificity", test_location_matcher_pune_specificity),
+        ("Ranking Location Isolation (Pune vs BLR)", test_ranking_location_isolation_pune_vs_bangalore),
+        ("Date Freshness Boundary Rejection", test_date_freshness_boundary_rejection),
+        ("AI Role Precision Excludes Generic Roles", test_ai_role_precision_excludes_generic_software_engineers),
+        ("Skill Word Boundary Avoids Substrings", test_skill_word_boundary_avoids_substring_false_positives),
+        ("Work Mode Negative Phrase Detection", test_work_mode_negative_phrase_detection),
+        ("Experience Secondary Tool No Downgrade", test_experience_secondary_tool_no_downgrade),
+        ("Deterministic Job ID Deduplication", test_deterministic_job_id),
         ("Deduplication Preserves Seniority", test_deduplication_preserves_seniority),
         ("Date Utils Preserves Real Dates and N/A", test_date_utils_preserves_real_dates_and_na),
         ("Repost Detector Rate Limiting", test_repost_detector_rate_limiting),

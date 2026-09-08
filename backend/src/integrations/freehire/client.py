@@ -223,6 +223,12 @@ class FreehireClient(BaseJobIntegration):
                     loc_parts.append(job["country"])
                 loc_str = ", ".join(loc_parts) if loc_parts else (job.get("location") or ("Remote" if remote else "Unknown"))
 
+                # Enforce location match if user requested a specific location
+                if location and location.lower().strip() not in ["remote", "worldwide", "global", "any", "all", ""]:
+                    from src.utils.location_helper import is_job_location_match
+                    if not is_job_location_match(loc_str, location, "remote" if remote else "any", "freehire", str(job.get("description") or "")):
+                        continue
+
                 jobs.append({
                     "title": job.get("title", ""),
                     "company": job.get("company", "") or job.get("company_name", ""),

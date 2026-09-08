@@ -1,9 +1,13 @@
-from sqlalchemy import Column, String, Text, Float, DateTime, JSON, Boolean, Integer
+from sqlalchemy import Column, String, Text, Float, DateTime, JSON, Boolean, Integer, Index
 from src.models.database import Base
 import datetime
 
 class Job(Base):
     __tablename__ = 'jobs'
+    __table_args__ = (
+        Index('idx_jobs_search_score', 'search_id', 'match_score'),
+        Index('idx_jobs_created_score', 'created_at', 'match_score'),
+    )
     
     id = Column(String(100), primary_key=True)
     title = Column(String(255), nullable=False, index=True)

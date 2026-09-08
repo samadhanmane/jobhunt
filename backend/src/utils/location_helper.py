@@ -197,11 +197,30 @@ def is_india_location(location: str, url: str = "", title: str = "", description
 
 def detect_work_mode(location_str: str, title_str: str = "", description_str: str = "") -> str:
     """Detects clean work mode: 'Remote', 'Hybrid', or 'On-site'."""
-    text = f"{location_str or ''} {title_str or ''} {description_str or ''[:400]}".lower()
-    if any(k in text for k in HYBRID_KEYWORDS):
+    loc_lower = str(location_str or "").lower()
+    t_lower = str(title_str or "").lower()
+    desc_snippet = str(description_str or "")[:400].lower()
+
+    # Check for explicit on-site indicators or negative remote phrases
+    NEGATIVE_REMOTE_PATTERNS = [
+        "not remote", "no remote", "non-remote", "strictly on-site", 
+        "strictly onsite", "on-site only", "onsite only", "in-office only"
+    ]
+    if any(neg in loc_lower or neg in desc_snippet for neg in NEGATIVE_REMOTE_PATTERNS):
+        return "On-site"
+
+    # Prioritize location and title metadata
+    if any(k in loc_lower for k in HYBRID_KEYWORDS) or any(k in t_lower for k in HYBRID_KEYWORDS):
         return "Hybrid"
-    if any(k in text for k in REMOTE_KEYWORDS):
+    if any(k in loc_lower for k in REMOTE_KEYWORDS) or any(k in t_lower for k in REMOTE_KEYWORDS):
         return "Remote"
+
+    # Check description snippet
+    if any(k in desc_snippet for k in HYBRID_KEYWORDS):
+        return "Hybrid"
+    if any(k in desc_snippet for k in REMOTE_KEYWORDS):
+        return "Remote"
+
     return "On-site"
 
 def is_job_location_match(

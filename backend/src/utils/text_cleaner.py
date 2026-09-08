@@ -99,16 +99,22 @@ def extract_job_experience_metadata(title: str, description: str, experience_fit
                 pass
 
     if found_min_years:
-        min_y = min(found_min_years)
+        # If a core overall requirement (>= 3 years) is found, do not let secondary 1-2 yr tool mentions downgrade it
+        higher_years = [y for y in found_min_years if y >= 3]
+        if higher_years:
+            min_y = min(higher_years)
+        else:
+            min_y = min(found_min_years)
+
         if min_y == 0:
             return {"experience_required": "🌱 0 Yrs (Fresher / Intern)", "min_experience_years": 0, "seniority_level": "intern"}
         elif min_y == 1:
             return {"experience_required": "🚀 0–1 Yr (Entry Level)", "min_experience_years": 1, "seniority_level": "entry"}
         elif min_y == 2:
             return {"experience_required": "⚡ 1–2 Yrs (Junior)", "min_experience_years": 2, "seniority_level": "junior"}
-        elif 3 <= min_y <= 5:
-            return {"experience_required": f"💼 {min_y}–5 Yrs (Mid-Level)", "min_experience_years": min_y, "seniority_level": "mid"}
-        elif 6 <= min_y <= 7:
+        elif 3 <= min_y <= 4:
+            return {"experience_required": f"💼 {min_y}–4 Yrs (Mid-Level)", "min_experience_years": min_y, "seniority_level": "mid"}
+        elif 5 <= min_y <= 7:
             return {"experience_required": f"👑 {min_y}+ Yrs (Senior)", "min_experience_years": min_y, "seniority_level": "senior"}
         elif min_y >= 8:
             return {"experience_required": f"🏆 {min_y}+ Yrs (Lead / Principal)", "min_experience_years": min_y, "seniority_level": "lead"}

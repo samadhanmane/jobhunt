@@ -5,6 +5,8 @@ import os
 import gc
 import uuid
 import datetime
+import hashlib
+import re
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 import asyncio
@@ -277,9 +279,7 @@ class JobService:
             max_days = preferences.get("max_age_days")
             if max_days and isinstance(max_days, (int, float)) and max_days > 0:
                 from src.utils.date_utils import is_within_days
-                date_filtered = [j for j in unique_jobs if is_within_days(j.get("posted_date"), int(max_days))]
-                if date_filtered:
-                    unique_jobs = date_filtered
+                unique_jobs = [j for j in unique_jobs if is_within_days(j.get("posted_date"), int(max_days))]
 
             unique_count = len(unique_jobs)
             
@@ -289,16 +289,15 @@ class JobService:
             # 5. Attach Repost Detection & 3-Tier Skill Gap to live search results
             top_ranked_jobs = ranked_jobs[:40]
             try:
-                db_temp = SessionLocal()
-                for j in top_ranked_jobs:
-                    repost_info = repost_detector.record_and_evaluate_repost(j.get("company"), j.get("title"), j.get("url"), db_temp)
-                    j["is_repost"] = repost_info.get("is_repost", False)
-                    j["repost_badge"] = repost_info.get("badge_label", "Active Opening")
+                with SessionLocal() as db_temp:
+                    for j in top_ranked_jobs:
+                        repost_info = repost_detector.record_and_evaluate_repost(j.get("company"), j.get("title"), j.get("url"), db_temp)
+                        j["is_repost"] = repost_info.get("is_repost", False)
+                        j["repost_badge"] = repost_info.get("badge_label", "Active Opening")
 
-                    gap_info = upskill_service.analyze_job_skill_gap(j, candidate_profile.get("skills", []))
-                    j["supported_skills"] = gap_info.get("supported_skills", [])
-                    j["skill_coverage_pct"] = gap_info.get("coverage_percentage", 0)
-                db_temp.close()
+                        gap_info = upskill_service.analyze_job_skill_gap(j, candidate_profile.get("skills", []))
+                        j["supported_skills"] = gap_info.get("supported_skills", [])
+                        j["skill_coverage_pct"] = gap_info.get("coverage_percentage", 0)
             except Exception as e:
                 print(f"Notice attaching live intelligence: {e}")
             texts = [f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"[:1000] for j in top_ranked_jobs]
@@ -318,8 +317,16 @@ class JobService:
                 raw_desc = j.get("description", "")
                 raw_exp = extract_job_experience_metadata(raw_title, raw_desc, j.get("experience_fit", ""))
 
+                # Deterministic SHA-256 job ID based on canonical URL or role/company/location
+                raw_url = str(j.get("url", "")).strip()
+                if raw_url:
+                    clean_url_key = re.sub(r'[?#].*$', '', raw_url).rstrip('/')
+                    det_id = hashlib.sha256(clean_url_key.lower().encode()).hexdigest()[:32]
+                else:
+                    det_id = hashlib.sha256(f"{raw_title}-{j.get('company', '')}-{j.get('location', '')}".lower().encode()).hexdigest()[:32]
+
                 db_job = Job(
-                    id=str(uuid.uuid4()),
+                    id=det_id,
                     title=raw_title,
                     company=j.get("company", "Unknown Company"),
                     location=j.get("location", "Remote"),
@@ -807,12 +814,20 @@ class JobService:
         
         try:
             query = self.db.query(Job)
-            if role and len(role.strip()) > 2:
-                role_tok = role.strip().split()[0].lower()
-                query = query.filter(Job.title.ilike(f"%{role_tok}%"))
+            if role and len(role.strip()) >= 2:
+                role_clean = role.strip().lower()
+                role_tokens = [w for w in re.sub(r'[^\w\s]', ' ', role_clean).split() if len(w) >= 2]
+                if role_tokens:
+                    from sqlalchemy import or_
+                    token_filters = [Job.title.ilike(f"%{tok}%") for tok in role_tokens]
+                    query = query.filter(or_(*token_filters))
             if location and location.strip().lower() not in ["remote", "worldwide", "any", "all", ""]:
-                loc_tok = location.strip().split()[0].lower()
-                query = query.filter(Job.location.ilike(f"%{loc_tok}%"))
+                loc_clean = location.strip().lower()
+                loc_tokens = [w for w in re.sub(r'[^\w\s]', ' ', loc_clean).split() if len(w) >= 2]
+                if loc_tokens:
+                    from sqlalchemy import or_
+                    loc_filters = [Job.location.ilike(f"%{tok}%") for tok in loc_tokens]
+                    query = query.filter(or_(*loc_filters))
                 
             db_jobs = query.order_by(Job.created_at.desc(), Job.match_score.desc()).limit(150).all()
             

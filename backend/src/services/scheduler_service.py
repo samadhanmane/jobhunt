@@ -167,11 +167,10 @@ class SchedulerService:
             print(f"[Scheduler] Found {len(raw_jobs)} raw jobs -> {len(unique_batch)} unique -> {len(fresh_jobs)} fresh matching date jobs.")
 
             if not fresh_jobs:
-                # If all jobs were previously sent or filtered, use the top 5 highest matching unique jobs as fallback
-                fresh_jobs = unique_batch[:5]
+                print(f"[Scheduler] Notice: 0 fresh unsent jobs matching max_days={max_days}. No stale fallback will be injected.")
 
             # 4. Rank with LLM & Heuristics
-            ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences)
+            ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences) if fresh_jobs else []
 
             # Filter curated matches strictly by targeted title/role and seniority fit
             from src.utils.role_helper import filter_curated_jobs_by_role
@@ -192,9 +191,6 @@ class SchedulerService:
                 gap_info = upskill_service.analyze_job_skill_gap(j, alert.skills or [])
                 j["supported_skills"] = gap_info.get("supported_skills", [])
                 j["skill_coverage_pct"] = gap_info.get("coverage_percentage", 0)
-            if not curated_jobs:
-                # Fallback to top scored jobs if strict filter is empty
-                curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30][:10]
 
             # 5. Generate BOTH CSV Reports
             backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

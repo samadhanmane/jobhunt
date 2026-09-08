@@ -114,6 +114,8 @@ def init_and_migrate_db():
             "CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company)",
             "CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url)",
             "CREATE INDEX IF NOT EXISTS idx_jobs_posted_date ON jobs(posted_date)",
+            "CREATE INDEX IF NOT EXISTS idx_jobs_search_score ON jobs(search_id, match_score DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_jobs_created_score ON jobs(created_at DESC, match_score DESC)",
         ]
 
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:

@@ -142,7 +142,7 @@ async def search_jobs(
     if not pref_dict.get("role"):
         pref_dict["role"] = "Software Engineer"
     if "location" not in pref_dict:
-        pref_dict["location"] = "Remote"
+        pref_dict["location"] = ""
 
     # 2. Handle uploaded resume if present
     if resume and resume.filename:

@@ -44,7 +44,7 @@ class GreenhouseClient(BaseJobIntegration):
                 if not title:
                     continue
 
-                if tokens and not is_title_role_match(title, query):
+                if query and not is_title_role_match(title, query):
                     continue
 
                 job_loc = ""
@@ -93,7 +93,8 @@ class GreenhouseClient(BaseJobIntegration):
 
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
         clean_query = query.lower().strip()
-        tokens = [t for t in re.sub(r'[^\w\s]', '', clean_query).split() if len(t) > 2]
+        WHITELIST_2LETTER = {"ai", "ml", "qa", "ui", "ux", "go", "ci", "cd", "r", "c"}
+        tokens = [t for t in re.sub(r'[^\w\s]', '', clean_query).split() if len(t) > 2 or t in WHITELIST_2LETTER]
 
         all_jobs = []
         seen_urls = set()

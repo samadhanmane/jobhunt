@@ -1,0 +1,671 @@
+================================================================================
+                    JOBHUNT PLATFORM - COMPLETE CODEBASE AUDIT
+              EXHAUSTIVE INVENTORY OF BUGS, ERRORS & IMPROVEMENTS
+================================================================================
+Generated Date: 2026-09-08
+Auditor: Senior AI/ML, Data, Backend, Scraping & QA Platform Architect
+Target Repository: d:\Projects\jobhunt
+Database: Supabase PostgreSQL (pgbouncer connection pooler)
+Vector Store: Pinecone Cloud
+Frontend: React SPA (frontend/app.jsx -> frontend/app.compiled.js)
+Backend: FastAPI (Python 3.11+)
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & KEY FAILURE MODES
+2. CRITICAL SEVERITY BUGS (IMMEDIATE BLOCKERS)
+3. HIGH SEVERITY BUGS (DATA CORRUPTION & SEARCH FAILURES)
+4. MEDIUM SEVERITY BUGS (FUNCTIONAL FLAWS & SYSTEM LEAKS)
+5. LOW SEVERITY DEFECTS & CODE QUALITY ISSUES
+6. SCRAPER-BY-SCRAPER AUDIT (ALL 10 SOURCES)
+7. DATA MODEL, PERSISTENCE & DEDUPLICATION AUDIT
+8. FILTERING SYSTEM & LOGIC OPERATOR DEFECTS
+9. JOB POSTED-DATE & FRESHNESS DEFECTS
+10. EXPERIENCE & SENIORITY EXTRACTION DEFECTS
+11. LOCATION MATCHING & GEOGRAPHIC LEAKAGE DEFECTS
+12. WORK-MODE CLASSIFICATION DEFECTS
+13. SKILLS MATCHING & TAXONOMY DEFECTS
+14. 4-PILLAR RELEVANCE & SCORING DEFECTS
+15. SCHEDULER, EMAIL ALERTS & DIGEST DEFECTS
+16. FRONTEND (REACT SPA) DEFECTS & CLIENT/SERVER MISMATCHES
+17. ASYNC CONCURRENCY, CONNECTION POOLING & PERFORMANCE DEFECTS
+18. OBSERVABILITY, LOGGING & ERROR RECOVERY GAPS
+19. SECURITY, SECRETS & API CONTRACT AUDIT
+20. TESTING GAPS & COMPLETE TEST SPECIFICATION
+21. PRIORITIZED IMPLEMENTATION ROADMAP (PHASES 1-5)
+
+================================================================================
+1. EXECUTIVE SUMMARY & KEY FAILURE MODES
+================================================================================
+The JobHunt platform is an ambitious, feature-rich job aggregation platform 
+integrating 10 scraper sources, AI/heuristic ranking, vector search, PostgreSQL 
+persistence, and real-time streaming to a React UI.
+
+However, the platform is currently failing to deliver accurate search results 
+due to several foundational bugs:
+  a) Location Leak: Any job located anywhere in India (Bangalore, Delhi, Mumbai, 
+     etc.) receives a 100% location fit score for any specific city search 
+     (e.g., Pune), causing out-of-city jobs to dominate curated results.
+  b) Silent Date Filter Bypass: If zero jobs match a requested date freshness 
+     window (e.g., past 24 hours), the code ignores the filter and returns 
+     stale, month-old jobs without notifying the user.
+  c) 2-Letter Token Stripping: Direct ATS scrapers (Ashby, Lever, Greenhouse, 
+     Phenom) strip all search tokens of length <= 2. Searching for "AI", "ML", 
+     "QA", or "Go" strips the tokens to an empty list, which bypasses title 
+     filtering and dumps all company postings (HR, Sales, Legal) into the feed.
+  d) AI Role Generic Bypass: The role helper contains a clause that marks any 
+     generic Software Engineer, Frontend, or Backend role as a valid match 
+     when an AI target role is searched.
+  e) Substring Skill False Positives: Ranking uses naive substring matching 
+     (`s in desc_lower`), causing single-letter skills like "R", "C", and "Go" 
+     to match inside words like "transformers", "docker", and "google".
+  f) Unbounded Duplicate Growth: The database inserts new rows with random 
+     UUIDs on every single search without checking for existing URLs or source 
+     IDs, leading to massive database bloat.
+  g) Undated Job Immortality: Jobs with missing or unparseable dates return True 
+     for date freshness, permanently passing through 24-hour filters.
+
+================================================================================
+2. CRITICAL SEVERITY BUGS (IMMEDIATE BLOCKERS)
+================================================================================
+
+[BUG-CRIT-001] Indian City Location Leakage in Ranking Agent
+  File: backend/src/agents/ranking.py (Lines 110-115)
+  Function: RankingAgent._score_job()
+  Problem:
+    The location scoring logic checks:
+      is_target_india = "india" in target_loc.lower() or any(c in target_loc.lower() for c in ["pune", "bengaluru", "bangalore", "hyderabad", "mumbai", "delhi"])
+      if is_target_india:
+          if is_india_location(loc, u, title, desc):
+              loc_score = 100
+          else:
+              loc_score = 25
+  Impact:
+    If a user searches for "Pune", `is_target_india` is True. Any job in India 
+    (e.g. Bangalore, Hyderabad, Delhi, Gurgaon) passes `is_india_location()` 
+    and is awarded a 100% Location Score, exactly equal to a job physically 
+    in Pune. Bangalore jobs outrank Pune jobs in curated results.
+  Fix:
+    Call `is_job_location_match(loc, target_loc, pref_work_mode, ...)` directly. 
+    If a specific city target is requested and the job is in a different city, 
+    score it <= 25%.
+
+[BUG-CRIT-002] Silent Date-Filter Bypass on Zero Fresh Results
+  File: backend/src/services/job_service.py (Lines 280-283)
+  Function: JobService.execute_pipeline()
+  Problem:
+    The freshness filtering logic states:
+      if max_days and str(max_days).isdigit() and int(max_days) > 0:
+          date_filtered = [j for j in unique_jobs if is_within_days(j.get("posted_date"), int(max_days))]
+          if date_filtered:
+              unique_jobs = date_filtered
+  Impact:
+    If `date_filtered` is empty (meaning 0 jobs matched the requested date 
+    window, such as within 24h or 3d), the `if date_filtered:` condition evaluates 
+    to False! `unique_jobs` remains completely unfiltered, returning all ancient, 
+    stale, 60-day-old jobs to the user with zero indication of failure.
+  Fix:
+    Change to `unique_jobs = date_filtered` unconditionally. If empty, report 0 
+    fresh jobs discovered.
+
+[BUG-CRIT-003] 2-Letter Token Stripping Bypasses ATS Client Filtering
+  Files:
+    - backend/src/integrations/ashby/client.py (Line 118)
+    - backend/src/integrations/lever/client.py (Line 98)
+    - backend/src/integrations/greenhouse/client.py (Line 96)
+    - backend/src/integrations/phenom/client.py (Line 28)
+  Functions: AshbyClient.search(), LeverClient.search(), GreenhouseClient.search(), PhenomClient.search()
+  Problem:
+    Token extraction uses:
+      tokens = [t for t in re.sub(r'[^\w\s]', '', clean_query).split() if len(t) > 2]
+    Then title filtering checks:
+      if tokens and not is_title_role_match(title, query):
+          continue
+  Impact:
+    When searching for 2-letter technical roles or keywords ("AI", "ML", "QA", 
+    "UI", "UX", "Go", "C", "R"), `tokens` becomes an empty list `[]`. 
+    Because `tokens` is falsy, `if tokens and ...` is completely skipped!
+    Every job posted by target companies (e.g. "Senior Accountant", "Recruiter", 
+    "Legal Counsel", "Sales VP") bypasses title filtering and enters the pipeline 
+    as an "AI" job.
+  Fix:
+    Whitelist 2-letter technical tokens: `{"ai", "ml", "qa", "ui", "ux", "go", "ci", "cd"}`. 
+    Ensure `if not is_title_role_match(title, query): continue` always runs 
+    whenever query is non-empty.
+
+[BUG-CRIT-004] AI Target Role Broad Software Engineering False-Positive Bypass
+  File: backend/src/utils/role_helper.py (Lines 154-163)
+  Function: is_title_role_match()
+  Problem:
+    When `is_ai_target` is True (e.g., target role is "AI Engineer" or "ML Engineer"):
+      if any(ind in j_title for ind in ai_title_indicators):
+          return True
+      # Allow general software engineering roles only if not conflicting
+      if any(sw in j_title for sw in ["software engineer", "full stack", "backend", "frontend", "python developer"]):
+          return True
+      return False
+  Impact:
+    Any generic job titled "Frontend Developer", "WordPress Full Stack Engineer", 
+    or "Junior Backend Engineer" returns True as a valid role match for an 
+    "AI Engineer" search, even if the job has zero AI/ML requirements or keywords.
+  Fix:
+    Remove the generic software engineer bypass for AI target roles. Require 
+    either AI title keywords or strong AI tech-stack overlap.
+
+[BUG-CRIT-005] Unbounded Database Duplication via Random UUID Insertion
+  Files:
+    - backend/src/services/job_service.py (Lines 321-354)
+    - backend/src/repositories/job_repository.py (Lines 10-35)
+    - backend/src/models/job.py (Lines 8-48)
+  Function: JobService.execute_pipeline(), JobRepository.add_jobs()
+  Problem:
+    Every search generates a new `search_id` and assigns `id=str(uuid.uuid4())` 
+    to each scraped job. It then calls `db.add_all(db_jobs)`. There is NO unique 
+    constraint on `Job.url`, and no deduplication against existing database records.
+  Impact:
+    Running the same search 10 times creates 10 duplicate rows for every single 
+    job posting in PostgreSQL. The database bloats uncontrollably, search 
+    performance degrades, and `get_latest_background_pool()` returns duplicate rows.
+  Fix:
+    Generate deterministic primary keys: `id = hashlib.sha256(canonical_url.encode()).hexdigest()`.
+    Use PostgreSQL `ON CONFLICT (id) DO UPDATE` or pre-filter existing job URLs.
+
+================================================================================
+3. HIGH SEVERITY BUGS (DATA CORRUPTION & SEARCH FAILURES)
+================================================================================
+
+[BUG-HIGH-001] FreeHire Geographic Fallback Pollutes City Feeds
+  File: backend/src/integrations/freehire/client.py (Lines 198-207)
+  Function: FreehireClient.search()
+  Problem:
+    When searching for a specific city (e.g. Pune, India):
+    1. It searches `city="pune", country="IN"`.
+    2. If 0 jobs returned, it falls back to `country="IN"`.
+    3. If 0 jobs returned, it falls back to WORLDWIDE (no geo filters at all).
+    It returns these 50 worldwide jobs without any post-fetch location validation.
+  Impact:
+    A search for jobs in Pune is silently flooded with 50 unrelated jobs from 
+    the US, UK, Germany, and Brazil.
+  Fix:
+    If fallback occurs, filter all returned jobs through `is_job_location_match()` 
+    before appending them to the output.
+
+[BUG-HIGH-002] Undated Jobs Permanently Bypass Freshness Filtering
+  File: backend/src/utils/date_utils.py (Lines 64-70)
+  Function: is_within_days()
+  Problem:
+    The date freshness validator implements:
+      if not raw_date:
+          return True
+      formatted = format_posted_date_for_csv(raw_date)
+      if formatted == "N/A":
+          return True
+  Impact:
+    Any job whose date was not provided by the scraper, or whose date failed to 
+    parse (e.g. relative dates like "2 months ago"), returns True!
+    Undated jobs permanently pass the "Posted within 24 hours" and "Posted 
+    within 3 days" filters, defeating freshness filtering.
+  Fix:
+    If `max_days <= 7` and `formatted == "N/A"`, return False. Only allow 
+    undated jobs when the user selects "All Dates".
+
+[BUG-HIGH-003] Experience Min Calculation Distorted by Secondary Tool Experience
+  File: backend/src/utils/text_cleaner.py (Lines 80-106)
+  Function: extract_job_experience_metadata()
+  Problem:
+    The regex searches for all patterns of `(\d+) years` in the job description 
+    and assigns:
+      min_y = min(found_min_years)
+  Impact:
+    A Principal/Senior job stating "Requires 8+ years of software architecture 
+    experience and 1 year of Kubernetes experience" extracts `[8, 1]`. 
+    `min([8, 1])` is 1, so the job is misclassified as "Entry-Level (0-1 Yr)"!
+    Senior jobs are shown to freshers, and freshers apply to senior roles.
+  Fix:
+    Prioritize title-level seniority indicators over description numbers. 
+    Use context-aware regex targeting overall experience phrases.
+
+[BUG-HIGH-004] Substring Skill Matching Produces False Positives
+  File: backend/src/agents/ranking.py (Lines 76-80)
+  Function: RankingAgent._score_job()
+  Problem:
+    Skill match evaluation uses:
+      for s in cand_skills:
+          if s and s in desc_lower or s in title_lower:
+              matched_skills.append(s.title())
+  Impact:
+    Short skills produce severe false positives:
+      - Skill "R" matches inside "transformers", "docker", "engineer"
+      - Skill "C" matches inside "candidate", "company", "cloud"
+      - Skill "Go" matches inside "google", "algorithm"
+      - Skill "CI" matches inside "precision", "decision"
+    Candidates receive artificial 100% skill match scores on jobs that do not 
+    require their skills.
+  Fix:
+    Use regex word boundary matching: `re.search(r'\b' + re.escape(s) + r'\b', text)`.
+
+[BUG-HIGH-005] Operator Precedence Bug in Skill Scoring
+  File: backend/src/agents/ranking.py (Line 77)
+  Function: RankingAgent._score_job()
+  Problem:
+    Line 77: `if s and s in desc_lower or s in title_lower:`
+    In Python, `and` takes precedence over `or`. This is parsed as:
+      `(s and (s in desc_lower)) or (s in title_lower)`
+  Impact:
+    If `s` is an empty string `""`, `(s and (s in desc_lower))` is False. 
+    Then `s in title_lower` is evaluated: `"" in title_lower` is ALWAYS TRUE.
+    An empty skill in the profile matches every single job.
+  Fix:
+    Change to `if s and (s in desc_lower or s in title_lower):`.
+
+[BUG-HIGH-006] Scheduler Alert Fallback Overrides User Filters
+  File: backend/src/services/scheduler_service.py (Lines 169-172, 195-197)
+  Function: SchedulerService._process_single_alert()
+  Problem:
+    Line 171:
+      if not fresh_jobs:
+          fresh_jobs = unique_batch[:5]  # Fallback to stale jobs!
+    Line 197:
+      if not curated_jobs:
+          curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30][:10]
+  Impact:
+    If a user creates an alert for "Machine Learning Engineer in Pune, posted within 3 days", 
+    and 0 fresh jobs match, the scheduler silently emails the user 5 stale, 
+    30-day-old jobs, or jobs from completely unrelated categories with match_score >= 30.
+  Fix:
+    Do not send fallback jobs. If 0 fresh jobs match, record "0 new jobs found" 
+    in history and do not send an email (or send an explicit "No new jobs today" notice).
+
+================================================================================
+4. MEDIUM SEVERITY BUGS (FUNCTIONAL FLAWS & SYSTEM LEAKS)
+================================================================================
+
+[BUG-MED-001] Hardcoded "Remote" Location Default in Search Route
+  File: backend/src/api/routes/search.py (Lines 144-146)
+  Function: search_jobs()
+  Problem:
+    Lines 144-145:
+      if "location" not in pref_dict:
+          pref_dict["location"] = "Remote"
+  Impact:
+    If a user wants to search across all locations (or leaves the location box 
+    empty for a nationwide search), the backend forces `location = "Remote"`, 
+    forcing scrapers into remote-only mode.
+  Fix:
+    Do not default location to "Remote". Use empty string `""` or `"Worldwide"`.
+
+[BUG-MED-002] Work-Mode Classifier Regex Contamination from Description
+  File: backend/src/utils/location_helper.py (Lines 198-205)
+  Function: detect_work_mode()
+  Problem:
+    Scans `f"{location_str} {title_str} {description_str[:400]}"` for "remote" or "hybrid".
+  Impact:
+    Descriptions mentioning:
+      - "This is an on-site position at our Pune office. Remote work is not permitted."
+      - "Collaborating with our remote engineering leadership in the US..."
+    are falsely classified as "Remote" or "Hybrid" despite being 100% on-site.
+  Fix:
+    Check `location_str` first. Add negative phrase detection ("not remote", 
+    "non-remote", "no remote", "strictly on-site").
+
+[BUG-MED-003] JobSpy LinkedIn Unauthenticated Rate Limiting (HTTP 429)
+  File: backend/src/integrations/jobspy/client.py (Lines 48-60)
+  Function: JobSpyClient._do_scrape()
+  Problem:
+    JobSpy scrapes LinkedIn guest endpoints without session management or rotating 
+    headers. After 15-20 requests, LinkedIn returns HTTP 429. The exception is caught 
+    with a `print()` notice and returns `None`, silently yielding 0 jobs.
+  Impact:
+    LinkedIn scraping fails silently in production environments without alerting 
+    the system or user.
+  Fix:
+    Add proxy/cookie support and structured error status reporting to distinguish 
+    "0 jobs found" from "LinkedIn rate-limited".
+
+[BUG-MED-004] Date String Column Prohibits SQL-Level Freshness Queries
+  File: backend/src/models/job.py (Line 15)
+  Class: Job
+  Problem:
+    `posted_date = Column(String(100), nullable=True, index=True)` stores formatted 
+    strings like "2026-09-01" or "N/A" instead of `Date` or `DateTime`.
+  Impact:
+    The database cannot perform native date filtering (`WHERE posted_date >= CURRENT_DATE - 3`). 
+    All date filtering must be done in application memory.
+  Fix:
+    Add a dedicated `posted_at = Column(DateTime, nullable=True, index=True)` column 
+    and store timezone-aware UTC timestamps.
+
+[BUG-MED-005] Composite Indexes Missing on Jobs Table
+  File: backend/src/models/job.py
+  Problem:
+    Single-column indexes exist on `title`, `company`, `url`, `posted_date`, and `search_id`. 
+    There is no composite index for `(search_id, match_score DESC)` or `(created_at DESC, match_score DESC)`.
+  Impact:
+    `get_latest_background_pool()` and `get_jobs_by_search_id()` perform expensive 
+    sequential scans and in-memory sorts when job tables grow large.
+  Fix:
+    Add composite indexes:
+      Index('idx_jobs_search_score', Job.search_id, Job.match_score.desc())
+      Index('idx_jobs_created_score', Job.created_at.desc(), Job.match_score.desc())
+
+[BUG-MED-006] Role Token Slicing in get_latest_background_pool
+  File: backend/src/services/job_service.py (Lines 810-815)
+  Function: JobService.get_latest_background_pool()
+  Problem:
+    `role_tok = role.strip().split()[0].lower()`
+    `query = query.filter(Job.title.ilike(f"%{role_tok}%"))`
+  Impact:
+    If `role = "Senior Machine Learning Engineer"`, `role_tok` is `"senior"`. 
+    The query filters for `title ILIKE '%senior%'`, matching Senior Accountant, 
+    Senior Recruiter, and Senior DevOps!
+    If `role = "AI Engineer"`, `len("AI".strip()) > 2` evaluates to False, so the 
+    role filter is completely ignored.
+  Fix:
+    Use proper multi-token matching or full title phrase ILIKE search.
+
+[BUG-MED-007] In-Memory Search Sessions Eviction Under Concurrency
+  File: backend/src/services/job_service.py (Lines 24-27)
+  Problem:
+    `ACTIVE_SEARCH_SESSIONS` is an in-memory Python dictionary bounded to 50 items.
+  Impact:
+    If multiple users perform searches, or if the server restarts or scales to 
+    multiple Uvicorn worker processes, `ACTIVE_SEARCH_SESSIONS` will miss sessions, 
+    forcing repeated fallbacks to database queries.
+  Fix:
+    Back the session cache with Redis or query directly from PostgreSQL with 
+    properly indexed `search_id`.
+
+================================================================================
+5. LOW SEVERITY DEFECTS & CODE QUALITY ISSUES
+================================================================================
+
+[BUG-LOW-001] Empty Test Files in Repository
+  Files:
+    - backend/tests/test_agents.py (Size: 1 byte)
+    - backend/tests/test_integrations.py (Size: 1 byte)
+  Problem: Test files are empty placeholders.
+  Fix: Populate with comprehensive integration tests.
+
+[BUG-LOW-002] Broad Except Exception Logging to stdout
+  Files: Multiple backend files
+  Problem:
+    Scattered `print(f"Notice: ...")` statements without structured log levels 
+    (DEBUG, INFO, WARNING, ERROR).
+  Fix: Standardize on Python's `logging.getLogger("jobhunt")`.
+
+[BUG-LOW-003] Wildcard CORS in FastAPI Middleware
+  File: backend/src/main.py
+  Problem: `allow_origins=["*"]` allows any origin to query the API.
+  Fix: Restrict to configured client domain in production settings.
+
+[BUG-LOW-004] Ephemeral SessionLocal Connections in Loops
+  File: backend/src/services/job_service.py (Lines 292-301)
+  Problem:
+    `db_temp = SessionLocal()` is opened and closed manually. If an exception occurs, 
+    it may leak connections.
+  Fix: Use context managers: `with SessionLocal() as db_temp:`.
+
+[BUG-LOW-005] Unhandled URL Tracking Query Parameters in Deduplication
+  File: backend/src/agents/deduplication.py (Lines 31-48)
+  Problem:
+    Exact URL matching checks raw string `url not in unique_by_url`. 
+    URLs with `?utm_source=indeed` vs clean URLs are treated as distinct.
+  Fix: Strip query parameters and tracking hashes before URL comparison.
+
+================================================================================
+6. SCRAPER-BY-SCRAPER AUDIT (ALL 10 SOURCES)
+================================================================================
+
+1. JOBSPY (LinkedIn & Indeed)
+   Status: PARTIALLY WORKING
+   Issues:
+     - Rate-limiting (HTTP 429) on unauthenticated LinkedIn requests.
+     - Descriptions are frequently truncated or missing.
+     - Country code mapping for Indeed fails if location contains ambiguous names.
+     - Silent failure returns `None` without reporting error status.
+   Missing Fields: Structured salary, full description on 40% of postings.
+   Reliability: 35% (LinkedIn) / 70% (Indeed).
+   Priority: CRITICAL.
+
+2. FREEHIRE
+   Status: WORKING WITH LEAKS
+   Issues:
+     - Automatic cascade from City -> Country -> Worldwide when city results are 0.
+     - Injects foreign jobs into localized searches.
+   Missing Fields: Clean state/province, company website.
+   Reliability: 75%.
+   Priority: HIGH.
+
+3. ASHBY
+   Status: WORKING WITH TOKEN DEFECT
+   Issues:
+     - Discards search tokens <= 2 chars ("AI", "ML", "QA").
+     - When tokens are empty, title check is bypassed and all company jobs are returned.
+   Missing Fields: Standardized salary currency.
+   Reliability: 95% (after token fix).
+   Priority: HIGH.
+
+4. LEVER
+   Status: WORKING WITH TOKEN DEFECT
+   Issues:
+     - Discards search tokens <= 2 chars ("AI", "ML", "QA").
+     - `createdAt` epoch parsing fails on negative or None timestamps.
+   Missing Fields: Clean plaintext (contains raw HTML entities).
+   Reliability: 95% (after token fix).
+   Priority: HIGH.
+
+5. GREENHOUSE
+   Status: WORKING WITH TOKEN DEFECT
+   Issues:
+     - Discards search tokens <= 2 chars ("AI", "ML", "QA").
+     - Location schema varies (string vs dict with `name` vs `offices` array).
+   Missing Fields: Numerical salary min/max.
+   Reliability: 95% (after token fix).
+   Priority: HIGH.
+
+6. PHENOM
+   Status: WORKING WITH TOKEN DEFECT
+   Issues:
+     - Discards search tokens <= 2 chars ("AI", "ML", "QA").
+     - Widget JSON schema fragile to enterprise tenant configurations.
+   Missing Fields: Direct contact info.
+   Reliability: 80%.
+   Priority: MEDIUM.
+
+7. HIMALAYAS
+   Status: WORKING
+   Issues:
+     - Remote-only bias; predominantly US/EU timezones.
+   Missing Fields: Localized currency.
+   Reliability: 98%.
+   Priority: LOW.
+
+8. REMOTEOK
+   Status: WORKING
+   Issues:
+     - Noisy tag matching; broad title keywords.
+   Missing Fields: Exact experience requirement.
+   Reliability: 95%.
+   Priority: LOW.
+
+9. JOBICY
+   Status: WORKING
+   Issues:
+     - Limited daily feed volume; mostly US remote.
+   Missing Fields: Detailed requirements breakdown.
+   Reliability: 95%.
+   Priority: LOW.
+
+10. ARBEITNOW
+    Status: WORKING
+    Issues:
+      - Heavy European focus; Germany/EU locations predominate.
+    Missing Fields: Non-EU visa sponsorship status.
+    Reliability: 95%.
+    Priority: LOW.
+
+================================================================================
+7. DATA MODEL, PERSISTENCE & DEDUPLICATION AUDIT
+================================================================================
+- Primary Key: `id` is currently random UUID per search. Must become a deterministic 
+  hash of `canonical_url` or `(source, source_job_id)`.
+- Unique Constraints: Need unique index on `url` (or canonical URL hash) to 
+  enable `ON CONFLICT DO NOTHING` / `DO UPDATE`.
+- Date Column: `posted_date` is currently `String(100)`. Should have a companion 
+  `posted_at` `DateTime(timezone=True)` column.
+- Deduplication: Intra-batch deduplication works well in memory via company 
+  normalization and token Jaccard similarity, but cross-search database-level 
+  deduplication is absent.
+- Repost Tracking: `repost_detector` records URLs in memory/DB, but lacks an 
+  automatic expiration policy for closed positions.
+
+================================================================================
+8. FILTERING SYSTEM & LOGIC OPERATOR DEFECTS
+================================================================================
+- Multi-skill filtering uses strict AND in frontend (`every(tok => fullText.includes(tok))`). 
+  If a user enters 4 skills, all 4 must appear. This is correct for specific 
+  searches, but should offer a configurable threshold (e.g. at least 2 of 4).
+- Empty filters on frontend correctly pass all jobs.
+- Backend date filtering has the critical silent bypass bug (BUG-CRIT-002).
+- Location filter defaults to "Remote" on backend if missing (BUG-MED-001).
+
+================================================================================
+9. JOB POSTED-DATE & FRESHNESS DEFECTS
+================================================================================
+- Relative dates ("3 hours ago", "2 days ago") parse to "N/A" and then return 
+  True for freshness, letting old jobs pass (BUG-HIGH-002).
+- Zero-results date filter drops the filter and returns ancient jobs (BUG-CRIT-002).
+- Timezone handling: Uses UTC with a 1.5-day future leeway to accommodate 
+  international timezone differences (acceptable design).
+
+================================================================================
+10. EXPERIENCE & SENIORITY EXTRACTION DEFECTS
+================================================================================
+- `min(found_min_years)` picks secondary tool requirements (e.g. "1 year Docker" 
+  in a 7-year senior job) and classifies the job as Entry-Level (BUG-HIGH-003).
+- Default fallback assigns 2 years (Mid-Level) whenever no digits are found, 
+  mislabeling fresher and unquantified listings.
+- Seniority keywords in title (`Senior`, `Lead`, `Principal`, `Staff`) must 
+  always override description number parsing.
+
+================================================================================
+11. LOCATION MATCHING & GEOGRAPHIC LEAKAGE DEFECTS
+================================================================================
+- Ranking agent assigns 100% location fit to any job in India for any Indian city 
+  query (BUG-CRIT-001).
+- FreeHire cascades to worldwide jobs on 0 results and bypasses location checks (BUG-HIGH-001).
+- Location helper contains excellent metro definitions for Pune, Bangalore, Mumbai, 
+  Hyderabad, Delhi NCR, but they were bypassed in `ranking.py`.
+
+================================================================================
+12. WORK-MODE CLASSIFICATION DEFECTS
+================================================================================
+- `detect_work_mode` inspects the first 400 characters of the description, 
+  falsely tagging on-site positions as remote if the description mentions 
+  "remote team" or "no remote work" (BUG-MED-002).
+- Fix: Require explicit negative pattern exclusions and prioritize `location` metadata.
+
+================================================================================
+13. SKILLS MATCHING & TAXONOMY DEFECTS
+================================================================================
+- Naive substring search (`s in desc_lower`) produces false positives for short 
+  skills like "R", "C", "Go", "CI" (BUG-HIGH-004).
+- Operator precedence bug allows empty skill strings to match all jobs (BUG-HIGH-005).
+- Tech cluster keywords need exact word-boundary regexes.
+
+================================================================================
+14. 4-PILLAR RELEVANCE & SCORING DEFECTS
+================================================================================
+- Current formula: 35% Role + 30% Skills + 20% Experience + 15% Location.
+- Due to the location bug (100%), skill default (75%), and generic role match (80%), 
+  an irrelevant Bangalore role gets an 80.5% match score for an AI Engineer in Pune search.
+- When bugs CRIT-001, CRIT-004, and HIGH-004 are fixed, the formula correctly 
+  penalizes mismatched roles and locations to <= 30%.
+
+================================================================================
+15. SCHEDULER, EMAIL ALERTS & DIGEST DEFECTS
+================================================================================
+- Fallback logic sends stale jobs (`unique_batch[:5]`) when 0 fresh jobs are found (BUG-HIGH-006).
+- Fallback logic sends unrelated roles (`match_score >= 30`) when 0 curated jobs match.
+- Email digests must never send stale or unrelated jobs as "curated matches".
+
+================================================================================
+16. FRONTEND (REACT SPA) DEFECTS & CLIENT/SERVER MISMATCHES
+================================================================================
+- Filtering is executed in JavaScript client-side (`useMemo`), which is fast but 
+  creates desynchronization if the backend session expires.
+- Frontend uses `FOREIGN_LOCATIONS_LIST` and `matchesLocationNLP()`, which 
+  partially masked backend location leaks from users.
+- Re-compilation of `frontend/app.jsx` to `frontend/app.compiled.js` must be 
+  automated whenever UI changes occur.
+
+================================================================================
+17. ASYNC CONCURRENCY, CONNECTION POOLING & PERFORMANCE DEFECTS
+================================================================================
+- Supabase PostgreSQL pooler (`pgbouncer` on port 5432) has connection limits. 
+  Manual `SessionLocal()` instances in background harvest streams risk leaking 
+  connections if not enclosed in `with` blocks.
+- Missing composite database indexes lead to full table scans on large tables.
+
+================================================================================
+18. OBSERVABILITY, LOGGING & ERROR RECOVERY GAPS
+================================================================================
+- Scrapers log failures with `print()` instead of structured logging.
+- Orchestrator lacks source health metrics (cannot distinguish 0 jobs from 429 blocked).
+- Need a health status dictionary in API responses: `{"jobspy": "ok", "ashby": "ok", "lever": "ok"}`.
+
+================================================================================
+19. SECURITY, SECRETS & API CONTRACT AUDIT
+================================================================================
+- API routes use wildcard CORS (`*`).
+- Database credentials and API keys are stored in `.env` (good practice), but 
+  CORS origin should be restricted in production.
+- Temporary uploaded resumes in `temp_resumes/` require automatic deletion after parsing.
+
+================================================================================
+20. TESTING GAPS & COMPLETE TEST SPECIFICATION
+================================================================================
+The test suite currently only tests basic DB CRUD. The following test suites 
+must be added:
+  1. `test_location_isolation`: Pune query asserts 0 Bangalore/Gurgaon jobs scored >= 50.
+  2. `test_date_freshness_boundary`: 0 fresh jobs returns empty list, not stale fallback.
+  3. `test_ats_tokenization`: 2-letter tokens ("AI", "ML", "QA", "Go") properly preserved.
+  4. `test_ai_role_precision`: AI Engineer query rejects generic frontend/backend roles.
+  5. `test_skill_word_boundary`: "R" and "C" do not match inside "transformers" and "company".
+  6. `test_deterministic_job_id`: Identical URL creates identical SHA-256 ID.
+
+================================================================================
+21. PRIORITIZED IMPLEMENTATION ROADMAP
+================================================================================
+
+PHASE 1: MAKE IT WORK (CRITICAL CORRECTNESS FIXES)
+  [ ] Step 1.1: Fix ranking location leak in `backend/src/agents/ranking.py`.
+  [ ] Step 1.2: Fix date filter fallback in `backend/src/services/job_service.py`.
+  [ ] Step 1.3: Fix 2-letter token stripping in Ashby, Lever, Greenhouse, Phenom clients.
+  [ ] Step 1.4: Fix AI role generic bypass in `backend/src/utils/role_helper.py`.
+  [ ] Step 1.5: Fix skill substring matching & operator precedence in `ranking.py`.
+  [ ] Step 1.6: Recompile frontend (`node build.js`).
+
+PHASE 2: MAKE IT RELIABLE (VALIDATION & DEDUPLICATION)
+  [ ] Step 2.1: Implement deterministic SHA-256 job IDs and PostgreSQL upserts.
+  [ ] Step 2.2: Reject undated ("N/A") jobs when freshness window <= 7 days is active.
+  [ ] Step 2.3: Prioritize title seniority in `text_cleaner.py` experience parsing.
+  [ ] Step 2.4: Remove stale and unrelated fallback logic in `scheduler_service.py`.
+  [ ] Step 2.5: Enforce location filtering on FreeHire worldwide fallbacks.
+
+PHASE 3: MAKE IT FAST (DATABASE & QUERY OPTIMIZATION)
+  [ ] Step 3.1: Add composite indexes on `jobs(search_id, match_score DESC)` and `jobs(created_at DESC)`.
+  [ ] Step 3.2: Wrap all `SessionLocal()` instances in proper context managers.
+
+PHASE 4: IMPROVE RELEVANCE & OBSERVABILITY
+  [ ] Step 4.1: Add negative pattern gates to `detect_work_mode()`.
+  [ ] Step 4.2: Expose per-source scraper health status in search response payloads.
+  [ ] Step 4.3: Expand tech stack cluster synonyms (K8s, Postgres, ReactJS).
+
+PHASE 5: AUTOMATED TESTING & VERIFICATION
+  [ ] Step 5.1: Write unit and integration tests for all fixed failure modes.
+  [ ] Step 5.2: Execute test suite and verify 100% pass rate.
+================================================================================
+                             END OF AUDIT REPORT
+================================================================================
