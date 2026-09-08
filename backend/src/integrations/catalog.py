@@ -67,20 +67,38 @@ COMPANY_CATALOG = [
     {"name": "Allianz", "provider": "phenom", "slug": "careers.allianz.com", "careers_url": "https://careers.allianz.com", "api": ""},
 ]
 
-# Deduplicate catalog by provider + slug
+# Dynamic loader for companies.json
+import os
+import json
+
+_JSON_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "companies.json")
+if os.path.exists(_JSON_PATH):
+    try:
+        with open(_JSON_PATH, "r", encoding="utf-8") as f:
+            _loaded = json.load(f)
+            if isinstance(_loaded, list):
+                COMPANY_CATALOG.extend(_loaded)
+    except Exception as e:
+        print(f"[Catalog] Notice: could not load companies.json: {e}")
+
+# Deduplicate catalog by provider + (slug or tenant or subdomain or identifier)
 _seen_keys = set()
 _deduped_catalog = []
 for c in COMPANY_CATALOG:
-    k = (c.get("provider"), c.get("slug") or c.get("tenant"))
+    k = (c.get("provider"), c.get("slug") or c.get("tenant") or c.get("subdomain") or c.get("identifier"))
     if k not in _seen_keys:
         _seen_keys.add(k)
         _deduped_catalog.append(c)
 COMPANY_CATALOG = _deduped_catalog
 
+AI_COMPANIES = [c for c in COMPANY_CATALOG if c.get("category") == "ai_ml"]
 GREENHOUSE_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "greenhouse"]
 ASHBY_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "ashby"]
 LEVER_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "lever"]
 PHENOM_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "phenom"]
 WORKABLE_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "workable"]
 WORKDAY_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "workday"]
+SMARTRECRUITERS_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "smartrecruiters"]
+RECRUITEE_COMPANIES = [c for c in COMPANY_CATALOG if c.get("provider") == "recruitee"]
+
 

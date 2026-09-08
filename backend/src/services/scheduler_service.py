@@ -571,7 +571,7 @@ class SchedulerService:
             for config in target_configs[:2]:
                 role_name = config["role"]
                 loc_name = config["location"]
-                print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across 9 platforms...")
+                print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across all 30+ connected platforms...")
 
                 raw_jobs = await self.orchestrator.orchestrate_search(config["candidate_profile"], config["preferences"])
                 if not raw_jobs:

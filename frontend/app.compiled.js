@@ -2902,23 +2902,33 @@ function JobSearchDashboard(_ref13) {
       if (filterCategory !== 'all') {
         var jobCat = (job.source_category || '').toLowerCase();
         var jobSrc = (job.source || '').toLowerCase();
-        if (filterCategory === 'india' && jobCat !== 'india' && !jobSrc.includes('instahyre') && !jobLoc.includes('india')) return false;
-        if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable'].some(function (s) {
+        if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'shine', 'unstop'].some(function (s) {
+          return jobSrc.includes(s);
+        }) && !jobLoc.includes('india')) return false;
+        if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable', 'aijobs', 'kdnuggets'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
-        if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom'].some(function (s) {
+        if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom', 'recruitee', 'teamtailor'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
-        if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn'].some(function (s) {
+        if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn', 'cutshort', 'recruitee', 'builtin', 'themuse', 'muse'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
-        if (filterCategory === 'remote' && jobCat !== 'remote' && !['remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow'].some(function (s) {
+        if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'dailyremote', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
+        if (filterCategory === 'internships' && jobCat !== 'internships' && !['internshala', 'unstop', 'simplify'].some(function (s) {
+          return jobSrc.includes(s);
+        }) && !title.includes('intern')) return false;
+        if (filterCategory === 'government' && jobCat !== 'government' && !jobSrc.includes('usajobs') && !jobSrc.includes('govindia')) return false;
       }
 
       // 8. Source Platform
-      if (filterSource !== 'all' && !source.includes(filterSource)) return false;
+      if (filterSource !== 'all') {
+        if (filterSource === 'india' && !['instahyre', 'cutshort', 'hirist'].some(function (s) {
+          return source.includes(s);
+        })) return false;else if (!source.includes(filterSource)) return false;
+      }
       return true;
     }).sort(function (a, b) {
       if (sortBy === 'score') return (b.match_score || 0) - (a.match_score || 0);
@@ -3182,25 +3192,73 @@ function JobSearchDashboard(_ref13) {
     className: "w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-purple-300"
   }, /*#__PURE__*/React.createElement("option", {
     value: "all"
-  }, "\uD83C\uDF10 All 9 Platforms"), /*#__PURE__*/React.createElement("option", {
+  }, "\uD83C\uDF10 All Platforms (30+ Connectors)"), /*#__PURE__*/React.createElement("option", {
+    value: "naukri"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Naukri India"), /*#__PURE__*/React.createElement("option", {
+    value: "apna"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Apna India"), /*#__PURE__*/React.createElement("option", {
+    value: "shine"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Shine India"), /*#__PURE__*/React.createElement("option", {
+    value: "instahyre"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Instahyre"), /*#__PURE__*/React.createElement("option", {
+    value: "cutshort"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Cutshort"), /*#__PURE__*/React.createElement("option", {
+    value: "hirist"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Hirist"), /*#__PURE__*/React.createElement("option", {
+    value: "internshala"
+  }, "\uD83C\uDF31 Internshala"), /*#__PURE__*/React.createElement("option", {
+    value: "unstop"
+  }, "\uD83C\uDF93 Unstop Freshers"), /*#__PURE__*/React.createElement("option", {
+    value: "builtin"
+  }, "\uD83D\uDE80 Built In (Tech & Startups)"), /*#__PURE__*/React.createElement("option", {
+    value: "ycombinator"
+  }, "\uD83D\uDE80 Y Combinator"), /*#__PURE__*/React.createElement("option", {
+    value: "workday"
+  }, "\uD83D\uDCBC Workday Enterprise CXS"), /*#__PURE__*/React.createElement("option", {
+    value: "smartrecruiters"
+  }, "\uD83C\uDFE2 SmartRecruiters ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "workable"
+  }, "\uD83C\uDFAF Workable ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "recruitee"
+  }, "\uD83E\uDD84 Recruitee ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "teamtailor"
+  }, "\u26A1 Teamtailor ATS"), /*#__PURE__*/React.createElement("option", {
     value: "greenhouse"
   }, "\uD83C\uDF3F Greenhouse ATS"), /*#__PURE__*/React.createElement("option", {
     value: "lever"
   }, "\u2699\uFE0F Lever ATS"), /*#__PURE__*/React.createElement("option", {
     value: "ashby"
   }, "\u26A1 Ashby ATS"), /*#__PURE__*/React.createElement("option", {
-    value: "linkedin"
-  }, "\uD83D\uDCBC LinkedIn & Indeed"), /*#__PURE__*/React.createElement("option", {
+    value: "phenom"
+  }, "\uD83D\uDD2E Phenom ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "aijobs"
+  }, "\uD83E\uDD16 KDnuggets & AI-Jobs"), /*#__PURE__*/React.createElement("option", {
+    value: "weworkremotely"
+  }, "\uD83D\uDCBB We Work Remotely"), /*#__PURE__*/React.createElement("option", {
+    value: "workingnomads"
+  }, "\u26FA Working Nomads"), /*#__PURE__*/React.createElement("option", {
+    value: "remotive"
+  }, "\uD83D\uDCE1 Remotive"), /*#__PURE__*/React.createElement("option", {
     value: "himalayas"
   }, "\uD83C\uDFD4\uFE0F Himalayas"), /*#__PURE__*/React.createElement("option", {
-    value: "arbeitnow"
-  }, "\uD83C\uDDEA\uD83C\uDDFA Arbeitnow"), /*#__PURE__*/React.createElement("option", {
-    value: "freehire"
-  }, "\uD83C\uDFAF Freehire"), /*#__PURE__*/React.createElement("option", {
+    value: "remoteok"
+  }, "\uD83C\uDFD6\uFE0F RemoteOK"), /*#__PURE__*/React.createElement("option", {
     value: "jobicy"
   }, "\uD83C\uDF0D Jobicy"), /*#__PURE__*/React.createElement("option", {
-    value: "remoteok"
-  }, "\uD83C\uDFD6\uFE0F RemoteOK")))), /*#__PURE__*/React.createElement("div", {
+    value: "arbeitnow"
+  }, "\uD83C\uDDEA\uD83C\uDDFA Arbeitnow"), /*#__PURE__*/React.createElement("option", {
+    value: "linkedin"
+  }, "\uD83D\uDCBC LinkedIn & Indeed"), /*#__PURE__*/React.createElement("option", {
+    value: "themuse"
+  }, "\uD83C\uDFDB\uFE0F The Muse (Tech & Enterprise)"), /*#__PURE__*/React.createElement("option", {
+    value: "simplify"
+  }, "\uD83C\uDF93 Simplify Internships"), /*#__PURE__*/React.createElement("option", {
+    value: "dailyremote"
+  }, "\uD83C\uDFD6\uFE0F DailyRemote"), /*#__PURE__*/React.createElement("option", {
+    value: "govindia"
+  }, "\uD83C\uDFDB\uFE0F GovIndia PSU (ISRO/DRDO)"), /*#__PURE__*/React.createElement("option", {
+    value: "usajobs"
+  }, "\uD83C\uDFDB\uFE0F USAJOBS")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2.5 pt-1"
   }, /*#__PURE__*/React.createElement("button", {
     type: "submit",
@@ -3658,6 +3716,12 @@ function JobSearchDashboard(_ref13) {
   }, {
     label: "🏠 Remote Global",
     val: "remote"
+  }, {
+    label: "🌱 Internships & Freshers",
+    val: "internships"
+  }, {
+    label: "🏛️ Government Portals",
+    val: "government"
   }].map(function (cat, idx) {
     return /*#__PURE__*/React.createElement("button", {
       key: idx,
@@ -3697,23 +3761,73 @@ function JobSearchDashboard(_ref13) {
     className: "w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
   }, /*#__PURE__*/React.createElement("option", {
     value: "all"
-  }, "\uD83C\uDF10 All Platforms"), /*#__PURE__*/React.createElement("option", {
+  }, "\uD83C\uDF10 All Platforms (30+ Connectors)"), /*#__PURE__*/React.createElement("option", {
+    value: "naukri"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Naukri India"), /*#__PURE__*/React.createElement("option", {
+    value: "apna"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Apna India"), /*#__PURE__*/React.createElement("option", {
+    value: "shine"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Shine India"), /*#__PURE__*/React.createElement("option", {
+    value: "instahyre"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Instahyre"), /*#__PURE__*/React.createElement("option", {
+    value: "cutshort"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Cutshort"), /*#__PURE__*/React.createElement("option", {
+    value: "hirist"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 Hirist"), /*#__PURE__*/React.createElement("option", {
+    value: "internshala"
+  }, "\uD83C\uDF31 Internshala"), /*#__PURE__*/React.createElement("option", {
+    value: "unstop"
+  }, "\uD83C\uDF93 Unstop Freshers"), /*#__PURE__*/React.createElement("option", {
+    value: "builtin"
+  }, "\uD83D\uDE80 Built In (Tech & Startups)"), /*#__PURE__*/React.createElement("option", {
+    value: "ycombinator"
+  }, "\uD83D\uDE80 Y Combinator"), /*#__PURE__*/React.createElement("option", {
+    value: "workday"
+  }, "\uD83D\uDCBC Workday Enterprise CXS"), /*#__PURE__*/React.createElement("option", {
+    value: "smartrecruiters"
+  }, "\uD83C\uDFE2 SmartRecruiters ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "workable"
+  }, "\uD83C\uDFAF Workable ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "recruitee"
+  }, "\uD83E\uDD84 Recruitee ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "teamtailor"
+  }, "\u26A1 Teamtailor ATS"), /*#__PURE__*/React.createElement("option", {
     value: "greenhouse"
   }, "\uD83C\uDF3F Greenhouse ATS"), /*#__PURE__*/React.createElement("option", {
     value: "lever"
   }, "\u2699\uFE0F Lever ATS"), /*#__PURE__*/React.createElement("option", {
     value: "ashby"
   }, "\u26A1 Ashby ATS"), /*#__PURE__*/React.createElement("option", {
-    value: "jobicy"
-  }, "\uD83C\uDF0D Jobicy"), /*#__PURE__*/React.createElement("option", {
-    value: "remoteok"
-  }, "\uD83C\uDFD6\uFE0F RemoteOK"), /*#__PURE__*/React.createElement("option", {
-    value: "arbeitnow"
-  }, "\uD83C\uDDEA\uD83C\uDDFA Arbeitnow"), /*#__PURE__*/React.createElement("option", {
+    value: "phenom"
+  }, "\uD83D\uDD2E Phenom ATS"), /*#__PURE__*/React.createElement("option", {
+    value: "aijobs"
+  }, "\uD83E\uDD16 KDnuggets & AI-Jobs"), /*#__PURE__*/React.createElement("option", {
+    value: "weworkremotely"
+  }, "\uD83D\uDCBB We Work Remotely"), /*#__PURE__*/React.createElement("option", {
+    value: "workingnomads"
+  }, "\u26FA Working Nomads"), /*#__PURE__*/React.createElement("option", {
+    value: "remotive"
+  }, "\uD83D\uDCE1 Remotive"), /*#__PURE__*/React.createElement("option", {
     value: "himalayas"
   }, "\uD83C\uDFD4\uFE0F Himalayas"), /*#__PURE__*/React.createElement("option", {
+    value: "remoteok"
+  }, "\uD83C\uDFD6\uFE0F RemoteOK"), /*#__PURE__*/React.createElement("option", {
+    value: "jobicy"
+  }, "\uD83C\uDF0D Jobicy"), /*#__PURE__*/React.createElement("option", {
+    value: "arbeitnow"
+  }, "\uD83C\uDDEA\uD83C\uDDFA Arbeitnow"), /*#__PURE__*/React.createElement("option", {
     value: "linkedin"
-  }, "\uD83D\uDCBC LinkedIn / Indeed"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCBC LinkedIn / Indeed (JobSpy)"), /*#__PURE__*/React.createElement("option", {
+    value: "themuse"
+  }, "\uD83C\uDFDB\uFE0F The Muse (Tech & Enterprise)"), /*#__PURE__*/React.createElement("option", {
+    value: "simplify"
+  }, "\uD83C\uDF93 Simplify Internships"), /*#__PURE__*/React.createElement("option", {
+    value: "dailyremote"
+  }, "\uD83C\uDFD6\uFE0F DailyRemote"), /*#__PURE__*/React.createElement("option", {
+    value: "govindia"
+  }, "\uD83C\uDFDB\uFE0F GovIndia PSU (ISRO/DRDO)"), /*#__PURE__*/React.createElement("option", {
+    value: "usajobs"
+  }, "\uD83C\uDFDB\uFE0F USAJOBS"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] font-semibold text-slate-400 uppercase"

@@ -2440,17 +2440,23 @@ function JobSearchDashboard({
             if (filterCategory !== 'all') {
                 const jobCat = (job.source_category || '').toLowerCase();
                 const jobSrc = (job.source || '').toLowerCase();
-                if (filterCategory === 'india' && jobCat !== 'india' && !jobSrc.includes('instahyre') && !jobLoc.includes('india')) return false;
-                if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable'].some(s => jobSrc.includes(s))) return false;
-                if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom'].some(s => jobSrc.includes(s))) return false;
-                if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn'].some(s => jobSrc.includes(s))) return false;
-                if (filterCategory === 'remote' && jobCat !== 'remote' && !['remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'shine', 'unstop'].some(s => jobSrc.includes(s)) && !jobLoc.includes('india')) return false;
+                if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable', 'aijobs', 'kdnuggets'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom', 'recruitee', 'teamtailor'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn', 'cutshort', 'recruitee', 'builtin', 'themuse', 'muse'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'dailyremote', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'internships' && jobCat !== 'internships' && !['internshala', 'unstop', 'simplify'].some(s => jobSrc.includes(s)) && !title.includes('intern')) return false;
+                if (filterCategory === 'government' && jobCat !== 'government' && !jobSrc.includes('usajobs') && !jobSrc.includes('govindia')) return false;
             }
 
             // 8. Source Platform
-            if (filterSource !== 'all' && !source.includes(filterSource)) return false;
+            if (filterSource !== 'all') {
+                if (filterSource === 'india' && !['instahyre', 'cutshort', 'hirist'].some(s => source.includes(s))) return false;
+                else if (!source.includes(filterSource)) return false;
+            }
 
             return true;
+
         }).sort((a, b) => {
             if (sortBy === 'score') return (b.match_score || 0) - (a.match_score || 0);
             if (sortBy === 'date') return new Date(b.posted_date || 0) - new Date(a.posted_date || 0);
@@ -2670,16 +2676,40 @@ function JobSearchDashboard({
                                         onChange={(e) => setHarvestSource(e.target.value)}
                                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none font-medium text-purple-300"
                                     >
-                                        <option value="all">🌐 All 9 Platforms</option>
+                                        <option value="all">🌐 All Platforms (30+ Connectors)</option>
+                                        <option value="naukri">🇮🇳 Naukri India</option>
+                                        <option value="apna">🇮🇳 Apna India</option>
+                                        <option value="shine">🇮🇳 Shine India</option>
+                                        <option value="instahyre">🇮🇳 Instahyre</option>
+                                        <option value="cutshort">🇮🇳 Cutshort</option>
+                                        <option value="hirist">🇮🇳 Hirist</option>
+                                        <option value="internshala">🌱 Internshala</option>
+                                        <option value="unstop">🎓 Unstop Freshers</option>
+                                        <option value="builtin">🚀 Built In (Tech & Startups)</option>
+                                        <option value="ycombinator">🚀 Y Combinator</option>
+                                        <option value="workday">💼 Workday Enterprise CXS</option>
+                                        <option value="smartrecruiters">🏢 SmartRecruiters ATS</option>
+                                        <option value="workable">🎯 Workable ATS</option>
+                                        <option value="recruitee">🦄 Recruitee ATS</option>
+                                        <option value="teamtailor">⚡ Teamtailor ATS</option>
                                         <option value="greenhouse">🌿 Greenhouse ATS</option>
                                         <option value="lever">⚙️ Lever ATS</option>
                                         <option value="ashby">⚡ Ashby ATS</option>
-                                        <option value="linkedin">💼 LinkedIn & Indeed</option>
+                                        <option value="phenom">🔮 Phenom ATS</option>
+                                        <option value="aijobs">🤖 KDnuggets & AI-Jobs</option>
+                                        <option value="weworkremotely">💻 We Work Remotely</option>
+                                        <option value="workingnomads">⛺ Working Nomads</option>
+                                        <option value="remotive">📡 Remotive</option>
                                         <option value="himalayas">🏔️ Himalayas</option>
-                                        <option value="arbeitnow">🇪🇺 Arbeitnow</option>
-                                        <option value="freehire">🎯 Freehire</option>
-                                        <option value="jobicy">🌍 Jobicy</option>
                                         <option value="remoteok">🏖️ RemoteOK</option>
+                                        <option value="jobicy">🌍 Jobicy</option>
+                                        <option value="arbeitnow">🇪🇺 Arbeitnow</option>
+                                        <option value="linkedin">💼 LinkedIn & Indeed</option>
+                                        <option value="themuse">🏛️ The Muse (Tech & Enterprise)</option>
+                                        <option value="simplify">🎓 Simplify Internships</option>
+                                        <option value="dailyremote">🏖️ DailyRemote</option>
+                                        <option value="govindia">🏛️ GovIndia PSU (ISRO/DRDO)</option>
+                                        <option value="usajobs">🏛️ USAJOBS</option>
                                     </select>
                                 </div>
                             </div>
@@ -3217,7 +3247,9 @@ function JobSearchDashboard({
                                 { label: "🤖 Direct AI Labs", val: "ai_registry" },
                                 { label: "🏢 Enterprise Workday", val: "enterprise_workday" },
                                 { label: "🚀 Startups (YC)", val: "startups" },
-                                { label: "🏠 Remote Global", val: "remote" }
+                                { label: "🏠 Remote Global", val: "remote" },
+                                { label: "🌱 Internships & Freshers", val: "internships" },
+                                { label: "🏛️ Government Portals", val: "government" }
                             ].map((cat, idx) => (
                                 <button
                                     key={idx}
@@ -3260,17 +3292,43 @@ function JobSearchDashboard({
                                     onChange={(e) => setFilterSource(e.target.value)}
                                     className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
                                 >
-                                    <option value="all">🌐 All Platforms</option>
+                                    <option value="all">🌐 All Platforms (30+ Connectors)</option>
+                                    <option value="naukri">🇮🇳 Naukri India</option>
+                                    <option value="apna">🇮🇳 Apna India</option>
+                                    <option value="shine">🇮🇳 Shine India</option>
+                                    <option value="instahyre">🇮🇳 Instahyre</option>
+                                    <option value="cutshort">🇮🇳 Cutshort</option>
+                                    <option value="hirist">🇮🇳 Hirist</option>
+                                    <option value="internshala">🌱 Internshala</option>
+                                    <option value="unstop">🎓 Unstop Freshers</option>
+                                    <option value="builtin">🚀 Built In (Tech & Startups)</option>
+                                    <option value="ycombinator">🚀 Y Combinator</option>
+                                    <option value="workday">💼 Workday Enterprise CXS</option>
+                                    <option value="smartrecruiters">🏢 SmartRecruiters ATS</option>
+                                    <option value="workable">🎯 Workable ATS</option>
+                                    <option value="recruitee">🦄 Recruitee ATS</option>
+                                    <option value="teamtailor">⚡ Teamtailor ATS</option>
                                     <option value="greenhouse">🌿 Greenhouse ATS</option>
                                     <option value="lever">⚙️ Lever ATS</option>
                                     <option value="ashby">⚡ Ashby ATS</option>
-                                    <option value="jobicy">🌍 Jobicy</option>
-                                    <option value="remoteok">🏖️ RemoteOK</option>
-                                    <option value="arbeitnow">🇪🇺 Arbeitnow</option>
+                                    <option value="phenom">🔮 Phenom ATS</option>
+                                    <option value="aijobs">🤖 KDnuggets & AI-Jobs</option>
+                                    <option value="weworkremotely">💻 We Work Remotely</option>
+                                    <option value="workingnomads">⛺ Working Nomads</option>
+                                    <option value="remotive">📡 Remotive</option>
                                     <option value="himalayas">🏔️ Himalayas</option>
-                                    <option value="linkedin">💼 LinkedIn / Indeed</option>
+                                    <option value="remoteok">🏖️ RemoteOK</option>
+                                    <option value="jobicy">🌍 Jobicy</option>
+                                    <option value="arbeitnow">🇪🇺 Arbeitnow</option>
+                                    <option value="linkedin">💼 LinkedIn / Indeed (JobSpy)</option>
+                                    <option value="themuse">🏛️ The Muse (Tech & Enterprise)</option>
+                                    <option value="simplify">🎓 Simplify Internships</option>
+                                    <option value="dailyremote">🏖️ DailyRemote</option>
+                                    <option value="govindia">🏛️ GovIndia PSU (ISRO/DRDO)</option>
+                                    <option value="usajobs">🏛️ USAJOBS</option>
                                 </select>
                             </div>
+
 
                             {/* Min Match Slider */}
                             <div>
