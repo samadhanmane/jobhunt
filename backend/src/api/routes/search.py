@@ -96,8 +96,24 @@ async def search_jobs(
     if location is not None:
         pref_dict["location"] = location.strip()
     if experience_level:
-        pref_dict["experience_level"] = experience_level.strip()
-        pref_dict["experience_years"] = 0.0 if experience_level == "intern" else (1.0 if experience_level == "entry" else (3.0 if experience_level == "mid" else (6.0 if experience_level == "senior" else 10.0)))
+        exp_lvl = experience_level.strip().lower()
+        pref_dict["experience_level"] = exp_lvl
+        if exp_lvl == "intern":
+            pref_dict["experience_years"] = 0.0
+        elif exp_lvl == "entry":
+            pref_dict["experience_years"] = 1.0
+        elif exp_lvl == "junior":
+            pref_dict["experience_years"] = 2.0
+        elif exp_lvl == "mid":
+            pref_dict["experience_years"] = 4.0
+        elif exp_lvl == "senior":
+            pref_dict["experience_years"] = 6.0
+        elif exp_lvl in ["lead", "principal", "staff"]:
+            pref_dict["experience_years"] = 8.0
+        elif exp_lvl in ["all", "any"]:
+            pref_dict["experience_years"] = None
+        else:
+            pref_dict["experience_years"] = None
     elif experience_years is not None:
         pref_dict["experience_years"] = experience_years
     if remote_preference:

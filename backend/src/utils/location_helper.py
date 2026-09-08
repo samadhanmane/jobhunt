@@ -214,13 +214,15 @@ def is_job_location_match(
     job_url: str = ""
 ) -> bool:
     """
-    Enhanced location & work arrangement matcher incorporating career-ops precision rules.
+    Enhanced location & work arrangement matcher with precision city and country rules.
     """
     job_loc = str(job_location or "").lower().strip()
     pref_loc = str(pref_location or "").lower().strip()
     work_mode = str(pref_work_mode or "any").lower().strip()
     job_desc = str(job_description or "")[:800].lower()
-    job_work_mode = detect_work_mode(job_loc, job_title, job_desc).lower()
+    t = str(job_title or "").lower()
+    u = str(job_url or "").lower()
+    job_work_mode = detect_work_mode(job_loc, t, job_desc).lower()
 
     # Work Mode check
     if work_mode in ["remote", "remote_only"]:
@@ -237,12 +239,51 @@ def is_job_location_match(
     if not pref_loc or pref_loc in ["worldwide", "global", "all", "any", "remote"]:
         return True
 
-    # If target location is India or an Indian city (Pune, Bangalore, Mumbai, Delhi, etc.)
+    # Indian Metro Areas mapping
+    METRO_AREAS = {
+        "pune": ["pune", "hinjawadi", "kharadi", "magarpatta", "hadapsar", "baner", "wakad"],
+        "bangalore": ["bangalore", "bengaluru", "whitefield", "electronic city", "bellandur", "koramangala"],
+        "bengaluru": ["bangalore", "bengaluru", "whitefield", "electronic city", "bellandur", "koramangala"],
+        "mumbai": ["mumbai", "bombay", "navi mumbai", "thane", "andheri", "powai"],
+        "hyderabad": ["hyderabad", "secunderabad", "hitec city", "cyberabad", "gachibowli"],
+        "delhi": ["delhi", "new delhi", "noida", "gurgaon", "gurugram", "faridabad", "ghaziabad", "ncr"],
+        "noida": ["noida", "greater noida", "delhi", "ncr"],
+        "gurgaon": ["gurgaon", "gurugram", "delhi", "ncr"],
+        "gurugram": ["gurgaon", "gurugram", "delhi", "ncr"],
+        "chennai": ["chennai", "madras"],
+        "kolkata": ["kolkata", "calcutta"],
+        "ahmedabad": ["ahmedabad"],
+        "indore": ["indore"],
+        "jaipur": ["jaipur"],
+        "kochi": ["kochi", "cochin", "kerala"],
+    }
+
+    # Check if pref_loc targets a specific city
+    target_city_terms = None
+    for city_key, sub_terms in METRO_AREAS.items():
+        pattern = r'\b' + re.escape(city_key) + r'\b'
+        if re.search(pattern, pref_loc):
+            target_city_terms = sub_terms
+            break
+
+    if target_city_terms:
+        # Check if the specific city/metro sub-region appears in the job
+        combined_text = f"{job_loc} {t} {job_desc[:300]}"
+        for term in target_city_terms:
+            pattern = r'\b' + re.escape(term) + r'\b'
+            if re.search(pattern, combined_text):
+                return True
+        # Only allow remote if user explicitly requested remote work mode
+        if work_mode in ["remote", "remote_only"] and job_work_mode == "remote":
+            return is_india_location(job_loc, u, t, job_desc)
+        return False
+
+    # If target location is India broadly ("india", "in", "bharat")
     target_country = detect_country_key(pref_loc)
-    if target_country == "india" or "india" in pref_loc or any(city in pref_loc for city in INDIA_CITIES):
+    if target_country == "india" or "india" in pref_loc:
         return is_india_location(job_loc, job_url, job_title, job_desc)
 
-    # Token match for city or country
+    # Token match for other regions or cities
     pref_tokens = [t.strip() for t in re.split(r'[,/\s-]+', pref_loc) if len(t.strip()) > 2]
     if any(t in job_loc for t in pref_tokens):
         return True

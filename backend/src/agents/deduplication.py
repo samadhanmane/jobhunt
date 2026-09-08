@@ -65,18 +65,37 @@ class DeduplicationAgent(BaseJobAgent):
                 deduplicated_results.append(group_jobs[0])
                 continue
 
-            # Within the same company: check title similarity
+            # Within the same company: check title similarity preserving seniority levels
             kept_in_group = []
+            SENIORITY_MODIFIERS = {"senior", "sr", "lead", "principal", "staff", "junior", "jr", "entry", "intern", "associate", "director", "vp", "head", "manager"}
+
             for candidate in group_jobs:
                 cand_title = re.sub(r'[^\w\s]', '', str(candidate.get("title", "")).lower().strip())
+                cand_tokens = set(cand_title.split())
+                cand_sen = cand_tokens.intersection(SENIORITY_MODIFIERS)
                 
                 is_dup = False
                 for existing in kept_in_group:
                     exist_title = re.sub(r'[^\w\s]', '', str(existing.get("title", "")).lower().strip())
+                    exist_tokens = set(exist_title.split())
+                    exist_sen = exist_tokens.intersection(SENIORITY_MODIFIERS)
                     
-                    # 1. Exact or near-exact title match at same company
-                    if cand_title == exist_title or (len(cand_title) > 5 and cand_title in exist_title) or (len(exist_title) > 5 and exist_title in cand_title):
+                    # Never merge if seniority modifiers differ (e.g. Senior vs Junior vs Standard)
+                    if cand_sen != exist_sen:
+                        continue
+
+                    # 1. Exact title match
+                    if cand_title == exist_title:
                         is_dup = True
+                    # 2. Token set match or high Jaccard similarity (>= 0.80)
+                    elif cand_tokens and exist_tokens:
+                        intersection = len(cand_tokens.intersection(exist_tokens))
+                        union = len(cand_tokens.union(exist_tokens))
+                        jaccard = intersection / union if union > 0 else 0
+                        if jaccard >= 0.80:
+                            is_dup = True
+
+                    if is_dup:
                         # Merge details
                         if len(str(candidate.get("description", ""))) > len(str(existing.get("description", ""))):
                             existing["description"] = candidate.get("description")

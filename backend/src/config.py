@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
     STORAGE_BUCKET: Optional[str] = "jobhunt"
+    JWT_SECRET: str = "super-secret-jwt-key-jobagent-ai-2026-secure-random"
 
     # Pinecone Vector Database Settings
     PINECONE_API_KEY: Optional[str] = None

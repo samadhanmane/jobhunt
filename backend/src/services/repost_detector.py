@@ -36,13 +36,16 @@ class RepostDetectorService:
                 db.commit()
                 return {"is_repost": False, "times_seen": 1, "badge_label": "✨ Fresh Role", "badge_color": "emerald"}
 
-            # Update occurrence
-            days_span = (now - occ.first_seen_at).days
-            occ.times_seen += 1
+            # Update occurrence only if seen on a distinct day (at least 20 hours apart)
+            hours_since_last = (now - occ.last_seen_at).total_seconds() / 3600.0
+            if hours_since_last >= 20.0:
+                occ.times_seen += 1
             occ.last_seen_at = now
             db.commit()
 
-            if occ.times_seen >= 3 or (occ.times_seen >= 2 and days_span >= 25):
+            days_span = (now - occ.first_seen_at).days
+
+            if (occ.times_seen >= 3 and days_span >= 21) or (occ.times_seen >= 2 and days_span >= 30):
                 return {
                     "is_repost": True,
                     "times_seen": occ.times_seen,

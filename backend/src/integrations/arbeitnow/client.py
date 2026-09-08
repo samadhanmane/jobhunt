@@ -11,8 +11,10 @@ class ArbeitnowClient(BaseJobIntegration):
         domain_keywords = kwargs.get("domain_keywords", []) or []
         
         # Build set of search matching tokens from query and domain keywords
+        TECH_SHORT_TOKENS = {"ai", "ml", "go", "qa", "ui", "ux", "ci", "cd", "hr", "bi", "db", "vr", "ar"}
+        STOPWORDS = {"in", "at", "to", "for", "the", "and", "of", "or", "on", "as", "by", "with"}
         query_clean = re.sub(r'[^\w\s]', '', query.lower())
-        tokens = [t.strip() for t in query_clean.split() if len(t.strip()) > 2]
+        tokens = [t.strip() for t in query_clean.split() if (len(t.strip()) > 2 or t.strip() in TECH_SHORT_TOKENS) and t.strip() not in STOPWORDS]
         
         # Avoid generic tokens if specific ones exist
         tech_tokens = [t for t in tokens if t not in ["engineer", "developer", "senior", "junior", "lead", "staff", "intern"]]

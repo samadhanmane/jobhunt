@@ -43,8 +43,12 @@ class JobicyClient(BaseJobIntegration):
         return _JOBICY_CACHE.get("jobs", [])
 
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
+        TECH_SHORT_TOKENS = {"ai", "ml", "go", "qa", "ui", "ux", "ci", "cd", "hr", "bi", "db", "vr", "ar"}
+        STOPWORDS = {"in", "at", "to", "for", "the", "and", "of", "or", "on", "as", "by", "with"}
         query_clean = re.sub(r'[^\w\s]', '', query.lower())
-        tokens = [t.strip() for t in query_clean.split() if len(t.strip()) > 2]
+        tokens = [t.strip() for t in query_clean.split() if (len(t.strip()) > 2 or t.strip() in TECH_SHORT_TOKENS) and t.strip() not in STOPWORDS]
+        tech_tokens = [t for t in tokens if t not in ["engineer", "developer", "senior", "junior", "lead", "staff", "intern", "specialist"]]
+        match_tokens = tech_tokens if tech_tokens else tokens
         
         all_jobs = []
         jobs_list = await self._fetch_all_jobs()
@@ -60,7 +64,7 @@ class JobicyClient(BaseJobIntegration):
             loc_val = f"Remote ({job_geo})" if job_geo else "Remote"
             if location and not is_job_location_match(loc_val, location, "remote" if remote else "any", "jobicy", desc):
                 continue
-            if not tokens or any(t in text_to_check for t in tokens):
+            if not match_tokens or any(t in text_to_check for t in match_tokens):
                 salary_info = None
                 min_sal = j.get("annualSalaryMin")
                 max_sal = j.get("annualSalaryMax")

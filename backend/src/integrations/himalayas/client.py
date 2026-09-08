@@ -41,8 +41,10 @@ class HimalayasClient(BaseJobIntegration):
         except Exception:
             jobs_list = _HIMALAYAS_CACHE.get("jobs", [])
 
+        TECH_SHORT_TOKENS = {"ai", "ml", "go", "qa", "ui", "ux", "ci", "cd", "hr", "bi", "db", "vr", "ar"}
+        STOPWORDS = {"in", "at", "to", "for", "the", "and", "of", "or", "on", "as", "by", "with"}
         query_clean = re.sub(r'[^\w\s]', '', query.lower())
-        tokens = [t.strip() for t in query_clean.split() if len(t.strip()) > 2]
+        tokens = [t.strip() for t in query_clean.split() if (len(t.strip()) > 2 or t.strip() in TECH_SHORT_TOKENS) and t.strip() not in STOPWORDS]
         
         jobs = []
         for job in jobs_list:
@@ -50,7 +52,7 @@ class HimalayasClient(BaseJobIntegration):
             raw_desc = job.get("description", "") or job.get("excerpt", "")
             text_check = f"{title.lower()} {raw_desc[:300].lower()}"
             
-            if tokens and not any(t in text_check for t in tokens) and len(jobs) >= 15:
+            if tokens and not any(t in text_check for t in tokens):
                 continue
 
             min_sal = job.get("minSalary")

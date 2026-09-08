@@ -25,15 +25,28 @@ from src.llm.llm_client import get_llm
 from src.services.vector_service import vector_service
 from src.utils.date_utils import format_posted_date_for_csv
 
-# Global In-Memory Cache for Live Streaming Search Sessions
+# Global In-Memory Cache for Live Streaming Search Sessions (LRU with capacity 50 and TTL 1 hour)
 ACTIVE_SEARCH_SESSIONS: Dict[str, Dict[str, Any]] = {}
+SESSION_TIMESTAMPS: Dict[str, float] = {}
+MAX_ACTIVE_SESSIONS = 50
+SESSION_TTL_SECONDS = 3600
 
 def _prune_active_sessions():
-    """Keep at most 1 active search session in memory to strictly limit RAM usage under 150MB."""
+    """Prunes expired sessions (older than 1 hr) and evicts oldest if above capacity."""
     import gc
-    while len(ACTIVE_SEARCH_SESSIONS) > 1:
-        oldest_key = next(iter(ACTIVE_SEARCH_SESSIONS))
-        ACTIVE_SEARCH_SESSIONS.pop(oldest_key, None)
+    import time
+    now = time.time()
+    expired = [sid for sid, t in list(SESSION_TIMESTAMPS.items()) if now - t > SESSION_TTL_SECONDS]
+    for sid in expired:
+        ACTIVE_SEARCH_SESSIONS.pop(sid, None)
+        SESSION_TIMESTAMPS.pop(sid, None)
+    while len(ACTIVE_SEARCH_SESSIONS) > MAX_ACTIVE_SESSIONS:
+        oldest_sid = min(SESSION_TIMESTAMPS.keys(), key=lambda k: SESSION_TIMESTAMPS[k], default=None)
+        if oldest_sid:
+            ACTIVE_SEARCH_SESSIONS.pop(oldest_sid, None)
+            SESSION_TIMESTAMPS.pop(oldest_sid, None)
+        else:
+            break
     gc.collect()
 
 class JobService:
@@ -127,20 +140,24 @@ class JobService:
             embeddings = embedding_client.get_embeddings(texts) if texts else []
 
             # 4. Save to Database
+            from src.utils.text_cleaner import extract_job_experience_metadata
+            from src.utils.location_helper import detect_work_mode
             db_jobs = []
             for idx, j in enumerate(enriched_jobs):
                 emb = embeddings[idx] if idx < len(embeddings) else [0.0] * 384
                 raw_date = j.get("posted_date")
                 formatted_date = format_posted_date_for_csv(raw_date)
-                if formatted_date == "N/A":
-                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+                raw_title = j.get("title", "Unknown Role")
+                raw_desc = j.get("description", "")
+                raw_exp = extract_job_experience_metadata(raw_title, raw_desc, j.get("experience_fit", ""))
 
                 db_job = Job(
                     id=str(uuid.uuid4()),
-                    title=j.get("title", "Unknown Role"),
+                    title=raw_title,
                     company=j.get("company", "Unknown Company"),
                     location=j.get("location", "Remote"),
-                    description=j.get("description", ""),
+                    description=raw_desc,
                     url=j.get("url", ""),
                     source=j.get("source", "web_link"),
                     posted_date=formatted_date,
@@ -152,6 +169,16 @@ class JobService:
                     experience_fit=j.get("experience_fit", "Good Fit"),
                     company_insights=j.get("company_insights"),
                     key_requirements=j.get("key_requirements", ""),
+                    work_mode=j.get("work_mode") or detect_work_mode(j.get("location", "Remote"), raw_title, raw_desc),
+                    is_repost=j.get("is_repost", False),
+                    repost_badge=j.get("repost_badge", "Standard"),
+                    supported_skills=j.get("supported_skills", []),
+                    skill_coverage_pct=int(j.get("skill_coverage_pct", 0)),
+                    sub_domain=j.get("sub_domain", "AI/ML General"),
+                    ai_facets=j.get("ai_facets", []),
+                    experience_required=raw_exp["experience_required"],
+                    min_experience_years=raw_exp["min_experience_years"],
+                    seniority_level=raw_exp["seniority_level"],
                     search_id=search_id,
                     embedding=emb
                 )
@@ -277,6 +304,8 @@ class JobService:
             texts = [f"{j.get('title', '')} {j.get('company', '')} {j.get('description', '')}"[:1000] for j in top_ranked_jobs]
             embeddings = embedding_client.get_embeddings(texts)
 
+            from src.utils.text_cleaner import extract_job_experience_metadata
+            from src.utils.location_helper import detect_work_mode
             db_jobs = []
             for idx, j in enumerate(top_ranked_jobs):
                 emb = embeddings[idx] if idx < len(embeddings) else [0.0] * 384
@@ -284,15 +313,17 @@ class JobService:
                 # Format posted_date cleanly to YYYY-MM-DD or N/A
                 raw_date = j.get("posted_date")
                 formatted_date = format_posted_date_for_csv(raw_date)
-                if formatted_date == "N/A":
-                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                 
+                raw_title = j.get("title", "Unknown Role")
+                raw_desc = j.get("description", "")
+                raw_exp = extract_job_experience_metadata(raw_title, raw_desc, j.get("experience_fit", ""))
+
                 db_job = Job(
                     id=str(uuid.uuid4()),
-                    title=j.get("title", "Unknown Role"),
+                    title=raw_title,
                     company=j.get("company", "Unknown Company"),
                     location=j.get("location", "Remote"),
-                    description=j.get("description", ""),
+                    description=raw_desc,
                     url=j.get("url", ""),
                     source=j.get("source", "unknown"),
                     posted_date=formatted_date,
@@ -304,6 +335,16 @@ class JobService:
                     experience_fit=j.get("experience_fit", "Good Fit"),
                     company_insights=j.get("company_insights"),
                     key_requirements=j.get("key_requirements", ""),
+                    work_mode=j.get("work_mode") or detect_work_mode(j.get("location", "Remote"), raw_title, raw_desc),
+                    is_repost=j.get("is_repost", False),
+                    repost_badge=j.get("repost_badge", "Standard"),
+                    supported_skills=j.get("supported_skills", []),
+                    skill_coverage_pct=int(j.get("skill_coverage_pct", 0)),
+                    sub_domain=j.get("sub_domain", "AI/ML General"),
+                    ai_facets=j.get("ai_facets", []),
+                    experience_required=raw_exp["experience_required"],
+                    min_experience_years=raw_exp["min_experience_years"],
+                    seniority_level=raw_exp["seniority_level"],
                     search_id=search_id,
                     embedding=emb
                 )
@@ -340,8 +381,6 @@ class JobService:
                 
                 raw_date = raw_j.get("posted_date")
                 formatted_date = format_posted_date_for_csv(raw_date)
-                if formatted_date == "N/A":
-                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                     
                 all_unique_payload.append({
                     "id": str(uuid.uuid4()),
@@ -383,8 +422,6 @@ class JobService:
                 
                 raw_date = raw_j.get("posted_date")
                 formatted_date = format_posted_date_for_csv(raw_date)
-                if formatted_date == "N/A":
-                    formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                     
                 all_raw_payload.append({
                     "id": str(uuid.uuid4()),
@@ -411,7 +448,9 @@ class JobService:
                 })
 
             # Initialize active streaming search session with pruning
+            import time
             _prune_active_sessions()
+            SESSION_TIMESTAMPS[search_id] = time.time()
             curated_jobs = self.get_results(search_id)
             ACTIVE_SEARCH_SESSIONS[search_id] = {
                 "status": "harvesting",
@@ -615,8 +654,6 @@ class JobService:
                     raw_exp = extract_job_experience_metadata(raw_title, raw_desc, raw_j.get("experience_fit", ""))
                     raw_date = raw_j.get("posted_date")
                     formatted_date = format_posted_date_for_csv(raw_date)
-                    if formatted_date == "N/A":
-                        formatted_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
                     new_raw_payload.append({
                         "id": str(uuid.uuid4()),
@@ -660,8 +697,6 @@ class JobService:
                     rexp = extract_job_experience_metadata(rtitle, rdesc, rj.get("experience_fit", ""))
                     rdate = rj.get("posted_date")
                     fdate = format_posted_date_for_csv(rdate)
-                    if fdate == "N/A":
-                        fdate = datetime.datetime.utcnow().strftime("%Y-%m-%d")
                     new_unique_payload.append({
                         "id": str(uuid.uuid4()),
                         "title": rtitle,
@@ -865,9 +900,16 @@ class JobService:
                 "matching_skills": j.matching_skills or [],
                 "missing_skills": j.missing_skills or [],
                 "experience_fit": j.experience_fit or "Good Fit",
-                "experience_required": exp_meta["experience_required"],
-                "min_experience_years": exp_meta["min_experience_years"],
-                "seniority_level": exp_meta["seniority_level"],
+                "experience_required": j.experience_required or exp_meta["experience_required"],
+                "min_experience_years": j.min_experience_years if j.min_experience_years is not None else exp_meta["min_experience_years"],
+                "seniority_level": j.seniority_level or exp_meta["seniority_level"],
+                "work_mode": j.work_mode or "Remote",
+                "is_repost": j.is_repost or False,
+                "repost_badge": j.repost_badge or "Standard",
+                "supported_skills": j.supported_skills or [],
+                "skill_coverage_pct": j.skill_coverage_pct or 0,
+                "sub_domain": j.sub_domain or "AI/ML General",
+                "ai_facets": j.ai_facets or [],
                 "key_requirements": j.key_requirements or "",
                 "company_insights": j.company_insights or {},
                 "hr_contacts": j.hr_contacts or [],

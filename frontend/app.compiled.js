@@ -9,14 +9,14 @@ function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t =
 function _defineProperty(obj, key, value) { key = _toPropertyKey(key); if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
 function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
-function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
-function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
-function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
-function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
 function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _unsupportedIterableToArray(arr) || _nonIterableSpread(); }
 function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter); }
 function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) return _arrayLikeToArray(arr); }
+function _slicedToArray(arr, i) { return _arrayWithHoles(arr) || _iterableToArrayLimit(arr, i) || _unsupportedIterableToArray(arr, i) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t["return"] && (u = t["return"](), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(arr) { if (Array.isArray(arr)) return arr; }
 function _createForOfIteratorHelper(o, allowArrayLike) { var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"]; if (!it) { if (Array.isArray(o) || (it = _unsupportedIterableToArray(o)) || allowArrayLike && o && typeof o.length === "number") { if (it) o = it; var i = 0; var F = function F() {}; return { s: F, n: function n() { if (i >= o.length) return { done: true }; return { done: false, value: o[i++] }; }, e: function e(_e) { throw _e; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var normalCompletion = true, didErr = false, err; return { s: function s() { it = it.call(o); }, n: function n() { var step = it.next(); normalCompletion = step.done; return step; }, e: function e(_e2) { didErr = true; err = _e2; }, f: function f() { try { if (!normalCompletion && it["return"] != null) it["return"](); } finally { if (didErr) throw err; } } }; }
 function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
 function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) arr2[i] = arr[i]; return arr2; }
@@ -247,61 +247,65 @@ function matchesLocationNLP() {
   var hasForeignLocation = FOREIGN_LOCATIONS_LIST.some(function (loc) {
     return jLoc.includes(loc);
   });
-  var isIndiaTarget = q === 'india' || q === 'pune' || q === 'bangalore' || q === 'bengaluru' || q === 'mumbai' || q === 'hyderabad' || q === 'delhi' || q === 'noida' || q === 'gurgaon' || q === 'gurugram' || q === 'chennai';
 
-  // 1. If filtering for Pune / Bangalore / India:
-  if (isIndiaTarget) {
-    // Direct Indian city/region match
-    if (q === 'pune' && (jLoc.includes('pune') || jLoc.includes('hinjawadi') || jLoc.includes('kharadi') || jLoc.includes('magarpatta'))) {
-      return true;
-    }
-    if ((q === 'bangalore' || q === 'bengaluru') && (jLoc.includes('bangalore') || jLoc.includes('bengaluru') || jLoc.includes('whitefield') || jLoc.includes('electronic city'))) {
-      return true;
-    }
-    if (q === 'mumbai' && (jLoc.includes('mumbai') || jLoc.includes('bombay') || jLoc.includes('navi mumbai') || jLoc.includes('thane'))) {
-      return true;
-    }
-    if (q === 'hyderabad' && (jLoc.includes('hyderabad') || jLoc.includes('secunderabad') || jLoc.includes('hitec city') || jLoc.includes('cyberabad'))) {
-      return true;
-    }
-    if (q === 'delhi' && (jLoc.includes('delhi') || jLoc.includes('noida') || jLoc.includes('gurgaon') || jLoc.includes('gurugram') || jLoc.includes('ncr'))) {
-      return true;
-    }
-
-    // General India match
-    if (q === 'india') {
-      var indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
-      if (indiaTerms.some(function (term) {
-        return jLoc.includes(term);
-      })) {
-        return true;
-      }
-    }
-
-    // If job mentions a foreign country/city and NOT Pune/India -> STRICT REJECT
-    if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('bengaluru') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+  // 1. Check for specific Indian cities
+  var METRO_MAP = {
+    pune: ['pune', 'hinjawadi', 'kharadi', 'magarpatta', 'hadapsar', 'baner', 'wakad'],
+    bangalore: ['bangalore', 'bengaluru', 'whitefield', 'electronic city', 'bellandur', 'koramangala'],
+    bengaluru: ['bangalore', 'bengaluru', 'whitefield', 'electronic city', 'bellandur', 'koramangala'],
+    mumbai: ['mumbai', 'bombay', 'navi mumbai', 'thane', 'andheri', 'powai'],
+    hyderabad: ['hyderabad', 'secunderabad', 'hitec city', 'cyberabad', 'gachibowli'],
+    delhi: ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'faridabad', 'ghaziabad', 'ncr'],
+    noida: ['noida', 'greater noida', 'delhi', 'ncr'],
+    gurgaon: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+    gurugram: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+    chennai: ['chennai', 'madras'],
+    kolkata: ['kolkata', 'calcutta'],
+    ahmedabad: ['ahmedabad'],
+    indore: ['indore'],
+    jaipur: ['jaipur'],
+    kochi: ['kochi', 'cochin', 'kerala']
+  };
+  for (var _i = 0, _Object$entries = Object.entries(METRO_MAP); _i < _Object$entries.length; _i++) {
+    var _Object$entries$_i = _slicedToArray(_Object$entries[_i], 2),
+      cityKey = _Object$entries$_i[0],
+      subTerms = _Object$entries$_i[1];
+    if (q.includes(cityKey)) {
+      // User requested this specific city!
+      var matchesCity = subTerms.some(function (term) {
+        return jLoc.includes(term) || combined.includes(term);
+      });
+      if (matchesCity) return true;
+      // Reject other cities and general remote
       return false;
     }
+  }
 
-    // US/EU only restriction strings in description
+  // 2. Broad India filter
+  if (q === 'india' || q.includes('india')) {
+    var indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
+    if (indiaTerms.some(function (term) {
+      return jLoc.includes(term);
+    })) {
+      return true;
+    }
+    if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+      return false;
+    }
     if (RESTRICTION_PATTERNS.us_only.some(function (p) {
       return combined.includes(p);
     })) return false;
     if (RESTRICTION_PATTERNS.eu_only.some(function (p) {
       return combined.includes(p);
     })) return false;
-
-    // Open Worldwide Remote fallback
     if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global') || !hasForeignLocation)) {
       return true;
     }
     return false;
   }
 
-  // 2. If filtering for US / UK / Germany or other regions:
+  // 3. Other regions or cities
   if (jLoc.includes(q)) return true;
-
-  // Token match for other regions
   var tokens = q.split(/[,/\s-]+/).filter(function (t) {
     return t.length > 2;
   });

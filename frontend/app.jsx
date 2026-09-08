@@ -238,65 +238,61 @@ function matchesLocationNLP(locQuery = "", jobLoc = "", desc = "", source = "") 
     // Check if the job explicitly mentions a foreign country or foreign city
     const hasForeignLocation = FOREIGN_LOCATIONS_LIST.some(loc => jLoc.includes(loc));
 
-    const isIndiaTarget = q === 'india' || q === 'pune' || q === 'bangalore' || q === 'bengaluru' || q === 'mumbai' || q === 'hyderabad' || q === 'delhi' || q === 'noida' || q === 'gurgaon' || q === 'gurugram' || q === 'chennai';
+    // 1. Check for specific Indian cities
+    const METRO_MAP = {
+        pune: ['pune', 'hinjawadi', 'kharadi', 'magarpatta', 'hadapsar', 'baner', 'wakad'],
+        bangalore: ['bangalore', 'bengaluru', 'whitefield', 'electronic city', 'bellandur', 'koramangala'],
+        bengaluru: ['bangalore', 'bengaluru', 'whitefield', 'electronic city', 'bellandur', 'koramangala'],
+        mumbai: ['mumbai', 'bombay', 'navi mumbai', 'thane', 'andheri', 'powai'],
+        hyderabad: ['hyderabad', 'secunderabad', 'hitec city', 'cyberabad', 'gachibowli'],
+        delhi: ['delhi', 'new delhi', 'noida', 'gurgaon', 'gurugram', 'faridabad', 'ghaziabad', 'ncr'],
+        noida: ['noida', 'greater noida', 'delhi', 'ncr'],
+        gurgaon: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+        gurugram: ['gurgaon', 'gurugram', 'delhi', 'ncr'],
+        chennai: ['chennai', 'madras'],
+        kolkata: ['kolkata', 'calcutta'],
+        ahmedabad: ['ahmedabad'],
+        indore: ['indore'],
+        jaipur: ['jaipur'],
+        kochi: ['kochi', 'cochin', 'kerala']
+    };
 
-    // 1. If filtering for Pune / Bangalore / India:
-    if (isIndiaTarget) {
-        // Direct Indian city/region match
-        if (q === 'pune' && (jLoc.includes('pune') || jLoc.includes('hinjawadi') || jLoc.includes('kharadi') || jLoc.includes('magarpatta'))) {
-            return true;
-        }
-        if ((q === 'bangalore' || q === 'bengaluru') && (jLoc.includes('bangalore') || jLoc.includes('bengaluru') || jLoc.includes('whitefield') || jLoc.includes('electronic city'))) {
-            return true;
-        }
-        if (q === 'mumbai' && (jLoc.includes('mumbai') || jLoc.includes('bombay') || jLoc.includes('navi mumbai') || jLoc.includes('thane'))) {
-            return true;
-        }
-        if (q === 'hyderabad' && (jLoc.includes('hyderabad') || jLoc.includes('secunderabad') || jLoc.includes('hitec city') || jLoc.includes('cyberabad'))) {
-            return true;
-        }
-        if (q === 'delhi' && (jLoc.includes('delhi') || jLoc.includes('noida') || jLoc.includes('gurgaon') || jLoc.includes('gurugram') || jLoc.includes('ncr'))) {
-            return true;
-        }
-
-        // General India match
-        if (q === 'india') {
-            const indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
-            if (indiaTerms.some(term => jLoc.includes(term))) {
-                return true;
-            }
-        }
-
-        // If job mentions a foreign country/city and NOT Pune/India -> STRICT REJECT
-        if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('pune') && !jLoc.includes('bangalore') && !jLoc.includes('bengaluru') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+    for (const [cityKey, subTerms] of Object.entries(METRO_MAP)) {
+        if (q.includes(cityKey)) {
+            // User requested this specific city!
+            const matchesCity = subTerms.some(term => jLoc.includes(term) || combined.includes(term));
+            if (matchesCity) return true;
+            // Reject other cities and general remote
             return false;
         }
+    }
 
-        // US/EU only restriction strings in description
+    // 2. Broad India filter
+    if (q === 'india' || q.includes('india')) {
+        const indiaTerms = ['india', 'pune', 'bangalore', 'bengaluru', 'mumbai', 'hyderabad', 'delhi', 'noida', 'gurgaon', 'gurugram', 'chennai', 'kolkata', 'ahmedabad', 'indore', 'jaipur', 'kochi', 'kerala', 'chandigarh', 'nagpur', 'bhopal', 'coimbatore', 'maharashtra', 'karnataka', 'telangana', 'tamil nadu'];
+        if (indiaTerms.some(term => jLoc.includes(term))) {
+            return true;
+        }
+        if (hasForeignLocation && !jLoc.includes('india') && !jLoc.includes('worldwide') && !jLoc.includes('anywhere')) {
+            return false;
+        }
         if (RESTRICTION_PATTERNS.us_only.some(p => combined.includes(p))) return false;
         if (RESTRICTION_PATTERNS.eu_only.some(p => combined.includes(p))) return false;
-
-        // Open Worldwide Remote fallback
         if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global') || !hasForeignLocation)) {
             return true;
         }
-
         return false;
     }
 
-    // 2. If filtering for US / UK / Germany or other regions:
+    // 3. Other regions or cities
     if (jLoc.includes(q)) return true;
-
-    // Token match for other regions
     const tokens = q.split(/[,/\s-]+/).filter(t => t.length > 2);
     if (tokens.length > 0 && tokens.some(t => jLoc.includes(t))) {
         return true;
     }
-
     if (isRemote && (jLoc.includes('worldwide') || jLoc.includes('anywhere') || jLoc.includes('global'))) {
         return true;
     }
-
     return false;
 }
 
