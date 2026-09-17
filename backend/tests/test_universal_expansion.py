@@ -95,23 +95,21 @@ def test_aijobs_connector():
     print("  PASS: AIJobs Connector")
 
 def test_usajobs_and_govindia_connectors():
-    print("Testing Government & Public Sector connectors...")
+    print("Testing Government & Public Sector connectors (disabled by design)...")
     usajobs = USAJobsClient()
     govindia = GovIndiaClient()
 
-    assert usajobs.SEARCH_URL == "https://data.usajobs.gov/api/search"
-    # When no API key is provided, search must return gracefully without throwing
     res = asyncio.run(usajobs.search(query="Software Engineer"))
     assert isinstance(res, list)
+    assert len(res) == 0
 
     psu_res = asyncio.run(govindia.search(query="Computer Science"))
     assert isinstance(psu_res, list)
-    assert len(psu_res) >= 1
-    assert any("ISRO" in j["company"] for j in psu_res)
-    print("  PASS: Government & PSU Connectors (USAJOBS & GovIndia ISRO/DRDO/BEL)")
+    assert len(psu_res) == 0
+    print("  PASS: Government & PSU Connectors disabled and return empty lists")
 
 def test_orchestrator_multi_category_expansion():
-    print("Testing orchestrator integration of all new connectors...")
+    print("Testing orchestrator integration of connectors...")
     orch = OrchestratorAgent()
     assert hasattr(orch, "recruitee")
     assert hasattr(orch, "workingnomads")
@@ -121,11 +119,11 @@ def test_orchestrator_multi_category_expansion():
     assert hasattr(orch, "internshala")
     assert hasattr(orch, "unstop")
     assert hasattr(orch, "naukri")
-    assert hasattr(orch, "usajobs")
+    assert not hasattr(orch, "usajobs")
     assert hasattr(orch, "teamtailor")
     assert hasattr(orch, "aijobs")
-    assert hasattr(orch, "govindia")
-    print("  PASS: Orchestrator Multi-Category Expansion (All 20+ Connectors Active)")
+    assert not hasattr(orch, "govindia")
+    print("  PASS: Orchestrator Multi-Category Expansion (Verified active/disabled connectors)")
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)

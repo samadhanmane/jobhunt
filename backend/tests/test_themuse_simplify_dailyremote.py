@@ -41,44 +41,34 @@ def test_simplify_client():
     print(f"  PASS: SimplifyClient returned {len(res)} jobs")
 
 def test_dailyremote_client():
-    print("Testing DailyRemoteClient...")
+    print("Testing DailyRemoteClient (disabled by design)...")
     client = DailyRemoteClient()
-    assert client.BASE_URL == "https://dailyremote.com/remote-jobs"
     res = asyncio.run(client.search(query="python"))
     assert isinstance(res, list)
-    if res:
-        sample = res[0]
-        assert "title" in sample
-        assert "company" in sample
-        assert "url" in sample
-        assert sample["source"] == "DailyRemote"
-    print(f"  PASS: DailyRemoteClient returned {len(res)} jobs")
+    assert len(res) == 0
+    print("  PASS: DailyRemoteClient returns empty list")
 
 def test_expanded_govindia_psus():
-    print("Testing expanded GovIndia PSU opportunities...")
+    print("Testing GovIndia PSU connector (disabled by design)...")
     client = GovIndiaClient()
     res = asyncio.run(client.search(query="engineer"))
     assert isinstance(res, list)
-    assert len(res) >= 5, f"Expected >= 5 PSU opportunities, got {len(res)}"
-    companies = [j["company"] for j in res]
-    assert any("ISRO" in c for c in companies)
-    assert any("DRDO" in c for c in companies)
-    assert any("BEL" in c for c in companies)
-    assert any("BHEL" in c for c in companies)
-    assert any("HAL" in c for c in companies)
-    print(f"  PASS: GovIndia returned {len(res)} expanded PSU opportunities: {[c[:10] for c in companies]}")
+    assert len(res) == 0
+    print("  PASS: GovIndia connector disabled and returns empty list")
 
 def test_orchestrator_and_scheduler_integration():
     print("Testing Orchestrator and Scheduler integration of new platforms...")
     orchestrator = OrchestratorAgent()
     assert hasattr(orchestrator, "themuse")
     assert hasattr(orchestrator, "simplify")
-    assert hasattr(orchestrator, "dailyremote")
+    assert not hasattr(orchestrator, "dailyremote")
+    assert not hasattr(orchestrator, "govindia")
     
     scheduler = SchedulerService()
     assert hasattr(scheduler.orchestrator, "themuse")
     assert hasattr(scheduler.orchestrator, "simplify")
-    assert hasattr(scheduler.orchestrator, "dailyremote")
+    assert not hasattr(scheduler.orchestrator, "dailyremote")
+    assert not hasattr(scheduler.orchestrator, "govindia")
     print("  PASS: Orchestrator and Scheduler Service attributes verified")
 
 if __name__ == "__main__":

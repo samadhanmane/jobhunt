@@ -2444,9 +2444,8 @@ function JobSearchDashboard({
                 if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable', 'aijobs', 'kdnuggets'].some(s => jobSrc.includes(s))) return false;
                 if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom', 'recruitee', 'teamtailor'].some(s => jobSrc.includes(s))) return false;
                 if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn', 'cutshort', 'recruitee', 'builtin', 'themuse', 'muse'].some(s => jobSrc.includes(s))) return false;
-                if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'dailyremote', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(s => jobSrc.includes(s))) return false;
+                if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(s => jobSrc.includes(s))) return false;
                 if (filterCategory === 'internships' && jobCat !== 'internships' && !['internshala', 'unstop', 'simplify'].some(s => jobSrc.includes(s)) && !title.includes('intern')) return false;
-                if (filterCategory === 'government' && jobCat !== 'government' && !jobSrc.includes('usajobs') && !jobSrc.includes('govindia')) return false;
             }
 
             // 8. Source Platform
@@ -2707,9 +2706,6 @@ function JobSearchDashboard({
                                         <option value="linkedin">💼 LinkedIn & Indeed</option>
                                         <option value="themuse">🏛️ The Muse (Tech & Enterprise)</option>
                                         <option value="simplify">🎓 Simplify Internships</option>
-                                        <option value="dailyremote">🏖️ DailyRemote</option>
-                                        <option value="govindia">🏛️ GovIndia PSU (ISRO/DRDO)</option>
-                                        <option value="usajobs">🏛️ USAJOBS</option>
                                     </select>
                                 </div>
                             </div>
@@ -3248,8 +3244,7 @@ function JobSearchDashboard({
                                 { label: "🏢 Enterprise Workday", val: "enterprise_workday" },
                                 { label: "🚀 Startups (YC)", val: "startups" },
                                 { label: "🏠 Remote Global", val: "remote" },
-                                { label: "🌱 Internships & Freshers", val: "internships" },
-                                { label: "🏛️ Government Portals", val: "government" }
+                                { label: "🌱 Internships & Freshers", val: "internships" }
                             ].map((cat, idx) => (
                                 <button
                                     key={idx}
@@ -3323,9 +3318,6 @@ function JobSearchDashboard({
                                     <option value="linkedin">💼 LinkedIn / Indeed (JobSpy)</option>
                                     <option value="themuse">🏛️ The Muse (Tech & Enterprise)</option>
                                     <option value="simplify">🎓 Simplify Internships</option>
-                                    <option value="dailyremote">🏖️ DailyRemote</option>
-                                    <option value="govindia">🏛️ GovIndia PSU (ISRO/DRDO)</option>
-                                    <option value="usajobs">🏛️ USAJOBS</option>
                                 </select>
                             </div>
 

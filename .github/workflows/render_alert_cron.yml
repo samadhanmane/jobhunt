@@ -1,0 +1,54 @@
+name: Render Keep-Alive & Daily Job Alert Scheduler
+
+on:
+  # 1. Heartbeat every 12 minutes to keep Render Free Tier awake (Render sleeps after 15m idle)
+  schedule:
+    - cron: '*/12 * * * *'
+  # 2. Allow manual triggering anytime from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      force_trigger_alerts:
+        description: 'Force trigger due alerts immediately'
+        required: true
+        default: 'true'
+        type: boolean
+
+jobs:
+  keepalive_and_alerts:
+    name: Render Keep-Alive & Daily Alert Dispatcher
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Ping Render Service (Wake-Up & Heartbeat)
+        run: |
+          echo "===================================================="
+          echo "Sending keep-alive health ping to Render backend..."
+          echo "Target: https://jobhunt-zmq8.onrender.com/api/v1/health"
+          echo "===================================================="
+          
+          # Allow up to 75 seconds for cold start if container was asleep
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 75 "https://jobhunt-zmq8.onrender.com/api/v1/health")
+          echo "Initial HTTP Status: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Container cold start in progress or network delay. Waiting 15s before retry..."
+            sleep 15
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "https://jobhunt-zmq8.onrender.com/api/v1/health")
+            echo "Retry HTTP Status: $HTTP_STATUS"
+          fi
+
+      - name: Check and Trigger Due Daily Alerts
+        run: |
+          echo "===================================================="
+          echo "Calling /api/v1/alerts/trigger-due to dispatch any due digests..."
+          echo "Target: https://jobhunt-zmq8.onrender.com/api/v1/alerts/trigger-due"
+          echo "===================================================="
+          
+          # This endpoint is idempotent:
+          # - If daily digests are due for today, it starts scraping & sends emails with CSV attachments.
+          # - If already dispatched for today, it returns immediately in <200ms.
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" --max-time 180 -X POST "https://jobhunt-zmq8.onrender.com/api/v1/alerts/trigger-due")
+          
+          echo "Response:"
+          echo "$RESPONSE"

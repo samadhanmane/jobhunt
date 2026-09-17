@@ -17,30 +17,31 @@ class KeepAliveService:
         # Wait 30s after server boot before starting pings
         await asyncio.sleep(30)
         
-        # Priority: Render External URL -> BACKEND_URL -> Localhost
+        port = os.getenv("PORT", "8000")
+        local_endpoint = f"http://127.0.0.1:{port}/api/v1/health"
         raw_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("BACKEND_URL") or ""
-        if raw_url:
-            clean_url = raw_url.rstrip("/")
-            ping_endpoint = f"{clean_url}/health"
-        else:
-            port = os.getenv("PORT", "8000")
-            ping_endpoint = f"http://127.0.0.1:{port}/health"
+        external_endpoint = f"{raw_url.rstrip('/')}/api/v1/health" if raw_url else None
+        
+        target = external_endpoint or local_endpoint
+        print(f"[KeepAlive] Self-ping heartbeat active. Target: {target}")
 
-        print(f"[KeepAlive] Self-ping heartbeat active. Target: {ping_endpoint}")
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             while self._running:
                 try:
-                    resp = await client.get(ping_endpoint)
+                    resp = await client.get(target)
                     if resp.status_code == 200:
-                        print("[KeepAlive Heartbeat]: 💓 Server Active (200 OK)")
-                    else:
-                        print(f"[KeepAlive Notice]: Ping status {resp.status_code}")
-                except Exception as e:
-                    print(f"[KeepAlive Notice]: Ping notice ({e})")
+                        pass  # Silent healthy heartbeat
+                    elif external_endpoint:
+                        # Fallback to local if external DNS/TLS fails
+                        await client.get(local_endpoint)
+                except Exception:
+                    try:
+                        await client.get(local_endpoint)
+                    except Exception:
+                        pass
 
-                # Repeat every 60 seconds
-                await asyncio.sleep(60)
+                # Repeat every 90 seconds
+                await asyncio.sleep(90)
 
     def start(self):
         if not self._running:

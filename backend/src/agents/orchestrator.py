@@ -25,18 +25,15 @@ from src.integrations.weworkremotely.client import WeWorkRemotelyClient
 from src.integrations.cutshort.client import CutshortClient
 from src.integrations.hirist.client import HiristClient
 from src.integrations.internshala.client import InternshalaClient
-from src.integrations.usajobs.client import USAJobsClient
 from src.integrations.teamtailor.client import TeamtailorClient
 from src.integrations.unstop.client import UnstopClient
 from src.integrations.aijobs.client import AIJobsClient
 from src.integrations.naukri.client import NaukriClient
-from src.integrations.govindia.client import GovIndiaClient
 from src.integrations.apna.client import ApnaClient
 from src.integrations.shine.client import ShineClient
 from src.integrations.builtin.client import BuiltInClient
 from src.integrations.themuse.client import TheMuseClient
 from src.integrations.simplify.client import SimplifyClient
-from src.integrations.dailyremote.client import DailyRemoteClient
 from src.llm.prompts.search import QUERY_PLANNER_SYSTEM_PROMPT
 
 class OrchestratorAgent(BaseJobAgent):
@@ -64,18 +61,15 @@ class OrchestratorAgent(BaseJobAgent):
         self.cutshort = CutshortClient()
         self.hirist = HiristClient()
         self.internshala = InternshalaClient()
-        self.usajobs = USAJobsClient()
         self.teamtailor = TeamtailorClient()
         self.unstop = UnstopClient()
         self.aijobs = AIJobsClient()
         self.naukri = NaukriClient()
-        self.govindia = GovIndiaClient()
         self.apna = ApnaClient()
         self.shine = ShineClient()
         self.builtin = BuiltInClient()
         self.themuse = TheMuseClient()
         self.simplify = SimplifyClient()
-        self.dailyremote = DailyRemoteClient()
 
 
     def _extract_json(self, raw_content: str) -> Dict[str, Any]:
@@ -314,7 +308,7 @@ Candidate Background:
                 if idx == 0:
                     tasks.append(run_guarded(self.themuse.search(query=q_title, location=location, remote=remote)))
 
-            # 5. Remote Global Feeds (Remotive, WeWorkRemotely, WorkingNomads, DailyRemote, Himalayas, RemoteOK, Jobicy, Arbeitnow, Freehire)
+            # 5. Remote Global Feeds (Remotive, WeWorkRemotely, WorkingNomads, Himalayas, RemoteOK, Jobicy, Arbeitnow, Freehire)
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["remotive"]):
                 tasks.append(run_guarded(self.remotive.search(query=q_title, location=location, remote=remote)))
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["weworkremotely", "wwr"]):
@@ -323,9 +317,6 @@ Candidate Background:
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["workingnomads"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.workingnomads.search(query=q_title, location=location, remote=remote)))
-            if target_cat in ["all", "remote"] and (not target_src or target_src in ["dailyremote"]):
-                if idx == 0:
-                    tasks.append(run_guarded(self.dailyremote.search(query=q_title, location=location, remote=remote)))
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["himalayas"]):
                 tasks.append(run_guarded(self.himalayas.search(query=q_title, location=location, remote=remote)))
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["remoteok"]):
@@ -336,14 +327,6 @@ Candidate Background:
                 tasks.append(run_guarded(self.arbeitnow.search(query=q_title, location=location, remote=remote, domain_keywords=domain_keywords)))
             if target_cat in ["all", "remote"] and (not target_src or target_src in ["freehire"]):
                 tasks.append(run_guarded(self.freehire.search(query=q_title, location=location, remote=remote, skills=skills_filter, seniority=seniority)))
-
-            # 6. Government & Public Sector Portals (USAJOBS, GovIndia PSU)
-            if target_cat in ["all", "government"] and (not target_src or target_src in ["usajobs"]):
-                if idx == 0:
-                    tasks.append(run_guarded(self.usajobs.search(query=q_title, location=location, remote=remote)))
-            if target_cat in ["all", "government", "india"] and (not target_src or target_src in ["govindia", "psu"]):
-                if idx == 0:
-                    tasks.append(run_guarded(self.govindia.search(query=q_title, location=location, remote=remote)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -366,12 +349,10 @@ Candidate Background:
                         job["source_category"] = "enterprise_workday"
                     elif any(s in source for s in ["ycombinator", "yc", "hn", "builtin", "themuse", "muse"]):
                         job["source_category"] = "startups"
-                    elif any(s in source for s in ["weworkremotely", "workingnomads", "dailyremote", "remotive", "remoteok", "himalayas", "jobicy", "arbeitnow", "freehire"]):
+                    elif any(s in source for s in ["weworkremotely", "workingnomads", "remotive", "remoteok", "himalayas", "jobicy", "arbeitnow", "freehire"]):
                         job["source_category"] = "remote"
                     elif any(s in source for s in ["ashby", "greenhouse", "lever", "workable", "aijobs", "kdnuggets"]):
                         job["source_category"] = "ai_registry"
-                    elif any(s in source for s in ["usajobs", "govindia"]):
-                        job["source_category"] = "government"
                     elif "recruitee" in source:
                         job["source_category"] = "startups"
                     else:

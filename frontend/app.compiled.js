@@ -2914,13 +2914,12 @@ function JobSearchDashboard(_ref13) {
         if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn', 'cutshort', 'recruitee', 'builtin', 'themuse', 'muse'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
-        if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'dailyremote', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(function (s) {
+        if (filterCategory === 'remote' && jobCat !== 'remote' && !['weworkremotely', 'workingnomads', 'remotive', 'remoteok', 'himalayas', 'jobicy', 'arbeitnow', 'freehire'].some(function (s) {
           return jobSrc.includes(s);
         })) return false;
         if (filterCategory === 'internships' && jobCat !== 'internships' && !['internshala', 'unstop', 'simplify'].some(function (s) {
           return jobSrc.includes(s);
         }) && !title.includes('intern')) return false;
-        if (filterCategory === 'government' && jobCat !== 'government' && !jobSrc.includes('usajobs') && !jobSrc.includes('govindia')) return false;
       }
 
       // 8. Source Platform
@@ -3252,13 +3251,7 @@ function JobSearchDashboard(_ref13) {
     value: "themuse"
   }, "\uD83C\uDFDB\uFE0F The Muse (Tech & Enterprise)"), /*#__PURE__*/React.createElement("option", {
     value: "simplify"
-  }, "\uD83C\uDF93 Simplify Internships"), /*#__PURE__*/React.createElement("option", {
-    value: "dailyremote"
-  }, "\uD83C\uDFD6\uFE0F DailyRemote"), /*#__PURE__*/React.createElement("option", {
-    value: "govindia"
-  }, "\uD83C\uDFDB\uFE0F GovIndia PSU (ISRO/DRDO)"), /*#__PURE__*/React.createElement("option", {
-    value: "usajobs"
-  }, "\uD83C\uDFDB\uFE0F USAJOBS")))), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83C\uDF93 Simplify Internships")))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2.5 pt-1"
   }, /*#__PURE__*/React.createElement("button", {
     type: "submit",
@@ -3719,9 +3712,6 @@ function JobSearchDashboard(_ref13) {
   }, {
     label: "🌱 Internships & Freshers",
     val: "internships"
-  }, {
-    label: "🏛️ Government Portals",
-    val: "government"
   }].map(function (cat, idx) {
     return /*#__PURE__*/React.createElement("button", {
       key: idx,
@@ -3821,13 +3811,7 @@ function JobSearchDashboard(_ref13) {
     value: "themuse"
   }, "\uD83C\uDFDB\uFE0F The Muse (Tech & Enterprise)"), /*#__PURE__*/React.createElement("option", {
     value: "simplify"
-  }, "\uD83C\uDF93 Simplify Internships"), /*#__PURE__*/React.createElement("option", {
-    value: "dailyremote"
-  }, "\uD83C\uDFD6\uFE0F DailyRemote"), /*#__PURE__*/React.createElement("option", {
-    value: "govindia"
-  }, "\uD83C\uDFDB\uFE0F GovIndia PSU (ISRO/DRDO)"), /*#__PURE__*/React.createElement("option", {
-    value: "usajobs"
-  }, "\uD83C\uDFDB\uFE0F USAJOBS"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, "\uD83C\uDF93 Simplify Internships"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] font-semibold text-slate-400 uppercase"
