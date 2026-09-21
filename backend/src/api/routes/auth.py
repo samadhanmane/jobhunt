@@ -39,7 +39,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     admin_email, admin_pass = get_admin_credentials()
 
     # 1. Static Admin Authentication (From .env, Not stored in database)
-    if email_clean == admin_email.lower() and pass_clean == admin_pass:
+    if admin_pass and email_clean == admin_email.lower() and pass_clean == admin_pass:
         access_token = create_access_token(data={
             "sub": STATIC_ADMIN_ID,
             "email": admin_email,

@@ -2,6 +2,7 @@ import json
 import re
 from typing import List, Dict, Any
 from src.agents.base import BaseJobAgent
+from src.utils.location_helper import detect_country_key
 
 def normalize_company(company_str: str) -> str:
     """Normalize company name for robust cross-platform comparison."""
@@ -13,6 +14,42 @@ def normalize_company(company_str: str) -> str:
     c = re.sub(r'[^\w\s]', '', c)
     return " ".join(c.split())
 
+def are_locations_compatible_for_dedup(loc1: str, loc2: str) -> bool:
+    """
+    Returns False if loc1 and loc2 point to distinctly different geographic offices/cities/countries,
+    preventing multi-office job openings (e.g. Pune vs Sunnyvale, or Pune vs Bangalore) from colliding.
+    """
+    l1 = str(loc1 or "").lower().strip()
+    l2 = str(loc2 or "").lower().strip()
+    if not l1 or not l2 or l1 in ["remote", "worldwide", "any"] or l2 in ["remote", "worldwide", "any"]:
+        return True
+
+    c1 = detect_country_key(l1)
+    c2 = detect_country_key(l2)
+    if c1 and c2 and c1 != c2:
+        return False
+
+    is_foreign_1 = any(fc in l1 for fc in ["san francisco", "mountain view", "sunnyvale", "seattle", "austin", "new york", "london", "dublin", "berlin", "tokyo", "singapore", "toronto"]) or bool(re.search(r'\b(usa|us|uk|canada|germany|ca|tx|ny|wa)\b', l1))
+    is_foreign_2 = any(fc in l2 for fc in ["san francisco", "mountain view", "sunnyvale", "seattle", "austin", "new york", "london", "dublin", "berlin", "tokyo", "singapore", "toronto"]) or bool(re.search(r'\b(usa|us|uk|canada|germany|ca|tx|ny|wa)\b', l2))
+
+    is_india_1 = any(c in l1 for c in ["india", "pune", "bangalore", "bengaluru", "hyderabad", "mumbai", "delhi", "noida", "gurgaon", "chennai"])
+    is_india_2 = any(c in l2 for c in ["india", "pune", "bangalore", "bengaluru", "hyderabad", "mumbai", "delhi", "noida", "gurgaon", "chennai"])
+
+    if (is_foreign_1 and is_india_2) or (is_india_1 and is_foreign_2):
+        return False
+
+    INDIA_CITIES = ["pune", "bangalore", "bengaluru", "hyderabad", "mumbai", "delhi", "gurgaon", "gurugram", "noida", "chennai", "kolkata"]
+    found_c1 = [c for c in INDIA_CITIES if c in l1]
+    found_c2 = [c for c in INDIA_CITIES if c in l2]
+    if found_c1 and found_c2:
+        # Normalize bangalore/bengaluru, gurgaon/gurugram
+        norm_c1 = {"bangalore" if c == "bengaluru" else ("gurgaon" if c == "gurugram" else c) for c in found_c1}
+        norm_c2 = {"bangalore" if c == "bengaluru" else ("gurgaon" if c == "gurugram" else c) for c in found_c2}
+        if not norm_c1.intersection(norm_c2):
+            return False
+
+    return True
+
 class DeduplicationAgent(BaseJobAgent):
     def __init__(self, llm=None):
         super().__init__(llm)
@@ -22,6 +59,7 @@ class DeduplicationAgent(BaseJobAgent):
         Deduplicates job postings across platforms safely:
         - NEVER merges jobs from different companies.
         - Only merges if company matches AND (titles are identical OR embeddings confirm same role).
+        - Preserves multi-office openings across distinct locations/cities.
         - Merges metadata: keeps longest description, salary data, and primary URL.
         """
         if not jobs:
@@ -65,7 +103,7 @@ class DeduplicationAgent(BaseJobAgent):
                 deduplicated_results.append(group_jobs[0])
                 continue
 
-            # Within the same company: check title similarity preserving seniority levels
+            # Within the same company: check title similarity preserving seniority levels & location integrity
             kept_in_group = []
             SENIORITY_MODIFIERS = {"senior", "sr", "lead", "principal", "staff", "junior", "jr", "entry", "intern", "associate", "director", "vp", "head", "manager"}
 
@@ -73,15 +111,21 @@ class DeduplicationAgent(BaseJobAgent):
                 cand_title = re.sub(r'[^\w\s]', '', str(candidate.get("title", "")).lower().strip())
                 cand_tokens = set(cand_title.split())
                 cand_sen = cand_tokens.intersection(SENIORITY_MODIFIERS)
+                cand_loc = str(candidate.get("location", "")).strip()
                 
                 is_dup = False
                 for existing in kept_in_group:
                     exist_title = re.sub(r'[^\w\s]', '', str(existing.get("title", "")).lower().strip())
                     exist_tokens = set(exist_title.split())
                     exist_sen = exist_tokens.intersection(SENIORITY_MODIFIERS)
+                    exist_loc = str(existing.get("location", "")).strip()
                     
                     # Never merge if seniority modifiers differ (e.g. Senior vs Junior vs Standard)
                     if cand_sen != exist_sen:
+                        continue
+
+                    # Never merge if locations point to different geographic cities/countries
+                    if not are_locations_compatible_for_dedup(cand_loc, exist_loc):
                         continue
 
                     # 1. Exact title match

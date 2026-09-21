@@ -92,14 +92,26 @@ def detect_country_key(location_str: str) -> Optional[str]:
     
     for country_key, info in LOCATION_HIERARCHY.items():
         for alias in info["aliases"]:
-            if alias in loc or alias in tokens:
-                return country_key
+            if len(alias) <= 2:
+                if alias in tokens:
+                    return country_key
+            else:
+                if alias in loc or alias in tokens:
+                    return country_key
         for city in info["cities"]:
-            if city in loc or city in tokens:
-                return country_key
+            if len(city) <= 3:
+                if city in tokens:
+                    return country_key
+            else:
+                if city in loc or city in tokens:
+                    return country_key
         for state in info["states"]:
-            if state in loc or state in tokens:
-                return country_key
+            if len(state) <= 3:
+                if state in tokens:
+                    return country_key
+            else:
+                if state in loc or state in tokens:
+                    return country_key
     return None
 
 def get_indeed_country_code(location_str: str) -> str:
@@ -163,29 +175,35 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     u = str(url or "").lower()
     t = str(title or "").lower()
     d = str(description or "")[:800].lower()
+    combined = f"{loc} {d}"
 
-    # 1. Explicit India indicators
-    for term in ["india", "in", "bharat"] + INDIA_CITIES:
-        pattern = r'\b' + re.escape(term) + r'\b'
-        if re.search(pattern, loc) or re.search(pattern, u) or re.search(pattern, t):
-            return True
-
-    # 2. Check foreign exclusions
+    # 1. Foreign exclusions FIRST (strict negative gate)
     for rx in FOREIGN_COUNTRIES:
-        if re.search(rx, loc, re.IGNORECASE):
+        if re.search(rx, loc, re.IGNORECASE) or re.search(rx, d[:400], re.IGNORECASE):
             return False
 
     for city in FOREIGN_CITIES:
         pattern = r'\b' + re.escape(city) + r'\b'
-        if re.search(pattern, loc) or re.search(pattern, u):
+        if re.search(pattern, loc) or re.search(pattern, t):
             return False
 
-    # Check US/EU restrictions in combined text
-    combined = f"{loc} {d}"
     if any(p in combined for p in RESTRICTION_PATTERNS["us_only"] + RESTRICTION_PATTERNS["eu_only"]):
         return False
 
-    # 3. Open Remote indicator
+    # 2. Explicit India indicators
+    for city in INDIA_CITIES:
+        pattern = r'\b' + re.escape(city) + r'\b'
+        if re.search(pattern, loc) or re.search(pattern, t):
+            return True
+
+    if re.search(r'\b(india|bharat)\b', loc) or re.search(r'\b(india|bharat)\b', t):
+        return True
+
+    # Check for two-letter country code 'IN' only in location string
+    if re.search(r'(?:^|[,\s])in(?:[,\s]|$)', loc):
+        return True
+
+    # 3. Open Remote indicator (without foreign lockouts)
     is_remote = any(k in loc for k in REMOTE_KEYWORDS) or any(k in t for k in ["remote", "worldwide"]) or "worldwide" in loc or "anywhere" in loc
     if is_remote:
         return True
@@ -237,7 +255,10 @@ def is_job_location_match(
     """
     job_loc = str(job_location or "").lower().strip()
     pref_loc = str(pref_location or "").lower().strip()
-    work_mode = str(pref_work_mode or "any").lower().strip()
+    if isinstance(pref_work_mode, bool):
+        work_mode = "remote" if pref_work_mode else "any"
+    else:
+        work_mode = str(pref_work_mode or "any").lower().strip()
     job_desc = str(job_description or "")[:800].lower()
     t = str(job_title or "").lower()
     u = str(job_url or "").lower()
@@ -291,6 +312,13 @@ def is_job_location_match(
         for term in target_city_terms:
             pattern = r'\b' + re.escape(term) + r'\b'
             if re.search(pattern, combined_text):
+                # Ensure no foreign location is also mentioned
+                for rx in FOREIGN_COUNTRIES:
+                    if re.search(rx, job_loc):
+                        return False
+                for fc in FOREIGN_CITIES:
+                    if fc in job_loc:
+                        return False
                 return True
         # Only allow remote if user explicitly requested remote work mode
         if work_mode in ["remote", "remote_only"] and job_work_mode == "remote":

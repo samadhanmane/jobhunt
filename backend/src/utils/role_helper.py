@@ -173,11 +173,13 @@ def filter_curated_jobs_by_role(
     target_role: str = "",
     experience_level: str = "all",
     sub_domain: str = "All",
-    min_score: float = 40.0
+    min_score: float = 40.0,
+    target_location: str = "",
+    work_mode: str = "any"
 ) -> List[Dict[str, Any]]:
     """
     Curates and filters ranked jobs strictly matching role target,
-    negative noise elimination, experience tier, and sub-domain.
+    negative noise elimination, experience tier, sub-domain, and geographic location.
     """
     if not ranked_jobs:
         return []
@@ -186,11 +188,41 @@ def filter_curated_jobs_by_role(
     clean_target = (target_role or "").lower().strip()
     clean_sub = (sub_domain or "All").lower().strip()
     clean_exp = (experience_level or "all").lower().strip()
+    clean_loc = (target_location or "").strip()
+    clean_mode = (work_mode or "any").strip()
 
     for j in ranked_jobs:
         score = float(j.get("match_score", 0.0))
         if score < min_score:
             continue
+
+        # Reject jobs with explicit location mismatch flag
+        if j.get("location_mismatch") is True:
+            continue
+
+        # Geographic Location verification
+        if clean_loc and clean_loc.lower() not in ["worldwide", "global", "all", "any", "remote", ""]:
+            job_loc = str(j.get("location") or "")
+            job_desc = str(j.get("description") or "")[:800]
+            job_title = str(j.get("title") or "")
+            job_url = str(j.get("url") or "")
+            from src.utils.location_helper import is_job_location_match
+            if not is_job_location_match(
+                job_location=job_loc,
+                pref_location=clean_loc,
+                pref_work_mode=clean_mode,
+                job_description=job_desc,
+                job_title=job_title,
+                job_url=job_url
+            ):
+                continue
+        elif clean_loc and clean_loc.lower() == "remote":
+            job_loc = str(j.get("location") or "")
+            job_desc = str(j.get("description") or "")[:800]
+            job_title = str(j.get("title") or "")
+            from src.utils.location_helper import detect_work_mode
+            if detect_work_mode(job_loc, job_title, job_desc).lower() != "remote":
+                continue
 
         title = str(j.get("title", "")).lower()
         
@@ -212,3 +244,4 @@ def filter_curated_jobs_by_role(
         curated.append(j)
 
     return curated
+

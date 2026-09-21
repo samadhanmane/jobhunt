@@ -48,13 +48,15 @@ async def scrape_linkedin_profile(request: ScrapeProfileRequest):
     if not request.profile_url:
         raise HTTPException(status_code=400, detail="Profile URL is required.")
         
-    profile = await linkedin_service.scrape_profile_async(request.profile_url)
-    if not profile:
-        raise HTTPException(status_code=404, detail="Unable to extract profile information.")
+    profile_data, is_cookie_expired = await linkedin_service.scrape_profile_async(request.profile_url)
+    if not profile_data:
+        detail_msg = "LinkedIn session expired or cookie invalid. Please refresh li_at cookie." if is_cookie_expired else "Unable to extract profile information."
+        raise HTTPException(status_code=404, detail=detail_msg)
         
     return {
         "status": "success",
-        "profile": profile
+        "profile": profile_data,
+        "cookie_expired": is_cookie_expired
     }
 
 @router.post("/api/v1/recruiter/find-company-hr")

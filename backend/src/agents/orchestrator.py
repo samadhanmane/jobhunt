@@ -222,7 +222,7 @@ Candidate Background:
         print(f"[Orchestrator] ===========================================")
 
         import gc
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(4)
 
         async def run_guarded(coro):
             async with sem:
@@ -232,8 +232,6 @@ Candidate Background:
                 except Exception as e:
                     print(f"Notice: scraper error: {e}")
                     return []
-                finally:
-                    gc.collect()
 
         target_src = (preferences.get("source_platform") or preferences.get("sources") or "").lower().strip()
         target_cat = (preferences.get("source_category") or preferences.get("category") or "all").lower().strip()

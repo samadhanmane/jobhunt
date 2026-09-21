@@ -11,10 +11,10 @@ class EmailService:
     Service for sending rich HTML job digests with CSV attachments strictly via Nodemailer.
     """
     def _get_from_email(self) -> str:
-        return settings.EMAIL_FROM or os.getenv("EMAIL_FROM") or "sm8199849@gmail.com"
+        return settings.EMAIL_FROM or os.getenv("EMAIL_FROM") or ""
 
     def _get_password(self) -> str:
-        return settings.EMAIL_PASSWORD or os.getenv("EMAIL_PASSWORD") or "sqzbfaesgowgzrne"
+        return settings.EMAIL_PASSWORD or os.getenv("EMAIL_PASSWORD") or ""
 
     def _send_via_nodemailer(self, to_email: str, subject: str, html_content: str, attachment_paths: List[str]) -> bool:
         """
@@ -22,6 +22,11 @@ class EmailService:
         """
         from_email = self._get_from_email()
         password = self._get_password()
+        brevo_key = getattr(settings, "BREVO_API_KEY", None) or os.getenv("BREVO_API_KEY")
+
+        if not brevo_key and not (from_email and password):
+            print("[EmailService] Notice: Neither BREVO_API_KEY nor EMAIL_FROM/EMAIL_PASSWORD is configured. Email dispatch skipped.")
+            return False
         
         attachments = []
         for path in set(attachment_paths):
@@ -38,7 +43,7 @@ class EmailService:
             "subject": subject,
             "html_content": html_content,
             "attachments": attachments,
-            "brevo_api_key": getattr(settings, "BREVO_API_KEY", None) or os.getenv("BREVO_API_KEY")
+            "brevo_api_key": brevo_key
         }
 
         # Calculate backend root directory

@@ -10,8 +10,8 @@ async function main() {
 
     try {
         const data = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
-        const fromEmail = data.from_email || process.env.EMAIL_FROM || "sm8199849@gmail.com";
-        const emailPassword = data.password || process.env.EMAIL_PASSWORD || "sqzbfaesgowgzrne";
+        const fromEmail = data.from_email || process.env.EMAIL_FROM || "";
+        const emailPassword = data.password || process.env.EMAIL_PASSWORD || "";
 
         // 1. First: Check for Brevo API Key (HTTPS Port 443 - Bypasses Render raw SMTP firewall blocks)
         const brevoKey = process.env.BREVO_API_KEY || data.brevo_api_key;

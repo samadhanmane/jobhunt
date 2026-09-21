@@ -9,6 +9,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from src.config import settings
+from src.core.thread_pool import run_in_worker_thread
 from src.services.enrichment_service import lead_enricher
 from src.utils.browser_fingerprint import (
     get_random_browser_headers,
@@ -45,40 +46,46 @@ class LinkedInService:
         headers = get_random_browser_headers()
 
         try:
-            client = httpx.Client(follow_redirects=True, timeout=12)
-            client.cookies.set('li_at', cookie, domain='.linkedin.com')
-            resp = client.get('https://www.linkedin.com/feed/', headers=headers)
+            with httpx.Client(follow_redirects=True, timeout=12) as client:
+                client.cookies.set('li_at', cookie, domain='.linkedin.com')
+                resp = client.get('https://www.linkedin.com/feed/', headers=headers)
 
-            if resp.status_code == 200 and 'feed' in str(resp.url):
-                return {
-                    'valid': True,
-                    'status': 'active',
-                    'message': 'LinkedIn session cookie is active and valid.'
-                }
-            elif 'login' in str(resp.url) or 'authwall' in str(resp.url) or resp.status_code in [401, 403]:
-                return {
-                    'valid': False,
-                    'status': 'expired',
-                    'message': 'LinkedIn session cookie has expired. Please update with a fresh li_at cookie.'
-                }
-            elif resp.status_code == 429:
-                return {
-                    'valid': False,
-                    'status': 'invalid',
-                    'message': 'LinkedIn rate limit encountered. Pacing active.'
-                }
-            else:
-                return {
-                    'valid': False,
-                    'status': 'invalid',
-                    'message': f'LinkedIn returned unexpected status: {resp.status_code}'
-                }
+                if resp.status_code == 200 and 'feed' in str(resp.url):
+                    return {
+                        'valid': True,
+                        'status': 'active',
+                        'message': 'LinkedIn session cookie is active and valid.'
+                    }
+                elif 'login' in str(resp.url) or 'authwall' in str(resp.url) or resp.status_code in [401, 403]:
+                    return {
+                        'valid': False,
+                        'status': 'expired',
+                        'message': 'LinkedIn session cookie has expired. Please update with a fresh li_at cookie.'
+                    }
+                elif resp.status_code == 429:
+                    return {
+                        'valid': False,
+                        'status': 'invalid',
+                        'message': 'LinkedIn rate limit encountered. Pacing active.'
+                    }
+                else:
+                    return {
+                        'valid': False,
+                        'status': 'invalid',
+                        'message': f'LinkedIn returned unexpected status: {resp.status_code}'
+                    }
         except Exception as e:
             return {
                 'valid': False,
                 'status': 'invalid',
                 'message': f'Connection check error: {str(e)}'
             }
+
+    async def validate_cookie_async(self, custom_cookie: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Non-blocking asynchronous wrapper for validate_cookie executing in the worker thread pool.
+        """
+        return await run_in_worker_thread(self.validate_cookie, custom_cookie)
 
     def _get_session(self, custom_cookie: Optional[str] = None):
         cookie = self._resolve_cookie(custom_cookie)
@@ -150,7 +157,7 @@ class LinkedInService:
                     url = f'https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity={username}'
 
                     try:
-                        resp = client.get(url, headers=headers)
+                        resp = await run_in_worker_thread(client.get, url, headers=headers)
                         if resp.status_code == 200:
                             data = resp.json()
                             for item in data.get('included', []):

@@ -58,9 +58,16 @@ class Settings(BaseSettings):
     FRONTEND_URL: Optional[str] = "http://localhost:3000,http://localhost:5173,http://localhost:8000"
     ALLOWED_ORIGINS: Optional[str] = "*"
 
+    # Background Checking & Concurrency Settings
+    BACKGROUND_DISCOVERY_INTERVAL_MINUTES: int = 60
+    BACKGROUND_DISCOVERY_ENABLED: bool = True
+    KEEPALIVE_ENABLED: bool = True
+    KEEPALIVE_INTERVAL_SECONDS: int = 180
+    WORKER_THREAD_POOL_SIZE: int = 8
+
     # Static Admin Access Credentials (from .env)
     ADMIN_EMAIL: Optional[str] = "jobhuntadmin@gmail.com"
-    ADMIN_PS: Optional[str] = "123456"
+    ADMIN_PS: Optional[str] = None
     ADMIN_PASSWORD: Optional[str] = None
 
 settings = Settings()

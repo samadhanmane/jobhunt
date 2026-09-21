@@ -257,16 +257,18 @@ async def test_send_alert(
 
         ranked_jobs = await scheduler_service.ranking_agent.rank_jobs(unique_jobs, candidate_profile, preferences)
 
-        # Filter curated matches strictly by targeted title/role and seniority fit
+        # Filter curated matches strictly by targeted title/role, location, and seniority fit
         from src.utils.role_helper import filter_curated_jobs_by_role
         curated_jobs = filter_curated_jobs_by_role(
             ranked_jobs,
             target_role=role,
             experience_level=experience_level,
-            min_score=40.0
+            min_score=40.0,
+            target_location=location or "",
+            work_mode=work_mode or "any"
         )
         if not curated_jobs:
-            curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30][:10]
+            curated_jobs = [j for j in ranked_jobs if j.get("match_score", 0) >= 30 and not j.get("location_mismatch")][:10]
 
         # Generate BOTH CSV Reports without pandas (Zero-RAM pure Python)
         backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))

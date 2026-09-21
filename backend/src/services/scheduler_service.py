@@ -1,3 +1,5 @@
+from src.config import settings
+from src.core.thread_pool import run_in_worker_thread
 from src.models.blacklist import BlacklistCompany
 from src.services.repost_detector import repost_detector
 from src.services.upskill_service import upskill_service
@@ -23,16 +25,18 @@ from src.services.linkedin_service import linkedin_service
 from src.utils.date_utils import format_posted_date_for_csv, is_within_days
 
 def generate_job_hash(job: Dict[str, Any]) -> str:
-    """Creates a deterministic hash for a job posting based on title and company."""
+    """Creates a deterministic hash for a job posting based on title, company, and location."""
     title = str(job.get("title", "")).lower().strip()
     company = str(job.get("company", "")).lower().strip()
-    return hashlib.md5(f"{title}|{company}".encode("utf-8")).hexdigest()
+    location = str(job.get("location", "")).lower().strip()
+    return hashlib.md5(f"{title}|{company}|{location}".encode("utf-8")).hexdigest()
 
 class SchedulerService:
     def __init__(self):
         self.orchestrator = OrchestratorAgent()
         self.deduplicator = DeduplicationAgent()
         self.ranking_agent = RankingAgent()
+        self._discovery_running = False
 
     def cleanup_old_jobs(self, db: Session, days: int = 7) -> int:
         """
@@ -154,7 +158,6 @@ class SchedulerService:
             # 3. Cross-Day Deduplication & Date Filtering (Filter out previously sent jobs & old jobs)
             sent_hashes = set(alert.sent_job_hashes or [])
             fresh_jobs = []
-            new_hashes = list(sent_hashes)
 
             for job in unique_batch:
                 j_hash = generate_job_hash(job)
@@ -162,7 +165,6 @@ class SchedulerService:
                     # Filter by posted date age if user selected a date window
                     if is_within_days(job.get("posted_date"), max_days):
                         fresh_jobs.append(job)
-                        new_hashes.append(j_hash)
 
             print(f"[Scheduler] Found {len(raw_jobs)} raw jobs -> {len(unique_batch)} unique -> {len(fresh_jobs)} fresh matching date jobs.")
 
@@ -172,14 +174,16 @@ class SchedulerService:
             # 4. Rank with LLM & Heuristics
             ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences) if fresh_jobs else []
 
-            # Filter curated matches strictly by targeted title/role and seniority fit
+            # Filter curated matches strictly by targeted title/role, location, and seniority fit
             from src.utils.role_helper import filter_curated_jobs_by_role
             curated_jobs = filter_curated_jobs_by_role(
                 ranked_jobs,
                 target_role=alert.role,
                 experience_level=exp_lvl,
                 sub_domain=sub_dom,
-                min_score=40.0
+                min_score=40.0,
+                target_location=alert.location or "",
+                work_mode=alert.work_mode or "any"
             )
 
             # Attach Repost Detection and 3-Tier Skill Gap to curated jobs
@@ -276,40 +280,39 @@ class SchedulerService:
 
             # 7. Update Database with sent hashes and last_sent_at
             try:
-                with SessionLocal() as fresh_db:
-                    db_alert = fresh_db.query(EmailAlert).filter(EmailAlert.id == alert_id).first()
-                    if db_alert:
-                        db_alert.sent_job_hashes = new_hashes[-300:]
-                        db_alert.last_sent_at = datetime.utcnow()
-                        fresh_db.commit()
+                sent_curated_hashes = list(sent_hashes)
+                for j in curated_jobs:
+                    sent_curated_hashes.append(generate_job_hash(j))
+                alert.sent_job_hashes = list(dict.fromkeys(sent_curated_hashes))[-300:]
+                alert.last_sent_at = datetime.utcnow()
+                db.commit()
             except Exception as db_err:
                 print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
 
             # 8. Record in AutomationHistory for interactive website inspection
             try:
                 from src.models.automation_history import AutomationHistory
-                with SessionLocal() as fresh_db:
-                    history_record = AutomationHistory(
-                        alert_id=alert_id,
-                        user_id=getattr(alert, "user_id", None),
-                        recipient_email=alert.email,
-                        role=alert.role,
-                        location=alert.location or "Remote",
-                        work_mode=alert.work_mode or "any",
-                        experience_level=exp_lvl,
-                        experience_years=alert.experience_years or 0.0,
-                        max_age_days=alert.max_age_days or 1,
-                        preferred_time=alert.preferred_time or "09:00",
-                        total_raw_found=len(raw_jobs),
-                        total_unique_found=len(unique_batch),
-                        total_curated_sent=len(curated_jobs),
-                        curated_jobs=curated_jobs,
-                        unique_jobs=unique_batch,
-                        raw_jobs=raw_jobs,
-                        sent_at=datetime.utcnow()
-                    )
-                    fresh_db.add(history_record)
-                    fresh_db.commit()
+                history_record = AutomationHistory(
+                    alert_id=alert_id,
+                    user_id=getattr(alert, "user_id", None),
+                    recipient_email=alert.email,
+                    role=alert.role,
+                    location=alert.location or "Remote",
+                    work_mode=alert.work_mode or "any",
+                    experience_level=exp_lvl,
+                    experience_years=alert.experience_years or 0.0,
+                    max_age_days=alert.max_age_days or 1,
+                    preferred_time=alert.preferred_time or "09:00",
+                    total_raw_found=len(raw_jobs),
+                    total_unique_found=len(unique_batch),
+                    total_curated_sent=len(curated_jobs),
+                    curated_jobs=curated_jobs,
+                    unique_jobs=unique_batch,
+                    raw_jobs=raw_jobs,
+                    sent_at=datetime.utcnow()
+                )
+                db.add(history_record)
+                db.commit()
             except Exception as hist_err:
                 print(f"[Scheduler] Notice during automation history save: {hist_err}")
 
@@ -317,7 +320,7 @@ class SchedulerService:
                 "status": "success" if sent_success else "partial",
                 "email": alert.email,
                 "raw_jobs_count": len(raw_jobs),
-                "jobs_sent": len(ranked_jobs),
+                "jobs_sent": len(curated_jobs),
                 "csv_paths": [raw_csv_path, curated_csv_path]
             }
         except Exception as e:
@@ -373,7 +376,7 @@ class SchedulerService:
                     pass
 
                 if should_check:
-                    validation = linkedin_service.validate_cookie(cookie_to_check)
+                    validation = await linkedin_service.validate_cookie_async(cookie_to_check)
                     status = validation.get("status", "invalid")
 
                     if user:
@@ -480,105 +483,124 @@ class SchedulerService:
         """
         Runs periodic server-side background job discovery across platforms for all
         active user roles, search histories, and email alerts.
-        This runs 24/7 in the background regardless of whether any browser tabs are open,
-        ensuring fresh jobs are continuously crawled and persisted to the database.
+        Runs once every 1 hour (configurable) in the background without blocking the event loop,
+        ensuring fresh jobs are continuously crawled and persisted to the database with minimal
+        bandwidth and CPU usage.
         """
+        if self._discovery_running:
+            print("[Background Auto-Discovery] Notice: Background discovery already running, skipping overlapping cycle.")
+            return
+
+        self._discovery_running = True
         from src.models.job import Job
         from src.models.search_history import SearchHistory
         from src.repositories.job_repository import JobRepository
         from src.utils.text_cleaner import extract_job_experience_metadata
 
-        db = SessionLocal()
         try:
-            # 1. Collect distinct search targets from recent SearchHistory & EmailAlert
-            target_configs = []
-            seen_combos = set()
+            # 1. Collect distinct search targets and existing URLs in worker thread pool
+            def _collect_targets_and_existing_urls():
+                db = SessionLocal()
+                try:
+                    target_configs = []
+                    seen_combos = set()
 
-            # From recent searches in the last 7 days
-            cutoff = datetime.utcnow() - timedelta(days=7)
-            recent_searches = db.query(SearchHistory).filter(SearchHistory.created_at >= cutoff).order_by(SearchHistory.created_at.desc()).limit(15).all()
-            for s in recent_searches:
-                if not s.role:
-                    continue
-                combo_key = f"{s.role.lower().strip()}|{(s.location or '').lower().strip()}"
-                if combo_key not in seen_combos:
-                    seen_combos.add(combo_key)
-                    pref = s.preferences or {}
-                    target_configs.append({
-                        "role": s.role.strip(),
-                        "location": (s.location or "Worldwide").strip(),
-                        "preferences": {
-                            "role": s.role.strip(),
-                            "location": "" if (s.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else s.location,
-                            "remote_preference": pref.get("remote_preference", "any"),
-                            "experience_level": pref.get("experience_level", "all"),
-                            "experience_years": pref.get("experience_years", 0)
-                        },
-                        "candidate_profile": {
-                            "skills": pref.get("skills") or pref.get("resume_skills") or [],
-                            "core_domain": s.role.strip(),
-                            "experience_years": pref.get("experience_years", 0),
-                            "seniority": pref.get("experience_level", "Mid")
-                        }
-                    })
+                    # From recent searches in the last 7 days
+                    cutoff = datetime.utcnow() - timedelta(days=7)
+                    recent_searches = db.query(SearchHistory).filter(SearchHistory.created_at >= cutoff).order_by(SearchHistory.created_at.desc()).limit(15).all()
+                    for s in recent_searches:
+                        if not s.role:
+                            continue
+                        combo_key = f"{s.role.lower().strip()}|{(s.location or '').lower().strip()}"
+                        if combo_key not in seen_combos:
+                            seen_combos.add(combo_key)
+                            pref = s.preferences or {}
+                            target_configs.append({
+                                "role": s.role.strip(),
+                                "location": (s.location or "Worldwide").strip(),
+                                "preferences": {
+                                    "role": s.role.strip(),
+                                    "location": "" if (s.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else s.location,
+                                    "remote_preference": pref.get("remote_preference", "any"),
+                                    "experience_level": pref.get("experience_level", "all"),
+                                    "experience_years": pref.get("experience_years", 0)
+                                },
+                                "candidate_profile": {
+                                    "skills": pref.get("skills") or pref.get("resume_skills") or [],
+                                    "core_domain": s.role.strip(),
+                                    "experience_years": pref.get("experience_years", 0),
+                                    "seniority": pref.get("experience_level", "Mid")
+                                }
+                            })
 
-            # Also check EmailAlerts
-            active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
-            for a in active_alerts:
-                if not a.role:
-                    continue
-                combo_key = f"{a.role.lower().strip()}|{(a.location or '').lower().strip()}"
-                if combo_key not in seen_combos:
-                    seen_combos.add(combo_key)
-                    alert_exp = getattr(a, "experience_level", None) or "all"
-                    alert_sub = getattr(a, "sub_domain", "All") or "All"
-                    alert_facets = getattr(a, "ai_facets", []) or []
-                    target_configs.append({
-                        "role": a.role.strip(),
-                        "location": (a.location or "Worldwide").strip(),
-                        "preferences": {
-                            "role": a.role.strip(),
-                            "location": "" if (a.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else a.location,
-                            "remote_preference": a.work_mode or "any",
-                            "work_mode": a.work_mode or "any",
-                            "experience_level": alert_exp,
-                            "experience_tier": alert_exp,
-                            "sub_domain": alert_sub,
-                            "ai_facets": alert_facets,
-                            "experience_years": a.experience_years or 0.0
-                        },
-                        "candidate_profile": {
-                            "skills": a.skills or [],
-                            "core_domain": a.role.strip(),
-                            "experience_years": a.experience_years or 0.0,
-                            "seniority": alert_exp.title() if alert_exp != "all" else ("Intern" if "intern" in a.role.lower() else "Junior")
-                        }
-                    })
+                    # Also check EmailAlerts
+                    active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
+                    for a in active_alerts:
+                        if not a.role:
+                            continue
+                        combo_key = f"{a.role.lower().strip()}|{(a.location or '').lower().strip()}"
+                        if combo_key not in seen_combos:
+                            seen_combos.add(combo_key)
+                            alert_exp = getattr(a, "experience_level", None) or "all"
+                            alert_sub = getattr(a, "sub_domain", "All") or "All"
+                            alert_facets = getattr(a, "ai_facets", []) or []
+                            target_configs.append({
+                                "role": a.role.strip(),
+                                "location": (a.location or "Worldwide").strip(),
+                                "preferences": {
+                                    "role": a.role.strip(),
+                                    "location": "" if (a.location or "").lower() in ["remote", "worldwide", "global", "any", "all", ""] else a.location,
+                                    "remote_preference": a.work_mode or "any",
+                                    "work_mode": a.work_mode or "any",
+                                    "experience_level": alert_exp,
+                                    "experience_tier": alert_exp,
+                                    "sub_domain": alert_sub,
+                                    "ai_facets": alert_facets,
+                                    "experience_years": a.experience_years or 0.0
+                                },
+                                "candidate_profile": {
+                                    "skills": a.skills or [],
+                                    "core_domain": a.role.strip(),
+                                    "experience_years": a.experience_years or 0.0,
+                                    "seniority": alert_exp.title() if alert_exp != "all" else ("Intern" if "intern" in a.role.lower() else "Junior")
+                                }
+                            })
 
-            if not target_configs:
-                # Default fallback role if no searches yet
-                target_configs = [{
-                    "role": "AI Engineer Intern",
-                    "location": "Worldwide",
-                    "preferences": {"role": "AI Engineer Intern", "location": "", "remote_preference": "any", "experience_level": "intern", "experience_years": 0},
-                    "candidate_profile": {"skills": ["Python", "PyTorch", "Machine Learning"], "core_domain": "AI / ML", "experience_years": 0, "seniority": "Intern"}
-                }]
+                    if not target_configs:
+                        # Default fallback role if no searches yet
+                        target_configs = [{
+                            "role": "AI Engineer Intern",
+                            "location": "Worldwide",
+                            "preferences": {"role": "AI Engineer Intern", "location": "", "remote_preference": "any", "experience_level": "intern", "experience_years": 0},
+                            "candidate_profile": {"skills": ["Python", "PyTorch", "Machine Learning"], "core_domain": "AI / ML", "experience_years": 0, "seniority": "Intern"}
+                        }]
 
-            # Fetch existing job URLs in DB to prevent re-adding duplicates
-            existing_db_urls = set(u[0].strip().lower() for u in db.query(Job.url).filter(Job.url != "").all() if u[0])
+                    existing_urls = set(u[0].strip().lower() for u in db.query(Job.url).filter(Job.url != "").all() if u[0])
+                    return target_configs, existing_urls
+                finally:
+                    db.close()
+
+            target_configs, existing_db_urls = await run_in_worker_thread(_collect_targets_and_existing_urls)
 
             # Crawl for top 2 targets per discovery cycle to keep CPU & memory light
             for config in target_configs[:2]:
                 role_name = config["role"]
                 loc_name = config["location"]
-                print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across all 30+ connected platforms...")
+                print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across connected platforms (1-hr interval)...")
 
                 raw_jobs = await self.orchestrator.orchestrate_search(config["candidate_profile"], config["preferences"])
                 if not raw_jobs:
                     continue
 
                 unique_jobs = await self.deduplicator.deduplicate(raw_jobs)
-                ranked_jobs = await self.ranking_agent.rank_jobs(unique_jobs, config["candidate_profile"], config["preferences"])
+
+                # PRE-FILTER: Only rank jobs that are not already in database to save CPU and memory
+                fresh_unseen_jobs = [j for j in unique_jobs if (j.get("url") or "").strip().lower() not in existing_db_urls]
+                if not fresh_unseen_jobs:
+                    print(f"[Background Auto-Discovery] ℹ️ All {len(unique_jobs)} discovered jobs for '{role_name}' are already up-to-date in database.")
+                    continue
+
+                ranked_jobs = await self.ranking_agent.rank_jobs(fresh_unseen_jobs, config["candidate_profile"], config["preferences"])
 
                 new_db_jobs = []
                 for j in ranked_jobs:
@@ -620,38 +642,40 @@ class SchedulerService:
                     ))
 
                 if new_db_jobs:
-                    JobRepository(db).add_jobs(new_db_jobs)
+                    def _save_new_jobs(jobs_list):
+                        db = SessionLocal()
+                        try:
+                            JobRepository(db).add_jobs(jobs_list)
+                        finally:
+                            db.close()
+                    await run_in_worker_thread(_save_new_jobs, new_db_jobs)
                     print(f"[Background Auto-Discovery] ✅ Saved {len(new_db_jobs)} new background-discovered jobs to database for '{role_name}'.")
                 else:
                     print(f"[Background Auto-Discovery] ℹ️ All {len(ranked_jobs)} discovered jobs for '{role_name}' are already up-to-date in database.")
 
                 del raw_jobs
                 del unique_jobs
+                del fresh_unseen_jobs
                 del ranked_jobs
                 del new_db_jobs
                 gc.collect()
 
         except Exception as bg_err:
             print(f"[Background Auto-Discovery] Notice: {bg_err}")
-            try:
-                db.rollback()
-            except Exception:
-                pass
         finally:
-            try:
-                db.close()
-            except Exception:
-                pass
+            self._discovery_running = False
             gc.collect()
 
     async def start_background_scheduler(self):
         """
         Runs continuous background scheduler loop:
         1. Checks daily email alerts every 60s without blocking.
-        2. Spawns background auto-discovery crawler every 5 minutes in a separate task.
+        2. Spawns background auto-discovery crawler once every 1 hour (configurable) in a separate task.
         3. Spawns cookie health sentinel every 15 minutes in a separate task.
         """
-        print("[Scheduler] Automated background worker & continuous job discovery engine started.")
+        interval_mins = getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60)
+        enabled = getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True)
+        print(f"[Scheduler] Automated background worker started. Auto-discovery cadence: every {interval_mins} min (enabled: {enabled}).")
         discovery_counter = 0
         health_check_counter = 0
 
@@ -667,11 +691,16 @@ class SchedulerService:
                 # 1. Alert check runs strictly every 60s
                 await self.check_and_trigger_due_alerts()
                 
-                # 2. Continuous Background Job Discovery spawned as non-blocking task every 5 minutes
-                discovery_counter += 1
-                if discovery_counter >= 5:
-                    discovery_counter = 0
-                    asyncio.create_task(self.run_continuous_background_job_discovery())
+                # 2. Continuous Background Job Discovery spawned once every 1 hour (or configured interval)
+                if getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True):
+                    discovery_counter += 1
+                    interval = max(1, getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60))
+                    if discovery_counter >= interval:
+                        discovery_counter = 0
+                        if not self._discovery_running:
+                            asyncio.create_task(self.run_continuous_background_job_discovery())
+                        else:
+                            print("[Scheduler] Notice: Background discovery already running, skipping overlapping cycle.")
 
                 # 3. Cookie Health Sentinel spawned as non-blocking task every 15 minutes
                 health_check_counter += 1

@@ -16,10 +16,10 @@ def get_engine():
 
     return create_engine(
         settings.DATABASE_URL,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=5,
+        max_overflow=10,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=180,
         pool_timeout=30,
         connect_args={
             "connect_timeout": 15,
@@ -113,11 +113,7 @@ def init_and_migrate_db():
             # Search history
             "ALTER TABLE search_history ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)",
 
-            # Users & User Accounts
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user'",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP",
+            # User Accounts
             "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS linkedin_cookie TEXT",
             "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS linkedin_cookie_status VARCHAR(50) DEFAULT 'unconfigured'",
             "ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS linkedin_cookie_checked_at TIMESTAMP",

@@ -16,6 +16,7 @@ from src.api.routes import search, jobs, health, alerts, auth, admin, contacts, 
 from src.models.database import init_and_migrate_db, SessionLocal
 from src.services.scheduler_service import scheduler_service
 from src.services.keepalive_service import keepalive_service
+from src.core.thread_pool import shutdown_worker_pool
 
 async def async_startup_tasks():
     # Yield control immediately to allow Uvicorn port binding without delay
@@ -43,7 +44,7 @@ async def async_startup_tasks():
     except Exception as e:
         print(f"Notice: Scheduler start notice: {e}")
 
-    # 4. Start 60-second KeepAlive self-ping heartbeat
+    # 4. Start KeepAlive self-ping heartbeat
     try:
         keepalive_service.start()
     except Exception as e:
@@ -55,10 +56,11 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown: Cancel tasks & stop keepalive
+    # Shutdown: Cancel tasks, stop keepalive & shutdown worker thread pool
     try:
         startup_task.cancel()
         keepalive_service.stop()
+        shutdown_worker_pool(wait=False)
     except Exception:
         pass
 

@@ -13,16 +13,25 @@ from src.config import settings
 
 STATIC_ADMIN_ID = "admin-static-jobhunt"
 
+import secrets
+
 def get_admin_credentials() -> Tuple[str, str]:
     """
     Fetch static admin credentials dynamically from .env settings.
     """
     admin_email = getattr(settings, "ADMIN_EMAIL", None) or os.getenv("ADMIN_EMAIL", "jobhuntadmin@gmail.com")
-    admin_pass = getattr(settings, "ADMIN_PS", None) or getattr(settings, "ADMIN_PASSWORD", None) or os.getenv("ADMIN_PS") or os.getenv("ADMIN_PASSWORD", "123456")
+    admin_pass = getattr(settings, "ADMIN_PS", None) or getattr(settings, "ADMIN_PASSWORD", None) or os.getenv("ADMIN_PS") or os.getenv("ADMIN_PASSWORD", "")
     return str(admin_email).lower().strip(), str(admin_pass).strip()
 
 # JWT configuration
-SECRET_KEY = getattr(settings, "JWT_SECRET", None) or os.getenv("JWT_SECRET", "super-secret-jwt-key-jobagent-ai-2026-secure-random")
+_configured_jwt = getattr(settings, "JWT_SECRET", None) or os.getenv("JWT_SECRET")
+if not _configured_jwt:
+    _runtime_key = os.environ.get("_RUNTIME_JWT_SECRET") or secrets.token_urlsafe(32)
+    os.environ["_RUNTIME_JWT_SECRET"] = _runtime_key
+    SECRET_KEY = _runtime_key
+else:
+    SECRET_KEY = _configured_jwt
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
@@ -105,8 +114,8 @@ def get_current_user(
     email = payload.get("email")
     admin_email, _ = get_admin_credentials()
 
-    # Static Admin Check (Bypasses Database)
-    if user_id == STATIC_ADMIN_ID or (email and email.lower() == admin_email.lower()):
+    # Static Admin Check (Bypasses Database for designated static superadmin)
+    if user_id == STATIC_ADMIN_ID:
         return UserAccount(
             id=STATIC_ADMIN_ID,
             email=admin_email,

@@ -290,8 +290,20 @@ class JobService:
             # 4. Rank with candidate profile, skill match, gap analysis, and reason
             ranked_jobs = await self.ranker.rank_jobs(unique_jobs, candidate_profile, preferences)
             
-            # 5. Attach Repost Detection & 3-Tier Skill Gap to live search results
-            top_ranked_jobs = ranked_jobs[:40]
+            # Filter curated matches strictly matching role, location, and experience criteria
+            from src.utils.role_helper import filter_curated_jobs_by_role
+            curated_jobs = filter_curated_jobs_by_role(
+                ranked_jobs,
+                target_role=preferences.get("role", ""),
+                experience_level=preferences.get("experience_level", "all"),
+                sub_domain=preferences.get("sub_domain", "All"),
+                min_score=40.0,
+                target_location=preferences.get("location", ""),
+                work_mode=preferences.get("work_mode") or preferences.get("remote_preference") or "any"
+            )
+            curated_urls = set(j.get("url") for j in curated_jobs if j.get("url"))
+            remaining_ranked = [j for j in ranked_jobs if j.get("url") not in curated_urls and not j.get("location_mismatch")]
+            top_ranked_jobs = (curated_jobs + remaining_ranked)[:40]
             try:
                 with SessionLocal() as db_temp:
                     for j in top_ranked_jobs:

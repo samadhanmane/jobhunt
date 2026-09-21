@@ -3,7 +3,7 @@ import re
 import datetime
 from typing import List, Dict, Any
 from src.agents.base import BaseJobAgent
-from src.utils.location_helper import is_job_location_match, is_india_location, detect_work_mode
+from src.utils.location_helper import is_job_location_match, is_india_location, detect_work_mode, detect_country_key
 from src.utils.role_helper import (
     is_title_role_match,
     detect_ai_sub_domain,
@@ -191,6 +191,7 @@ class RankingAgent(BaseJobAgent):
         # Factor 4: Location Fit (10%)
         # ------------------------------------------------------------------
         is_worldwide_target = target_loc.lower().strip() in ["", "remote", "worldwide", "global", "any", "all"]
+        location_mismatch = False
         if is_worldwide_target:
             if work_mode == "Remote":
                 loc_score = 100
@@ -198,12 +199,21 @@ class RankingAgent(BaseJobAgent):
                 loc_score = 80
         else:
             if is_job_location_match(loc, target_loc, pref_work_mode, "", desc, title, u):
-                loc_score = 100 if (work_mode == "Remote" or pref_work_mode == "any") else 95
+                loc_score = 100 if (work_mode == "Remote" or pref_work_mode in ["any", "all", ""]) else 95
             else:
                 if "india" in target_loc.lower() and is_india_location(loc, u, title, desc):
                     loc_score = 85
+                elif is_india_location(target_loc) and not is_india_location(loc, u, title, desc):
+                    loc_score = 0
+                    location_mismatch = True
                 else:
-                    loc_score = 25
+                    target_country = detect_country_key(target_loc)
+                    job_country = detect_country_key(loc)
+                    if target_country and job_country and target_country != job_country:
+                        loc_score = 0
+                        location_mismatch = True
+                    else:
+                        loc_score = 25
 
         # ------------------------------------------------------------------
         # Factor 5: Work Mode Fit (10%)
@@ -274,19 +284,25 @@ class RankingAgent(BaseJobAgent):
             (freshness_score * 0.10)
         )
 
+        # Geographic Hard-Cap: Incompatible overseas/foreign location cannot qualify as curated match
+        if location_mismatch:
+            total_score = min(total_score, 30)
+
         match_reason = f"Role Fit: {role_score}% | Skills Fit: {skill_score}% | Experience Fit: {exp_score}% | Location Fit: {loc_score}% | Work Mode: {work_mode_score}% | Freshness: {freshness_score}%"
 
         enriched_job = dict(job)
         enriched_job.update({
             "match_score": total_score,
             "match_reason": match_reason,
+            "location_mismatch": location_mismatch,
             "match_breakdown": {
                 "skills": skill_score,
                 "role": role_score,
                 "experience": exp_score,
                 "location": loc_score,
                 "work_mode": work_mode_score,
-                "freshness": freshness_score
+                "freshness": freshness_score,
+                "location_match": not location_mismatch
             },
             "role_match_score": role_score,
             "skill_match_score": skill_score,

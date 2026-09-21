@@ -11,6 +11,8 @@ from src.utils.location_helper import get_indeed_country_code, get_linkedin_loca
 import httpx
 from bs4 import BeautifulSoup
 
+from src.core.thread_pool import run_in_worker_thread
+
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -19,8 +21,6 @@ DEFAULT_HEADERS = {
 
 class JobSpyClient(BaseJobIntegration):
     async def search(self, query: str, location: str, remote: bool = False, **kwargs) -> List[Dict[str, Any]]:
-        loop = asyncio.get_event_loop()
-        
         is_specific_loc = bool(location and location.lower().strip() not in ["remote", "worldwide", "global", "any", "all", ""])
         
         if is_specific_loc:
@@ -58,7 +58,7 @@ class JobSpyClient(BaseJobIntegration):
                     except Exception as e:
                         print(f"Notice: JobSpy scrape notice ({sites}, {country_code}): {e}")
                         return None
-                res = await loop.run_in_executor(None, _do_scrape)
+                res = await run_in_worker_thread(_do_scrape)
                 gc.collect()
                 return res
 
