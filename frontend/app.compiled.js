@@ -2902,7 +2902,7 @@ function JobSearchDashboard(_ref13) {
       if (filterCategory !== 'all') {
         var jobCat = (job.source_category || '').toLowerCase();
         var jobSrc = (job.source || '').toLowerCase();
-        if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'shine', 'unstop'].some(function (s) {
+        if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'hiredoor', 'unstop'].some(function (s) {
           return jobSrc.includes(s);
         }) && !jobLoc.includes('india')) return false;
         if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable', 'aijobs', 'kdnuggets'].some(function (s) {
@@ -3196,8 +3196,8 @@ function JobSearchDashboard(_ref13) {
   }, "\uD83C\uDDEE\uD83C\uDDF3 Naukri India"), /*#__PURE__*/React.createElement("option", {
     value: "apna"
   }, "\uD83C\uDDEE\uD83C\uDDF3 Apna India"), /*#__PURE__*/React.createElement("option", {
-    value: "shine"
-  }, "\uD83C\uDDEE\uD83C\uDDF3 Shine India"), /*#__PURE__*/React.createElement("option", {
+    value: "hiredoor"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 HireDoor (Verified Tech)"), /*#__PURE__*/React.createElement("option", {
     value: "instahyre"
   }, "\uD83C\uDDEE\uD83C\uDDF3 Instahyre"), /*#__PURE__*/React.createElement("option", {
     value: "cutshort"
@@ -3756,8 +3756,8 @@ function JobSearchDashboard(_ref13) {
   }, "\uD83C\uDDEE\uD83C\uDDF3 Naukri India"), /*#__PURE__*/React.createElement("option", {
     value: "apna"
   }, "\uD83C\uDDEE\uD83C\uDDF3 Apna India"), /*#__PURE__*/React.createElement("option", {
-    value: "shine"
-  }, "\uD83C\uDDEE\uD83C\uDDF3 Shine India"), /*#__PURE__*/React.createElement("option", {
+    value: "hiredoor"
+  }, "\uD83C\uDDEE\uD83C\uDDF3 HireDoor (Verified Tech)"), /*#__PURE__*/React.createElement("option", {
     value: "instahyre"
   }, "\uD83C\uDDEE\uD83C\uDDF3 Instahyre"), /*#__PURE__*/React.createElement("option", {
     value: "cutshort"

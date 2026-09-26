@@ -30,7 +30,7 @@ from src.integrations.unstop.client import UnstopClient
 from src.integrations.aijobs.client import AIJobsClient
 from src.integrations.naukri.client import NaukriClient
 from src.integrations.apna.client import ApnaClient
-from src.integrations.shine.client import ShineClient
+from src.integrations.hiredoor.client import HireDoorClient
 from src.integrations.builtin.client import BuiltInClient
 from src.integrations.themuse.client import TheMuseClient
 from src.integrations.simplify.client import SimplifyClient
@@ -66,7 +66,7 @@ class OrchestratorAgent(BaseJobAgent):
         self.aijobs = AIJobsClient()
         self.naukri = NaukriClient()
         self.apna = ApnaClient()
-        self.shine = ShineClient()
+        self.hiredoor = HireDoorClient()
         self.builtin = BuiltInClient()
         self.themuse = TheMuseClient()
         self.simplify = SimplifyClient()
@@ -269,9 +269,9 @@ Candidate Background:
             if target_cat in ["all", "india"] and (not target_src or target_src in ["apna"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.apna.search(query=q_title, location=location, remote=remote)))
-            if target_cat in ["all", "india"] and (not target_src or target_src in ["shine"]):
+            if target_cat in ["all", "india"] and (not target_src or target_src in ["hiredoor"]):
                 if idx == 0:
-                    tasks.append(run_guarded(self.shine.search(query=q_title, location=location, remote=remote)))
+                    tasks.append(run_guarded(self.hiredoor.search(query=q_title, location=location, remote=remote)))
             if target_cat in ["all", "india"] and (not target_src or target_src in ["jobspy", "linkedin", "indeed"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.jobspy.search(query=q_title, location=location, remote=remote)))
@@ -346,7 +346,7 @@ Candidate Background:
                     platform_counts[source] = platform_counts.get(source, 0) + 1
 
                     # Normalize source_category
-                    if any(s in source for s in ["instahyre", "cutshort", "hirist", "naukri", "unstop", "apna", "shine"]) or ("jobspy" in source and "india" in str(job.get("location", "")).lower()):
+                    if any(s in source for s in ["instahyre", "cutshort", "hirist", "naukri", "unstop", "apna", "hiredoor"]) or ("jobspy" in source and "india" in str(job.get("location", "")).lower()):
                         job["source_category"] = "india"
                     elif any(s in source for s in ["internshala", "simplify"]):
                         job["source_category"] = "internships"

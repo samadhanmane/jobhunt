@@ -2440,7 +2440,7 @@ function JobSearchDashboard({
             if (filterCategory !== 'all') {
                 const jobCat = (job.source_category || '').toLowerCase();
                 const jobSrc = (job.source || '').toLowerCase();
-                if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'shine', 'unstop'].some(s => jobSrc.includes(s)) && !jobLoc.includes('india')) return false;
+                if (filterCategory === 'india' && jobCat !== 'india' && !['instahyre', 'cutshort', 'hirist', 'naukri', 'apna', 'hiredoor', 'unstop'].some(s => jobSrc.includes(s)) && !jobLoc.includes('india')) return false;
                 if (filterCategory === 'ai_registry' && jobCat !== 'ai_registry' && !['ashby', 'greenhouse', 'lever', 'workable', 'aijobs', 'kdnuggets'].some(s => jobSrc.includes(s))) return false;
                 if (filterCategory === 'enterprise_workday' && jobCat !== 'enterprise_workday' && !['workday', 'smartrecruiters', 'phenom', 'recruitee', 'teamtailor'].some(s => jobSrc.includes(s))) return false;
                 if (filterCategory === 'startups' && jobCat !== 'startups' && !['ycombinator', 'yc', 'hn', 'cutshort', 'recruitee', 'builtin', 'themuse', 'muse'].some(s => jobSrc.includes(s))) return false;
@@ -2678,7 +2678,7 @@ function JobSearchDashboard({
                                         <option value="all">🌐 All Platforms (30+ Connectors)</option>
                                         <option value="naukri">🇮🇳 Naukri India</option>
                                         <option value="apna">🇮🇳 Apna India</option>
-                                        <option value="shine">🇮🇳 Shine India</option>
+                                        <option value="hiredoor">🇮🇳 HireDoor (Verified Tech)</option>
                                         <option value="instahyre">🇮🇳 Instahyre</option>
                                         <option value="cutshort">🇮🇳 Cutshort</option>
                                         <option value="hirist">🇮🇳 Hirist</option>
@@ -3290,7 +3290,7 @@ function JobSearchDashboard({
                                     <option value="all">🌐 All Platforms (30+ Connectors)</option>
                                     <option value="naukri">🇮🇳 Naukri India</option>
                                     <option value="apna">🇮🇳 Apna India</option>
-                                    <option value="shine">🇮🇳 Shine India</option>
+                                    <option value="hiredoor">🇮🇳 HireDoor (Verified Tech)</option>
                                     <option value="instahyre">🇮🇳 Instahyre</option>
                                     <option value="cutshort">🇮🇳 Cutshort</option>
                                     <option value="hirist">🇮🇳 Hirist</option>
