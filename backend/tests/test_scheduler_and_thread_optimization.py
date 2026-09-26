@@ -65,5 +65,17 @@ class TestSchedulerAndThreadOptimization(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res["valid"])
         self.assertEqual(res["status"], "unconfigured")
 
+    def test_background_discovery_toggle_dynamically(self):
+        """Verify Admin can enable and disable background check dynamically."""
+        svc = SchedulerService()
+        
+        # Disable background discovery
+        svc.set_background_discovery_enabled(False, updated_by="test_admin")
+        self.assertFalse(svc.is_background_discovery_enabled())
+
+        # Re-enable background discovery
+        svc.set_background_discovery_enabled(True, updated_by="test_admin")
+        self.assertTrue(svc.is_background_discovery_enabled())
+
 if __name__ == "__main__":
     unittest.main()

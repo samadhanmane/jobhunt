@@ -146,3 +146,65 @@ def delete_user(
         "status": "success",
         "message": f"User '{user.email}' and all associated automations deleted successfully."
     }
+
+class ToggleBackgroundCheckRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+@router.get("/settings/background-check")
+def get_background_check_status(
+    admin: UserAccount = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the global background check (continuous job discovery) status.
+    """
+    from src.services.scheduler_service import scheduler_service
+    from src.models.system_setting import SystemSetting
+    from src.config import settings
+
+    enabled = scheduler_service.is_background_discovery_enabled()
+    interval = getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60)
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "background_discovery_enabled").first()
+
+    return {
+        "enabled": enabled,
+        "interval_minutes": interval,
+        "status_text": "ACTIVE" if enabled else "STOPPED",
+        "description": "Continuous background crawler crawls platforms every 1 hour and persists fresh jobs to database." if enabled else "Background check is STOPPED for everyone. Results will only be fetched when users actively search on-demand.",
+        "updated_at": setting.updated_at.isoformat() if setting and setting.updated_at else None,
+        "updated_by": setting.updated_by if setting else "system_default"
+    }
+
+@router.post("/settings/background-check/toggle")
+def toggle_background_check(
+    request: Optional[ToggleBackgroundCheckRequest] = None,
+    admin: UserAccount = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin control to STOP or START background check (continuous job discovery) for everyone.
+    When STOPPED:
+    - Periodic background crawler is completely disabled.
+    - Zero background bandwidth and instance hours consumed.
+    - Jobs are ONLY fetched when a user actively searches on the website.
+    """
+    from src.services.scheduler_service import scheduler_service
+
+    current_val = scheduler_service.is_background_discovery_enabled()
+    new_val = not current_val if (request is None or request.enabled is None) else request.enabled
+
+    scheduler_service.set_background_discovery_enabled(new_val, updated_by=admin.email)
+
+    msg = (
+        "Background check has been STOPPED for everyone. Continuous background crawling is paused, and results will only be fetched when users search on-demand."
+        if not new_val else
+        "Background check has been ENABLED for everyone. Continuous background job discovery will run every 1 hour."
+    )
+
+    return {
+        "status": "success",
+        "enabled": new_val,
+        "status_text": "ACTIVE" if new_val else "STOPPED",
+        "message": msg
+    }
+

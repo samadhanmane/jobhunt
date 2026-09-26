@@ -548,6 +548,52 @@ class SchedulerService:
                 self._alert_worker_running = False
                 gc.collect()
 
+    def is_background_discovery_enabled(self) -> bool:
+        """
+        Returns whether background job discovery crawler is globally enabled.
+        Admin can toggle this OFF via Admin Portal to halt all background crawling,
+        ensuring jobs are only fetched when users actively search on-demand.
+        """
+        try:
+            from src.models.system_setting import SystemSetting
+            db = SessionLocal()
+            try:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == "background_discovery_enabled").first()
+                if setting and setting.value is not None:
+                    return setting.value.strip().lower() in ["true", "1", "yes", "on"]
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+        return getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True)
+
+    def set_background_discovery_enabled(self, enabled: bool, updated_by: str = "admin") -> bool:
+        """
+        Persists global background discovery status in database for immediate, system-wide effect.
+        """
+        from src.models.system_setting import SystemSetting
+        db = SessionLocal()
+        try:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "background_discovery_enabled").first()
+            if not setting:
+                setting = SystemSetting(
+                    key="background_discovery_enabled",
+                    value="true" if enabled else "false",
+                    description="Controls periodic server-side background job discovery across platforms",
+                    updated_by=updated_by
+                )
+                db.add(setting)
+            else:
+                setting.value = "true" if enabled else "false"
+                setting.updated_by = updated_by
+                setting.updated_at = datetime.utcnow()
+            db.commit()
+            print(f"[Scheduler] Background discovery crawler status set to: {'ENABLED' if enabled else 'DISABLED'} by {updated_by}")
+            return enabled
+        finally:
+            db.close()
+
     async def run_continuous_background_job_discovery(self):
         """
         Runs periodic server-side background job discovery across platforms for all
@@ -556,6 +602,10 @@ class SchedulerService:
         ensuring fresh jobs are continuously crawled and persisted to the database with minimal
         bandwidth and CPU usage.
         """
+        if not self.is_background_discovery_enabled():
+            print("[Background Auto-Discovery] Notice: Background check is disabled by Admin. Skipping discovery cycle.")
+            return
+
         if self._discovery_running:
             print("[Background Auto-Discovery] Notice: Background discovery already running, skipping overlapping cycle.")
             return
@@ -765,7 +815,7 @@ class SchedulerService:
                 await self.check_and_trigger_due_alerts()
                 
                 # 2. Continuous Background Job Discovery spawned once every 1 hour (or configured interval)
-                if getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True):
+                if self.is_background_discovery_enabled():
                     discovery_counter += 1
                     interval = max(1, getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60))
                     if discovery_counter >= interval:
@@ -774,6 +824,8 @@ class SchedulerService:
                             asyncio.create_task(self.run_continuous_background_job_discovery())
                         else:
                             print("[Scheduler] Notice: Background discovery already running, skipping overlapping cycle.")
+                else:
+                    discovery_counter = 0
 
                 # 3. Cookie Health Sentinel spawned as non-blocking task every 15 minutes
                 health_check_counter += 1

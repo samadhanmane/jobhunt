@@ -5831,6 +5831,11 @@ function AdminPortal({ token, user, showToast }) {
     const [newRole, setNewRole] = useState("user");
     const [creating, setCreating] = useState(false);
 
+    // Global Platform Background Check / Crawler State
+    const [bgCheckEnabled, setBgCheckEnabled] = useState(true);
+    const [bgCheckLoading, setBgCheckLoading] = useState(false);
+    const [bgCheckMeta, setBgCheckMeta] = useState(null);
+
     const fetchUsers = async () => {
         try {
             setLoading(true);
@@ -5850,9 +5855,58 @@ function AdminPortal({ token, user, showToast }) {
         }
     };
 
+    const fetchBgCheckStatus = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setBgCheckEnabled(Boolean(data.enabled));
+                setBgCheckMeta(data);
+            }
+        } catch (err) {
+            console.warn("Could not fetch background check status:", err);
+        }
+    };
+
     useEffect(() => {
         fetchUsers();
+        fetchBgCheckStatus();
     }, []);
+
+    const handleToggleBgCheck = async () => {
+        const willDisable = bgCheckEnabled;
+        const confirmMsg = willDisable
+            ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website."
+            : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            setBgCheckLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check/toggle`, {
+                method: "POST",
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled: !bgCheckEnabled })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setBgCheckEnabled(Boolean(data.enabled));
+                showToast(data.message, data.enabled ? "success" : "info");
+                fetchBgCheckStatus();
+            } else {
+                showToast(data.detail || "Failed to update background check status", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setBgCheckLoading(false);
+        }
+    };
 
     const handleCreateUser = async (e) => {
         e.preventDefault();
@@ -5927,6 +5981,71 @@ function AdminPortal({ token, user, showToast }) {
 
     return (
         <div className="space-y-6">
+            {/* Global Automation & Background Crawler Control */}
+            <div className={`minimal-card rounded-2xl p-6 border transition-all shadow-xl ${
+                bgCheckEnabled
+                    ? "border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-slate-900 to-slate-950"
+                    : "border-rose-500/30 bg-gradient-to-br from-rose-950/20 via-slate-900 to-slate-950"
+            }`}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xl">⚙️</span>
+                            <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+                                Global Platform Background Check & Crawler Control
+                            </h2>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border shadow-sm ${
+                                bgCheckEnabled
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                    : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            }`}>
+                                <span className={`w-2 h-2 rounded-full ${bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`}></span>
+                                {bgCheckEnabled ? "ACTIVE (Crawling Every 1 Hr)" : "STOPPED (On-Demand Searches Only)"}
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                            {bgCheckEnabled ? (
+                                <>
+                                    Continuous background job discovery is currently <strong className="text-emerald-400">ENABLED</strong>. The background worker crawls platforms every 1 hour across recent search roles and saves new postings to the database.
+                                </>
+                            ) : (
+                                <>
+                                    Background job check is currently <strong className="text-rose-400">STOPPED</strong> for everyone. Continuous background crawling is completely halted to save server bandwidth and CPU instance hours. The system will <strong className="text-white">ONLY fetch results when a user actively performs a search</strong>.
+                                </>
+                            )}
+                        </p>
+                        {bgCheckMeta && (
+                            <div className="text-[11px] text-slate-400 flex items-center gap-3 pt-1">
+                                <span>Cadence: every {bgCheckMeta.interval_minutes || 60}m</span>
+                                <span>•</span>
+                                <span>Updated by: {bgCheckMeta.updated_by || 'system'}</span>
+                                {bgCheckMeta.updated_at && (
+                                    <>
+                                        <span>•</span>
+                                        <span>Last changed: {new Date(bgCheckMeta.updated_at).toLocaleString()}</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-shrink-0">
+                        <button
+                            type="button"
+                            onClick={handleToggleBgCheck}
+                            disabled={bgCheckLoading}
+                            className={`w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg ${
+                                bgCheckEnabled
+                                    ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/50 hover:shadow-rose-900/50"
+                                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50 hover:shadow-emerald-900/50"
+                            } disabled:opacity-50`}
+                        >
+                            <span>{bgCheckLoading ? "Updating..." : (bgCheckEnabled ? "⏹️ Stop Background Check" : "▶️ Start Background Check")}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div className="minimal-card rounded-xl p-5 border border-white/[0.08]">
                 <h2 className="text-base font-bold text-white mb-3">🛡️ Admin User Control</h2>
                 <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-4 gap-3">

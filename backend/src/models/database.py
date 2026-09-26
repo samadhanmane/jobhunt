@@ -131,6 +131,9 @@ def init_and_migrate_db():
             "CREATE INDEX IF NOT EXISTS idx_jobs_posted_date ON jobs(posted_date)",
             "CREATE INDEX IF NOT EXISTS idx_jobs_search_score ON jobs(search_id, match_score DESC)",
             "CREATE INDEX IF NOT EXISTS idx_jobs_created_score ON jobs(created_at DESC, match_score DESC)",
+
+            # Global Platform System Settings
+            "CREATE TABLE IF NOT EXISTS system_settings (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL, description TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_by VARCHAR(100))",
         ]
 
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:

@@ -6724,6 +6724,20 @@ function AdminPortal(_ref41) {
     _useState246 = _slicedToArray(_useState245, 2),
     creating = _useState246[0],
     setCreating = _useState246[1];
+
+  // Global Platform Background Check / Crawler State
+  var _useState247 = useState(true),
+    _useState248 = _slicedToArray(_useState247, 2),
+    bgCheckEnabled = _useState248[0],
+    setBgCheckEnabled = _useState248[1];
+  var _useState249 = useState(false),
+    _useState250 = _slicedToArray(_useState249, 2),
+    bgCheckLoading = _useState250[0],
+    setBgCheckLoading = _useState250[1];
+  var _useState251 = useState(null),
+    _useState252 = _slicedToArray(_useState251, 2),
+    bgCheckMeta = _useState252[0],
+    setBgCheckMeta = _useState252[1];
   var fetchUsers = /*#__PURE__*/function () {
     var _ref42 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee30() {
       var res, data;
@@ -6769,19 +6783,119 @@ function AdminPortal(_ref41) {
       return _ref42.apply(this, arguments);
     };
   }();
-  useEffect(function () {
-    fetchUsers();
-  }, []);
-  var handleCreateUser = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee31(e) {
+  var fetchBgCheckStatus = /*#__PURE__*/function () {
+    var _ref43 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee31() {
       var res, data;
       return _regeneratorRuntime().wrap(function _callee31$(_context31) {
         while (1) switch (_context31.prev = _context31.next) {
           case 0:
+            _context31.prev = 0;
+            _context31.next = 3;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check"), {
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 3:
+            res = _context31.sent;
+            _context31.next = 6;
+            return res.json();
+          case 6:
+            data = _context31.sent;
+            if (res.ok) {
+              setBgCheckEnabled(Boolean(data.enabled));
+              setBgCheckMeta(data);
+            }
+            _context31.next = 13;
+            break;
+          case 10:
+            _context31.prev = 10;
+            _context31.t0 = _context31["catch"](0);
+            console.warn("Could not fetch background check status:", _context31.t0);
+          case 13:
+          case "end":
+            return _context31.stop();
+        }
+      }, _callee31, null, [[0, 10]]);
+    }));
+    return function fetchBgCheckStatus() {
+      return _ref43.apply(this, arguments);
+    };
+  }();
+  useEffect(function () {
+    fetchUsers();
+    fetchBgCheckStatus();
+  }, []);
+  var handleToggleBgCheck = /*#__PURE__*/function () {
+    var _ref44 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee32() {
+      var willDisable, confirmMsg, res, data;
+      return _regeneratorRuntime().wrap(function _callee32$(_context32) {
+        while (1) switch (_context32.prev = _context32.next) {
+          case 0:
+            willDisable = bgCheckEnabled;
+            confirmMsg = willDisable ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website." : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
+            if (confirm(confirmMsg)) {
+              _context32.next = 4;
+              break;
+            }
+            return _context32.abrupt("return");
+          case 4:
+            _context32.prev = 4;
+            setBgCheckLoading(true);
+            _context32.next = 8;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check/toggle"), {
+              method: "POST",
+              headers: {
+                'Authorization': "Bearer ".concat(token),
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                enabled: !bgCheckEnabled
+              })
+            });
+          case 8:
+            res = _context32.sent;
+            _context32.next = 11;
+            return res.json();
+          case 11:
+            data = _context32.sent;
+            if (res.ok) {
+              setBgCheckEnabled(Boolean(data.enabled));
+              showToast(data.message, data.enabled ? "success" : "info");
+              fetchBgCheckStatus();
+            } else {
+              showToast(data.detail || "Failed to update background check status", "error");
+            }
+            _context32.next = 18;
+            break;
+          case 15:
+            _context32.prev = 15;
+            _context32.t0 = _context32["catch"](4);
+            showToast(_context32.t0.message, "error");
+          case 18:
+            _context32.prev = 18;
+            setBgCheckLoading(false);
+            return _context32.finish(18);
+          case 21:
+          case "end":
+            return _context32.stop();
+        }
+      }, _callee32, null, [[4, 15, 18, 21]]);
+    }));
+    return function handleToggleBgCheck() {
+      return _ref44.apply(this, arguments);
+    };
+  }();
+  var handleCreateUser = /*#__PURE__*/function () {
+    var _ref45 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee33(e) {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee33$(_context33) {
+        while (1) switch (_context33.prev = _context33.next) {
+          case 0:
             e.preventDefault();
             setCreating(true);
-            _context31.prev = 2;
-            _context31.next = 5;
+            _context33.prev = 2;
+            _context33.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/users"), {
               method: "POST",
               headers: {
@@ -6795,11 +6909,11 @@ function AdminPortal(_ref41) {
               })
             });
           case 5:
-            res = _context31.sent;
-            _context31.next = 8;
+            res = _context33.sent;
+            _context33.next = 8;
             return res.json();
           case 8:
-            data = _context31.sent;
+            data = _context33.sent;
             if (res.ok) {
               showToast("User '".concat(newEmail, "' created!"));
               setNewEmail("");
@@ -6809,100 +6923,6 @@ function AdminPortal(_ref41) {
             } else {
               showToast(data.detail || "Failed to create user", "error");
             }
-            _context31.next = 15;
-            break;
-          case 12:
-            _context31.prev = 12;
-            _context31.t0 = _context31["catch"](2);
-            showToast(_context31.t0.message, "error");
-          case 15:
-            _context31.prev = 15;
-            setCreating(false);
-            return _context31.finish(15);
-          case 18:
-          case "end":
-            return _context31.stop();
-        }
-      }, _callee31, null, [[2, 12, 15, 18]]);
-    }));
-    return function handleCreateUser(_x14) {
-      return _ref43.apply(this, arguments);
-    };
-  }();
-  var handleToggleStatus = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee32(userId) {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee32$(_context32) {
-        while (1) switch (_context32.prev = _context32.next) {
-          case 0:
-            _context32.prev = 0;
-            _context32.next = 3;
-            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId, "/status"), {
-              method: "PATCH",
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 3:
-            res = _context32.sent;
-            _context32.next = 6;
-            return res.json();
-          case 6:
-            data = _context32.sent;
-            if (res.ok) {
-              showToast(data.message);
-              fetchUsers();
-            } else {
-              showToast(data.detail || "Status toggle failed", "error");
-            }
-            _context32.next = 13;
-            break;
-          case 10:
-            _context32.prev = 10;
-            _context32.t0 = _context32["catch"](0);
-            showToast(_context32.t0.message, "error");
-          case 13:
-          case "end":
-            return _context32.stop();
-        }
-      }, _callee32, null, [[0, 10]]);
-    }));
-    return function handleToggleStatus(_x15) {
-      return _ref44.apply(this, arguments);
-    };
-  }();
-  var handleDeleteUser = /*#__PURE__*/function () {
-    var _ref45 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee33(userId) {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee33$(_context33) {
-        while (1) switch (_context33.prev = _context33.next) {
-          case 0:
-            if (confirm("Are you sure you want to delete this user?")) {
-              _context33.next = 2;
-              break;
-            }
-            return _context33.abrupt("return");
-          case 2:
-            _context33.prev = 2;
-            _context33.next = 5;
-            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId), {
-              method: "DELETE",
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 5:
-            res = _context33.sent;
-            _context33.next = 8;
-            return res.json();
-          case 8:
-            data = _context33.sent;
-            if (res.ok) {
-              showToast(data.message);
-              fetchUsers();
-            } else {
-              showToast(data.detail || "Delete user failed", "error");
-            }
             _context33.next = 15;
             break;
           case 12:
@@ -6910,18 +6930,145 @@ function AdminPortal(_ref41) {
             _context33.t0 = _context33["catch"](2);
             showToast(_context33.t0.message, "error");
           case 15:
+            _context33.prev = 15;
+            setCreating(false);
+            return _context33.finish(15);
+          case 18:
           case "end":
             return _context33.stop();
         }
-      }, _callee33, null, [[2, 12]]);
+      }, _callee33, null, [[2, 12, 15, 18]]);
+    }));
+    return function handleCreateUser(_x14) {
+      return _ref45.apply(this, arguments);
+    };
+  }();
+  var handleToggleStatus = /*#__PURE__*/function () {
+    var _ref46 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee34(userId) {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee34$(_context34) {
+        while (1) switch (_context34.prev = _context34.next) {
+          case 0:
+            _context34.prev = 0;
+            _context34.next = 3;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId, "/status"), {
+              method: "PATCH",
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 3:
+            res = _context34.sent;
+            _context34.next = 6;
+            return res.json();
+          case 6:
+            data = _context34.sent;
+            if (res.ok) {
+              showToast(data.message);
+              fetchUsers();
+            } else {
+              showToast(data.detail || "Status toggle failed", "error");
+            }
+            _context34.next = 13;
+            break;
+          case 10:
+            _context34.prev = 10;
+            _context34.t0 = _context34["catch"](0);
+            showToast(_context34.t0.message, "error");
+          case 13:
+          case "end":
+            return _context34.stop();
+        }
+      }, _callee34, null, [[0, 10]]);
+    }));
+    return function handleToggleStatus(_x15) {
+      return _ref46.apply(this, arguments);
+    };
+  }();
+  var handleDeleteUser = /*#__PURE__*/function () {
+    var _ref47 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee35(userId) {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee35$(_context35) {
+        while (1) switch (_context35.prev = _context35.next) {
+          case 0:
+            if (confirm("Are you sure you want to delete this user?")) {
+              _context35.next = 2;
+              break;
+            }
+            return _context35.abrupt("return");
+          case 2:
+            _context35.prev = 2;
+            _context35.next = 5;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId), {
+              method: "DELETE",
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 5:
+            res = _context35.sent;
+            _context35.next = 8;
+            return res.json();
+          case 8:
+            data = _context35.sent;
+            if (res.ok) {
+              showToast(data.message);
+              fetchUsers();
+            } else {
+              showToast(data.detail || "Delete user failed", "error");
+            }
+            _context35.next = 15;
+            break;
+          case 12:
+            _context35.prev = 12;
+            _context35.t0 = _context35["catch"](2);
+            showToast(_context35.t0.message, "error");
+          case 15:
+          case "end":
+            return _context35.stop();
+        }
+      }, _callee35, null, [[2, 12]]);
     }));
     return function handleDeleteUser(_x16) {
-      return _ref45.apply(this, arguments);
+      return _ref47.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "minimal-card rounded-2xl p-6 border transition-all shadow-xl ".concat(bgCheckEnabled ? "border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 via-slate-900 to-slate-950" : "border-rose-500/30 bg-gradient-to-br from-rose-950/20 via-slate-900 to-slate-950")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col md:flex-row md:items-center justify-between gap-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3 flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl"
+  }, "\u2699\uFE0F"), /*#__PURE__*/React.createElement("h2", {
+    className: "text-base sm:text-lg font-extrabold text-white tracking-tight"
+  }, "Global Platform Background Check & Crawler Control"), /*#__PURE__*/React.createElement("span", {
+    className: "px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border shadow-sm ".concat(bgCheckEnabled ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-rose-500/20 text-rose-300 border-rose-500/40")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-2 h-2 rounded-full ".concat(bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400")
+  }), bgCheckEnabled ? "ACTIVE (Crawling Every 1 Hr)" : "STOPPED (On-Demand Searches Only)")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-300 max-w-3xl leading-relaxed"
+  }, bgCheckEnabled ? /*#__PURE__*/React.createElement(React.Fragment, null, "Continuous background job discovery is currently ", /*#__PURE__*/React.createElement("strong", {
+    className: "text-emerald-400"
+  }, "ENABLED"), ". The background worker crawls platforms every 1 hour across recent search roles and saves new postings to the database.") : /*#__PURE__*/React.createElement(React.Fragment, null, "Background job check is currently ", /*#__PURE__*/React.createElement("strong", {
+    className: "text-rose-400"
+  }, "STOPPED"), " for everyone. Continuous background crawling is completely halted to save server bandwidth and CPU instance hours. The system will ", /*#__PURE__*/React.createElement("strong", {
+    className: "text-white"
+  }, "ONLY fetch results when a user actively performs a search"), ".")), bgCheckMeta && /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] text-slate-400 flex items-center gap-3 pt-1"
+  }, /*#__PURE__*/React.createElement("span", null, "Cadence: every ", bgCheckMeta.interval_minutes || 60, "m"), /*#__PURE__*/React.createElement("span", null, "\u2022"), /*#__PURE__*/React.createElement("span", null, "Updated by: ", bgCheckMeta.updated_by || 'system'), bgCheckMeta.updated_at && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, "\u2022"), /*#__PURE__*/React.createElement("span", null, "Last changed: ", new Date(bgCheckMeta.updated_at).toLocaleString())))), /*#__PURE__*/React.createElement("div", {
+    className: "flex-shrink-0"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: handleToggleBgCheck,
+    disabled: bgCheckLoading,
+    className: "w-full sm:w-auto px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg ".concat(bgCheckEnabled ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/50 hover:shadow-rose-900/50" : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50 hover:shadow-emerald-900/50", " disabled:opacity-50")
+  }, /*#__PURE__*/React.createElement("span", null, bgCheckLoading ? "Updating..." : bgCheckEnabled ? "⏹️ Stop Background Check" : "▶️ Start Background Check"))))), /*#__PURE__*/React.createElement("div", {
     className: "minimal-card rounded-xl p-5 border border-white/[0.08]"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "text-base font-bold text-white mb-3"

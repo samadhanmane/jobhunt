@@ -4,5 +4,7 @@ from src.models.search_history import SearchHistory
 from src.models.user import UserProfile
 from src.models.email_alert import EmailAlert
 from src.models.automation_history import AutomationHistory
+from src.models.system_setting import SystemSetting
 
-__all__ = ["Base", "get_db", "Job", "SearchHistory", "UserProfile", "EmailAlert", "AutomationHistory"]
+__all__ = ["Base", "get_db", "Job", "SearchHistory", "UserProfile", "EmailAlert", "AutomationHistory", "SystemSetting"]
+
