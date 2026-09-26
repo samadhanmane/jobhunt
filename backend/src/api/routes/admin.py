@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from src.models.database import get_db
 from src.models.user_account import UserAccount
-from src.services.auth_service import require_admin, hash_password
+from src.services.auth_service import require_admin, get_current_user, hash_password
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin User Management"])
 
@@ -152,7 +152,7 @@ class ToggleBackgroundCheckRequest(BaseModel):
 
 @router.get("/settings/background-check")
 def get_background_check_status(
-    admin: UserAccount = Depends(require_admin),
+    user: UserAccount = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """

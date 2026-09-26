@@ -760,6 +760,71 @@ function App() {
         setTimeout(refreshCookieStatus, 500);
     };
 
+    // Global Platform Background Check / Crawler State
+    const [bgCheckEnabled, setBgCheckEnabled] = useState(true);
+    const [bgCheckLoading, setBgCheckLoading] = useState(false);
+    const [bgCheckMeta, setBgCheckMeta] = useState(null);
+
+    const fetchBgCheckStatus = async () => {
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setBgCheckEnabled(Boolean(data.enabled));
+                setBgCheckMeta(data);
+            }
+        } catch (err) {
+            console.warn("Could not fetch background check status:", err);
+        }
+    };
+
+    const handleToggleBgCheck = async () => {
+        if (!token) return;
+        if (currentUser?.role !== 'admin') {
+            showToast("Admin privileges required to stop or start background checking.", "error");
+            return;
+        }
+        const willDisable = bgCheckEnabled;
+        const confirmMsg = willDisable
+            ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website."
+            : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            setBgCheckLoading(true);
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check/toggle`, {
+                method: "POST",
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled: !bgCheckEnabled })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setBgCheckEnabled(Boolean(data.enabled));
+                showToast(data.message, data.enabled ? "success" : "info");
+                fetchBgCheckStatus();
+            } else {
+                showToast(data.detail || "Failed to update background check status", "error");
+            }
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            setBgCheckLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (token) {
+            fetchBgCheckStatus();
+        }
+    }, [token, currentUser]);
+
     const handleLogout = () => {
         setToken("");
         setCurrentUser(null);
@@ -786,6 +851,9 @@ function App() {
                 setActiveTab={setActiveTab}
                 cookieStatusInfo={cookieStatusInfo}
                 appliedJobsCount={appliedJobs.length}
+                bgCheckEnabled={bgCheckEnabled}
+                bgCheckLoading={bgCheckLoading}
+                onToggleBgCheck={handleToggleBgCheck}
                 onOpenAppliedModal={() => setAppliedTrackerOpen(true)}
                 onOpenCookieModal={() => setCookieModalOpen(true)}
                 onLogout={handleLogout}
@@ -826,6 +894,10 @@ function App() {
                         user={currentUser}
                         cookieStatusInfo={cookieStatusInfo}
                         appliedJobs={appliedJobs}
+                        bgCheckEnabled={bgCheckEnabled}
+                        bgCheckLoading={bgCheckLoading}
+                        onToggleBgCheck={handleToggleBgCheck}
+                        onOpenAdmin={() => setActiveTab('admin')}
                         onToggleApplied={toggleJobApplied}
                         onOpenAppliedModal={() => setAppliedTrackerOpen(true)}
                         onOpenCookieModal={() => setCookieModalOpen(true)}
@@ -861,7 +933,15 @@ function App() {
                     />
                 )}
                 {activeTab === 'admin' && currentUser.role === 'admin' && (
-                    <AdminPortal token={token} user={currentUser} showToast={showToast} />
+                    <AdminPortal
+                        token={token}
+                        user={currentUser}
+                        showToast={showToast}
+                        bgCheckEnabled={bgCheckEnabled}
+                        bgCheckLoading={bgCheckLoading}
+                        bgCheckMeta={bgCheckMeta}
+                        onToggleBgCheck={handleToggleBgCheck}
+                    />
                 )}
             </main>
 
@@ -911,7 +991,19 @@ function App() {
 // ==========================================
 // Component: Minimal Navigation Bar
 // ==========================================
-function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, appliedJobsCount = 0, onOpenAppliedModal, onOpenCookieModal, onLogout }) {
+function Navbar({
+    user,
+    activeTab,
+    setActiveTab,
+    cookieStatusInfo,
+    appliedJobsCount = 0,
+    bgCheckEnabled = true,
+    bgCheckLoading = false,
+    onToggleBgCheck,
+    onOpenAppliedModal,
+    onOpenCookieModal,
+    onLogout
+}) {
     let cookieBadge = {
         label: "Add LinkedIn Cookie",
         color: "bg-slate-800 text-slate-400 border-white/10 hover:border-slate-500",
@@ -975,19 +1067,46 @@ function Navbar({ user, activeTab, setActiveTab, cookieStatusInfo, appliedJobsCo
                     {user.role === 'admin' && (
                         <button
                             onClick={() => setActiveTab('admin')}
-                            className={`px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${activeTab === 'admin'
-                                    ? 'bg-slate-700 text-white shadow-sm'
-                                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                            className={`px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'admin'
+                                    ? 'bg-purple-900/90 text-purple-200 border border-purple-500/50 shadow-sm'
+                                    : 'text-purple-300 hover:text-purple-100 hover:bg-purple-950/40 border border-purple-500/20'
                                 }`}
                         >
                             <span>🛡️</span>
-                            <span className="hidden sm:inline">Admin</span>
+                            <span className="font-bold">Admin Panel</span>
                         </button>
                     )}
                 </nav>
 
                 {/* User Menu, Applied Corner Button, LinkedIn Cookie & Logout */}
                 <div className="flex items-center gap-1.5 sm:gap-2.5">
+                    {/* Global Background Crawler Status / Quick Toggle Pill */}
+                    <button
+                        onClick={user.role === 'admin' ? onToggleBgCheck : undefined}
+                        disabled={user.role === 'admin' ? bgCheckLoading : true}
+                        title={
+                            user.role === 'admin'
+                                ? (bgCheckEnabled ? "Click to STOP 24/7 background job search crawler for everyone" : "Click to START 24/7 background job search crawler for everyone")
+                                : (bgCheckEnabled ? "Background job crawler is running every 1 hr" : "Background job crawler is STOPPED (searches on-demand only)")
+                        }
+                        className={`px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                            bgCheckEnabled
+                                ? (user.role === 'admin'
+                                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-rose-950/80 hover:border-rose-500/50 hover:text-rose-200 cursor-pointer"
+                                    : "bg-emerald-950/60 text-emerald-300 border-emerald-500/30 cursor-default")
+                                : (user.role === 'admin'
+                                    ? "bg-rose-950/80 text-rose-300 border-rose-500/40 hover:bg-emerald-950/80 hover:border-emerald-500/50 hover:text-emerald-200 cursor-pointer"
+                                    : "bg-rose-950/60 text-rose-300 border-rose-500/30 cursor-default")
+                        } ${bgCheckLoading ? "opacity-50" : ""}`}
+                    >
+                        <span className={`w-2 h-2 rounded-full ${bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`}></span>
+                        <span className="hidden sm:inline font-bold">
+                            {bgCheckLoading ? "Updating..." : (bgCheckEnabled ? "Crawler: ON" : "Crawler: OFF")}
+                        </span>
+                        <span className="sm:hidden font-bold">
+                            {bgCheckEnabled ? "ON" : "OFF"}
+                        </span>
+                    </button>
                     {/* Applied Jobs Corner Pill */}
                     <button
                         onClick={onOpenAppliedModal}
@@ -1629,6 +1748,10 @@ function JobSearchDashboard({
     user,
     cookieStatusInfo,
     appliedJobs = [],
+    bgCheckEnabled = true,
+    bgCheckLoading = false,
+    onToggleBgCheck,
+    onOpenAdmin,
     onToggleApplied,
     onOpenAppliedModal,
     onOpenCookieModal,
@@ -2534,6 +2657,72 @@ function JobSearchDashboard({
                     </button>
                 </div>
             )}
+
+            {/* Global Background Job Search & Crawler Control Banner */}
+            <div className={`rounded-xl p-3.5 sm:p-4 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md mb-2 ${
+                bgCheckEnabled
+                    ? "bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30"
+                    : "bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border-rose-500/30"
+            }`}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-base border shrink-0 ${
+                        bgCheckEnabled
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                    }`}>
+                        {bgCheckEnabled ? "⚙️" : "🛑"}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-white">24/7 Platform Background Job Search:</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 border ${
+                                bgCheckEnabled
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                    : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`}></span>
+                                {bgCheckEnabled ? "ACTIVE (Crawling Every 1 Hr)" : "STOPPED (On-Demand Searches Only)"}
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                            {bgCheckEnabled
+                                ? "Continuous background crawler crawls platforms every 1 hour across recent roles and saves fresh jobs to the pool for all users."
+                                : "Background check is STOPPED for everyone. Results will only be fetched when a user actively clicks search on-demand."}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                    {user?.role === 'admin' ? (
+                        <button
+                            type="button"
+                            onClick={onToggleBgCheck}
+                            disabled={bgCheckLoading}
+                            className={`w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow ${
+                                bgCheckEnabled
+                                    ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/50"
+                                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50"
+                            } disabled:opacity-50`}
+                        >
+                            <span>{bgCheckLoading ? "Updating..." : (bgCheckEnabled ? "⏹️ Stop Background Check" : "▶️ Start Background Check")}</span>
+                        </button>
+                    ) : (
+                        <span className="text-[11px] text-slate-400 italic">
+                            (Admin control required to toggle)
+                        </span>
+                    )}
+                    {user?.role === 'admin' && onOpenAdmin && (
+                        <button
+                            type="button"
+                            onClick={onOpenAdmin}
+                            className="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 text-xs font-semibold transition-all hidden md:flex items-center gap-1"
+                        >
+                            <span>🛡️ Admin Panel</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+
             {/* Search Input & Resume Header */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Pre-Harvest Search & Discovery Form */}
@@ -5822,7 +6011,15 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
 // ==========================================
 // Component: Admin User Management Portal
 // ==========================================
-function AdminPortal({ token, user, showToast }) {
+function AdminPortal({
+    token,
+    user,
+    showToast,
+    bgCheckEnabled: parentBgEnabled,
+    bgCheckLoading: parentBgLoading,
+    bgCheckMeta: parentBgMeta,
+    onToggleBgCheck: parentOnToggle
+}) {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -5832,9 +6029,13 @@ function AdminPortal({ token, user, showToast }) {
     const [creating, setCreating] = useState(false);
 
     // Global Platform Background Check / Crawler State
-    const [bgCheckEnabled, setBgCheckEnabled] = useState(true);
-    const [bgCheckLoading, setBgCheckLoading] = useState(false);
-    const [bgCheckMeta, setBgCheckMeta] = useState(null);
+    const [internalBgEnabled, setInternalBgEnabled] = useState(true);
+    const [internalBgLoading, setInternalBgLoading] = useState(false);
+    const [internalBgMeta, setInternalBgMeta] = useState(null);
+
+    const bgCheckEnabled = parentBgEnabled !== undefined ? parentBgEnabled : internalBgEnabled;
+    const bgCheckLoading = parentBgLoading !== undefined ? parentBgLoading : internalBgLoading;
+    const bgCheckMeta = parentBgMeta !== undefined ? parentBgMeta : internalBgMeta;
 
     const fetchUsers = async () => {
         try {
@@ -5862,8 +6063,8 @@ function AdminPortal({ token, user, showToast }) {
             });
             const data = await res.json();
             if (res.ok) {
-                setBgCheckEnabled(Boolean(data.enabled));
-                setBgCheckMeta(data);
+                setInternalBgEnabled(Boolean(data.enabled));
+                setInternalBgMeta(data);
             }
         } catch (err) {
             console.warn("Could not fetch background check status:", err);
@@ -5872,10 +6073,16 @@ function AdminPortal({ token, user, showToast }) {
 
     useEffect(() => {
         fetchUsers();
-        fetchBgCheckStatus();
-    }, []);
+        if (parentBgEnabled === undefined) {
+            fetchBgCheckStatus();
+        }
+    }, [parentBgEnabled]);
 
     const handleToggleBgCheck = async () => {
+        if (parentOnToggle) {
+            parentOnToggle();
+            return;
+        }
         const willDisable = bgCheckEnabled;
         const confirmMsg = willDisable
             ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website."

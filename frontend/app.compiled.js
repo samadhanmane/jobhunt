@@ -729,6 +729,143 @@ function App() {
     showToast("Welcome back, ".concat(user.email, "!"));
     setTimeout(refreshCookieStatus, 500);
   };
+
+  // Global Platform Background Check / Crawler State
+  var _useState21 = useState(true),
+    _useState22 = _slicedToArray(_useState21, 2),
+    bgCheckEnabled = _useState22[0],
+    setBgCheckEnabled = _useState22[1];
+  var _useState23 = useState(false),
+    _useState24 = _slicedToArray(_useState23, 2),
+    bgCheckLoading = _useState24[0],
+    setBgCheckLoading = _useState24[1];
+  var _useState25 = useState(null),
+    _useState26 = _slicedToArray(_useState25, 2),
+    bgCheckMeta = _useState26[0],
+    setBgCheckMeta = _useState26[1];
+  var fetchBgCheckStatus = /*#__PURE__*/function () {
+    var _ref2 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee$(_context) {
+        while (1) switch (_context.prev = _context.next) {
+          case 0:
+            if (token) {
+              _context.next = 2;
+              break;
+            }
+            return _context.abrupt("return");
+          case 2:
+            _context.prev = 2;
+            _context.next = 5;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check"), {
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 5:
+            res = _context.sent;
+            _context.next = 8;
+            return res.json();
+          case 8:
+            data = _context.sent;
+            if (res.ok) {
+              setBgCheckEnabled(Boolean(data.enabled));
+              setBgCheckMeta(data);
+            }
+            _context.next = 15;
+            break;
+          case 12:
+            _context.prev = 12;
+            _context.t0 = _context["catch"](2);
+            console.warn("Could not fetch background check status:", _context.t0);
+          case 15:
+          case "end":
+            return _context.stop();
+        }
+      }, _callee, null, [[2, 12]]);
+    }));
+    return function fetchBgCheckStatus() {
+      return _ref2.apply(this, arguments);
+    };
+  }();
+  var handleToggleBgCheck = /*#__PURE__*/function () {
+    var _ref3 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
+      var willDisable, confirmMsg, res, data;
+      return _regeneratorRuntime().wrap(function _callee2$(_context2) {
+        while (1) switch (_context2.prev = _context2.next) {
+          case 0:
+            if (token) {
+              _context2.next = 2;
+              break;
+            }
+            return _context2.abrupt("return");
+          case 2:
+            if (!((currentUser === null || currentUser === void 0 ? void 0 : currentUser.role) !== 'admin')) {
+              _context2.next = 5;
+              break;
+            }
+            showToast("Admin privileges required to stop or start background checking.", "error");
+            return _context2.abrupt("return");
+          case 5:
+            willDisable = bgCheckEnabled;
+            confirmMsg = willDisable ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website." : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
+            if (confirm(confirmMsg)) {
+              _context2.next = 9;
+              break;
+            }
+            return _context2.abrupt("return");
+          case 9:
+            _context2.prev = 9;
+            setBgCheckLoading(true);
+            _context2.next = 13;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check/toggle"), {
+              method: "POST",
+              headers: {
+                'Authorization': "Bearer ".concat(token),
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                enabled: !bgCheckEnabled
+              })
+            });
+          case 13:
+            res = _context2.sent;
+            _context2.next = 16;
+            return res.json();
+          case 16:
+            data = _context2.sent;
+            if (res.ok) {
+              setBgCheckEnabled(Boolean(data.enabled));
+              showToast(data.message, data.enabled ? "success" : "info");
+              fetchBgCheckStatus();
+            } else {
+              showToast(data.detail || "Failed to update background check status", "error");
+            }
+            _context2.next = 23;
+            break;
+          case 20:
+            _context2.prev = 20;
+            _context2.t0 = _context2["catch"](9);
+            showToast(_context2.t0.message, "error");
+          case 23:
+            _context2.prev = 23;
+            setBgCheckLoading(false);
+            return _context2.finish(23);
+          case 26:
+          case "end":
+            return _context2.stop();
+        }
+      }, _callee2, null, [[9, 20, 23, 26]]);
+    }));
+    return function handleToggleBgCheck() {
+      return _ref3.apply(this, arguments);
+    };
+  }();
+  useEffect(function () {
+    if (token) {
+      fetchBgCheckStatus();
+    }
+  }, [token, currentUser]);
   var handleLogout = function handleLogout() {
     setToken("");
     setCurrentUser(null);
@@ -753,6 +890,9 @@ function App() {
     setActiveTab: setActiveTab,
     cookieStatusInfo: cookieStatusInfo,
     appliedJobsCount: appliedJobs.length,
+    bgCheckEnabled: bgCheckEnabled,
+    bgCheckLoading: bgCheckLoading,
+    onToggleBgCheck: handleToggleBgCheck,
     onOpenAppliedModal: function onOpenAppliedModal() {
       return setAppliedTrackerOpen(true);
     },
@@ -778,6 +918,12 @@ function App() {
     user: currentUser,
     cookieStatusInfo: cookieStatusInfo,
     appliedJobs: appliedJobs,
+    bgCheckEnabled: bgCheckEnabled,
+    bgCheckLoading: bgCheckLoading,
+    onToggleBgCheck: handleToggleBgCheck,
+    onOpenAdmin: function onOpenAdmin() {
+      return setActiveTab('admin');
+    },
     onToggleApplied: toggleJobApplied,
     onOpenAppliedModal: function onOpenAppliedModal() {
       return setAppliedTrackerOpen(true);
@@ -810,7 +956,11 @@ function App() {
   }), activeTab === 'admin' && currentUser.role === 'admin' && /*#__PURE__*/React.createElement(AdminPortal, {
     token: token,
     user: currentUser,
-    showToast: showToast
+    showToast: showToast,
+    bgCheckEnabled: bgCheckEnabled,
+    bgCheckLoading: bgCheckLoading,
+    bgCheckMeta: bgCheckMeta,
+    onToggleBgCheck: handleToggleBgCheck
   })), appliedTrackerOpen && /*#__PURE__*/React.createElement(AppliedJobsTrackerModal, {
     appliedJobs: appliedJobs,
     onToggleApplied: toggleJobApplied,
@@ -850,16 +1000,21 @@ function App() {
 // ==========================================
 // Component: Minimal Navigation Bar
 // ==========================================
-function Navbar(_ref2) {
-  var user = _ref2.user,
-    activeTab = _ref2.activeTab,
-    setActiveTab = _ref2.setActiveTab,
-    cookieStatusInfo = _ref2.cookieStatusInfo,
-    _ref2$appliedJobsCoun = _ref2.appliedJobsCount,
-    appliedJobsCount = _ref2$appliedJobsCoun === void 0 ? 0 : _ref2$appliedJobsCoun,
-    onOpenAppliedModal = _ref2.onOpenAppliedModal,
-    onOpenCookieModal = _ref2.onOpenCookieModal,
-    onLogout = _ref2.onLogout;
+function Navbar(_ref4) {
+  var user = _ref4.user,
+    activeTab = _ref4.activeTab,
+    setActiveTab = _ref4.setActiveTab,
+    cookieStatusInfo = _ref4.cookieStatusInfo,
+    _ref4$appliedJobsCoun = _ref4.appliedJobsCount,
+    appliedJobsCount = _ref4$appliedJobsCoun === void 0 ? 0 : _ref4$appliedJobsCoun,
+    _ref4$bgCheckEnabled = _ref4.bgCheckEnabled,
+    bgCheckEnabled = _ref4$bgCheckEnabled === void 0 ? true : _ref4$bgCheckEnabled,
+    _ref4$bgCheckLoading = _ref4.bgCheckLoading,
+    bgCheckLoading = _ref4$bgCheckLoading === void 0 ? false : _ref4$bgCheckLoading,
+    onToggleBgCheck = _ref4.onToggleBgCheck,
+    onOpenAppliedModal = _ref4.onOpenAppliedModal,
+    onOpenCookieModal = _ref4.onOpenCookieModal,
+    onLogout = _ref4.onLogout;
   var cookieBadge = {
     label: "Add LinkedIn Cookie",
     color: "bg-slate-800 text-slate-400 border-white/10 hover:border-slate-500",
@@ -915,12 +1070,23 @@ function Navbar(_ref2) {
     onClick: function onClick() {
       return setActiveTab('admin');
     },
-    className: "px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ".concat(activeTab === 'admin' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]')
+    className: "px-2.5 sm:px-3.5 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ".concat(activeTab === 'admin' ? 'bg-purple-900/90 text-purple-200 border border-purple-500/50 shadow-sm' : 'text-purple-300 hover:text-purple-100 hover:bg-purple-950/40 border border-purple-500/20')
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("span", {
-    className: "hidden sm:inline"
-  }, "Admin"))), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold"
+  }, "Admin Panel"))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 sm:gap-2.5"
   }, /*#__PURE__*/React.createElement("button", {
+    onClick: user.role === 'admin' ? onToggleBgCheck : undefined,
+    disabled: user.role === 'admin' ? bgCheckLoading : true,
+    title: user.role === 'admin' ? bgCheckEnabled ? "Click to STOP 24/7 background job search crawler for everyone" : "Click to START 24/7 background job search crawler for everyone" : bgCheckEnabled ? "Background job crawler is running every 1 hr" : "Background job crawler is STOPPED (searches on-demand only)",
+    className: "px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ".concat(bgCheckEnabled ? user.role === 'admin' ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-rose-950/80 hover:border-rose-500/50 hover:text-rose-200 cursor-pointer" : "bg-emerald-950/60 text-emerald-300 border-emerald-500/30 cursor-default" : user.role === 'admin' ? "bg-rose-950/80 text-rose-300 border-rose-500/40 hover:bg-emerald-950/80 hover:border-emerald-500/50 hover:text-emerald-200 cursor-pointer" : "bg-rose-950/60 text-rose-300 border-rose-500/30 cursor-default", " ").concat(bgCheckLoading ? "opacity-50" : "")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-2 h-2 rounded-full ".concat(bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400")
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "hidden sm:inline font-bold"
+  }, bgCheckLoading ? "Updating..." : bgCheckEnabled ? "Crawler: ON" : "Crawler: OFF"), /*#__PURE__*/React.createElement("span", {
+    className: "sm:hidden font-bold"
+  }, bgCheckEnabled ? "ON" : "OFF")), /*#__PURE__*/React.createElement("button", {
     onClick: onOpenAppliedModal,
     title: "Open your tracked Applied Jobs",
     className: "px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 bg-emerald-950/80 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900 hover:border-emerald-500 shadow-sm"
@@ -956,49 +1122,49 @@ function Navbar(_ref2) {
 // ==========================================
 // Component: LinkedIn Cookie Modal
 // ==========================================
-function LinkedInCookieModal(_ref3) {
-  var token = _ref3.token,
-    cookieStatusInfo = _ref3.cookieStatusInfo,
-    onClose = _ref3.onClose,
-    onStatusUpdated = _ref3.onStatusUpdated,
-    showToast = _ref3.showToast;
-  var _useState21 = useState(""),
-    _useState22 = _slicedToArray(_useState21, 2),
-    cookieInput = _useState22[0],
-    setCookieInput = _useState22[1];
-  var _useState23 = useState(false),
-    _useState24 = _slicedToArray(_useState23, 2),
-    saving = _useState24[0],
-    setSaving = _useState24[1];
-  var _useState25 = useState(false),
-    _useState26 = _slicedToArray(_useState25, 2),
-    testing = _useState26[0],
-    setTesting = _useState26[1];
-  var _useState27 = useState((cookieStatusInfo === null || cookieStatusInfo === void 0 ? void 0 : cookieStatusInfo.message) || ""),
+function LinkedInCookieModal(_ref5) {
+  var token = _ref5.token,
+    cookieStatusInfo = _ref5.cookieStatusInfo,
+    onClose = _ref5.onClose,
+    onStatusUpdated = _ref5.onStatusUpdated,
+    showToast = _ref5.showToast;
+  var _useState27 = useState(""),
     _useState28 = _slicedToArray(_useState27, 2),
-    statusMsg = _useState28[0],
-    setStatusMsg = _useState28[1];
-  var _useState29 = useState((cookieStatusInfo === null || cookieStatusInfo === void 0 ? void 0 : cookieStatusInfo.cookie_status) || "unconfigured"),
+    cookieInput = _useState28[0],
+    setCookieInput = _useState28[1];
+  var _useState29 = useState(false),
     _useState30 = _slicedToArray(_useState29, 2),
-    currentStatus = _useState30[0],
-    setCurrentStatus = _useState30[1];
+    saving = _useState30[0],
+    setSaving = _useState30[1];
+  var _useState31 = useState(false),
+    _useState32 = _slicedToArray(_useState31, 2),
+    testing = _useState32[0],
+    setTesting = _useState32[1];
+  var _useState33 = useState((cookieStatusInfo === null || cookieStatusInfo === void 0 ? void 0 : cookieStatusInfo.message) || ""),
+    _useState34 = _slicedToArray(_useState33, 2),
+    statusMsg = _useState34[0],
+    setStatusMsg = _useState34[1];
+  var _useState35 = useState((cookieStatusInfo === null || cookieStatusInfo === void 0 ? void 0 : cookieStatusInfo.cookie_status) || "unconfigured"),
+    _useState36 = _slicedToArray(_useState35, 2),
+    currentStatus = _useState36[0],
+    setCurrentStatus = _useState36[1];
   var handleSaveCookie = /*#__PURE__*/function () {
-    var _ref4 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee(e) {
+    var _ref6 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee3(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee$(_context) {
-        while (1) switch (_context.prev = _context.next) {
+      return _regeneratorRuntime().wrap(function _callee3$(_context3) {
+        while (1) switch (_context3.prev = _context3.next) {
           case 0:
             e.preventDefault();
             if (cookieInput.trim()) {
-              _context.next = 3;
+              _context3.next = 3;
               break;
             }
-            return _context.abrupt("return");
+            return _context3.abrupt("return");
           case 3:
             setSaving(true);
             setStatusMsg("");
-            _context.prev = 5;
-            _context.next = 8;
+            _context3.prev = 5;
+            _context3.next = 8;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/linkedin-cookie"), {
               method: "POST",
               headers: {
@@ -1010,11 +1176,11 @@ function LinkedInCookieModal(_ref3) {
               })
             });
           case 8:
-            res = _context.sent;
-            _context.next = 11;
+            res = _context3.sent;
+            _context3.next = 11;
             return res.json();
           case 11:
-            data = _context.sent;
+            data = _context3.sent;
             if (res.ok) {
               setCurrentStatus(data.cookie_status);
               setStatusMsg(data.message);
@@ -1034,88 +1200,88 @@ function LinkedInCookieModal(_ref3) {
               showToast(data.detail || "Failed to save cookie", "error");
               setStatusMsg(data.detail || "Failed to save cookie");
             }
-            _context.next = 19;
+            _context3.next = 19;
             break;
           case 15:
-            _context.prev = 15;
-            _context.t0 = _context["catch"](5);
-            showToast(_context.t0.message, "error");
-            setStatusMsg(_context.t0.message);
+            _context3.prev = 15;
+            _context3.t0 = _context3["catch"](5);
+            showToast(_context3.t0.message, "error");
+            setStatusMsg(_context3.t0.message);
           case 19:
-            _context.prev = 19;
+            _context3.prev = 19;
             setSaving(false);
-            return _context.finish(19);
+            return _context3.finish(19);
           case 22:
           case "end":
-            return _context.stop();
+            return _context3.stop();
         }
-      }, _callee, null, [[5, 15, 19, 22]]);
+      }, _callee3, null, [[5, 15, 19, 22]]);
     }));
     return function handleSaveCookie(_x) {
-      return _ref4.apply(this, arguments);
+      return _ref6.apply(this, arguments);
     };
   }();
   var handleCheckLive = /*#__PURE__*/function () {
-    var _ref5 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
+    var _ref7 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee4() {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee2$(_context2) {
-        while (1) switch (_context2.prev = _context2.next) {
+      return _regeneratorRuntime().wrap(function _callee4$(_context4) {
+        while (1) switch (_context4.prev = _context4.next) {
           case 0:
             setTesting(true);
             setStatusMsg("");
-            _context2.prev = 2;
-            _context2.next = 5;
+            _context4.prev = 2;
+            _context4.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/linkedin-cookie-status"), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 5:
-            res = _context2.sent;
-            _context2.next = 8;
+            res = _context4.sent;
+            _context4.next = 8;
             return res.json();
           case 8:
-            data = _context2.sent;
+            data = _context4.sent;
             if (res.ok) {
               setCurrentStatus(data.cookie_status);
               setStatusMsg(data.message);
               onStatusUpdated(data);
               showToast(data.valid ? "Cookie is active!" : data.message, data.valid ? "success" : "error");
             }
-            _context2.next = 15;
+            _context4.next = 15;
             break;
           case 12:
-            _context2.prev = 12;
-            _context2.t0 = _context2["catch"](2);
-            showToast(_context2.t0.message, "error");
+            _context4.prev = 12;
+            _context4.t0 = _context4["catch"](2);
+            showToast(_context4.t0.message, "error");
           case 15:
-            _context2.prev = 15;
+            _context4.prev = 15;
             setTesting(false);
-            return _context2.finish(15);
+            return _context4.finish(15);
           case 18:
           case "end":
-            return _context2.stop();
+            return _context4.stop();
         }
-      }, _callee2, null, [[2, 12, 15, 18]]);
+      }, _callee4, null, [[2, 12, 15, 18]]);
     }));
     return function handleCheckLive() {
-      return _ref5.apply(this, arguments);
+      return _ref7.apply(this, arguments);
     };
   }();
   var handleRemoveCookie = /*#__PURE__*/function () {
-    var _ref6 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee3() {
+    var _ref8 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5() {
       var res;
-      return _regeneratorRuntime().wrap(function _callee3$(_context3) {
-        while (1) switch (_context3.prev = _context3.next) {
+      return _regeneratorRuntime().wrap(function _callee5$(_context5) {
+        while (1) switch (_context5.prev = _context5.next) {
           case 0:
             if (confirm("Are you sure you want to disconnect your LinkedIn cookie?")) {
-              _context3.next = 2;
+              _context5.next = 2;
               break;
             }
-            return _context3.abrupt("return");
+            return _context5.abrupt("return");
           case 2:
-            _context3.prev = 2;
-            _context3.next = 5;
+            _context5.prev = 2;
+            _context5.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/linkedin-cookie"), {
               method: "DELETE",
               headers: {
@@ -1123,7 +1289,7 @@ function LinkedInCookieModal(_ref3) {
               }
             });
           case 5:
-            res = _context3.sent;
+            res = _context5.sent;
             if (res.ok) {
               setCurrentStatus("unconfigured");
               setStatusMsg("Cookie disconnected.");
@@ -1136,20 +1302,20 @@ function LinkedInCookieModal(_ref3) {
               });
               showToast("LinkedIn cookie disconnected. Using stealth search dorking.");
             }
-            _context3.next = 12;
+            _context5.next = 12;
             break;
           case 9:
-            _context3.prev = 9;
-            _context3.t0 = _context3["catch"](2);
-            showToast(_context3.t0.message, "error");
+            _context5.prev = 9;
+            _context5.t0 = _context5["catch"](2);
+            showToast(_context5.t0.message, "error");
           case 12:
           case "end":
-            return _context3.stop();
+            return _context5.stop();
         }
-      }, _callee3, null, [[2, 9]]);
+      }, _callee5, null, [[2, 9]]);
     }));
     return function handleRemoveCookie() {
-      return _ref6.apply(this, arguments);
+      return _ref8.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1226,17 +1392,17 @@ function LinkedInCookieModal(_ref3) {
 // ==========================================
 // Component: Password Input with Eye Toggle
 // ==========================================
-function PasswordInput(_ref7) {
-  var value = _ref7.value,
-    onChange = _ref7.onChange,
-    placeholder = _ref7.placeholder,
-    required = _ref7.required,
-    className = _ref7.className,
-    autoFocus = _ref7.autoFocus;
-  var _useState31 = useState(false),
-    _useState32 = _slicedToArray(_useState31, 2),
-    showPassword = _useState32[0],
-    setShowPassword = _useState32[1];
+function PasswordInput(_ref9) {
+  var value = _ref9.value,
+    onChange = _ref9.onChange,
+    placeholder = _ref9.placeholder,
+    required = _ref9.required,
+    className = _ref9.className,
+    autoFocus = _ref9.autoFocus;
+  var _useState37 = useState(false),
+    _useState38 = _slicedToArray(_useState37, 2),
+    showPassword = _useState38[0],
+    setShowPassword = _useState38[1];
   return /*#__PURE__*/React.createElement("div", {
     className: "relative w-full"
   }, /*#__PURE__*/React.createElement("input", {
@@ -1288,52 +1454,52 @@ function PasswordInput(_ref7) {
 // ==========================================
 // Component: Forgot / Reset Password Modal (Email OTP)
 // ==========================================
-function ForgotPasswordModal(_ref8) {
-  var onClose = _ref8.onClose,
-    showToast = _ref8.showToast;
-  var _useState33 = useState(1),
-    _useState34 = _slicedToArray(_useState33, 2),
-    step = _useState34[0],
-    setStep = _useState34[1]; // 1 = Request OTP, 2 = Verify OTP & Set Password, 3 = Success
-  var _useState35 = useState(""),
-    _useState36 = _slicedToArray(_useState35, 2),
-    email = _useState36[0],
-    setEmail = _useState36[1];
-  var _useState37 = useState(""),
-    _useState38 = _slicedToArray(_useState37, 2),
-    otp = _useState38[0],
-    setOtp = _useState38[1];
-  var _useState39 = useState(""),
+function ForgotPasswordModal(_ref10) {
+  var onClose = _ref10.onClose,
+    showToast = _ref10.showToast;
+  var _useState39 = useState(1),
     _useState40 = _slicedToArray(_useState39, 2),
-    newPassword = _useState40[0],
-    setNewPassword = _useState40[1];
+    step = _useState40[0],
+    setStep = _useState40[1]; // 1 = Request OTP, 2 = Verify OTP & Set Password, 3 = Success
   var _useState41 = useState(""),
     _useState42 = _slicedToArray(_useState41, 2),
-    confirmPassword = _useState42[0],
-    setConfirmPassword = _useState42[1];
-  var _useState43 = useState(false),
+    email = _useState42[0],
+    setEmail = _useState42[1];
+  var _useState43 = useState(""),
     _useState44 = _slicedToArray(_useState43, 2),
-    loading = _useState44[0],
-    setLoading = _useState44[1];
+    otp = _useState44[0],
+    setOtp = _useState44[1];
   var _useState45 = useState(""),
     _useState46 = _slicedToArray(_useState45, 2),
-    error = _useState46[0],
-    setError = _useState46[1];
+    newPassword = _useState46[0],
+    setNewPassword = _useState46[1];
   var _useState47 = useState(""),
     _useState48 = _slicedToArray(_useState47, 2),
-    successMessage = _useState48[0],
-    setSuccessMessage = _useState48[1];
+    confirmPassword = _useState48[0],
+    setConfirmPassword = _useState48[1];
+  var _useState49 = useState(false),
+    _useState50 = _slicedToArray(_useState49, 2),
+    loading = _useState50[0],
+    setLoading = _useState50[1];
+  var _useState51 = useState(""),
+    _useState52 = _slicedToArray(_useState51, 2),
+    error = _useState52[0],
+    setError = _useState52[1];
+  var _useState53 = useState(""),
+    _useState54 = _slicedToArray(_useState53, 2),
+    successMessage = _useState54[0],
+    setSuccessMessage = _useState54[1];
   var handleSendOTP = /*#__PURE__*/function () {
-    var _ref9 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee4(e) {
+    var _ref11 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee4$(_context4) {
-        while (1) switch (_context4.prev = _context4.next) {
+      return _regeneratorRuntime().wrap(function _callee6$(_context6) {
+        while (1) switch (_context6.prev = _context6.next) {
           case 0:
             e.preventDefault();
             setError("");
             setLoading(true);
-            _context4.prev = 3;
-            _context4.next = 6;
+            _context6.prev = 3;
+            _context6.next = 6;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/forgot-password"), {
               method: "POST",
               headers: {
@@ -1344,62 +1510,62 @@ function ForgotPasswordModal(_ref8) {
               })
             });
           case 6:
-            res = _context4.sent;
-            _context4.next = 9;
+            res = _context6.sent;
+            _context6.next = 9;
             return res.json();
           case 9:
-            data = _context4.sent;
+            data = _context6.sent;
             if (res.ok) {
               setStep(2);
               showToast("Verification OTP sent to your email!");
             } else {
               setError(data.detail || "Failed to send OTP code.");
             }
-            _context4.next = 16;
+            _context6.next = 16;
             break;
           case 13:
-            _context4.prev = 13;
-            _context4.t0 = _context4["catch"](3);
-            setError(_context4.t0.message);
+            _context6.prev = 13;
+            _context6.t0 = _context6["catch"](3);
+            setError(_context6.t0.message);
           case 16:
-            _context4.prev = 16;
+            _context6.prev = 16;
             setLoading(false);
-            return _context4.finish(16);
+            return _context6.finish(16);
           case 19:
           case "end":
-            return _context4.stop();
+            return _context6.stop();
         }
-      }, _callee4, null, [[3, 13, 16, 19]]);
+      }, _callee6, null, [[3, 13, 16, 19]]);
     }));
     return function handleSendOTP(_x2) {
-      return _ref9.apply(this, arguments);
+      return _ref11.apply(this, arguments);
     };
   }();
   var handleResetPassword = /*#__PURE__*/function () {
-    var _ref10 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee5(e) {
+    var _ref12 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee5$(_context5) {
-        while (1) switch (_context5.prev = _context5.next) {
+      return _regeneratorRuntime().wrap(function _callee7$(_context7) {
+        while (1) switch (_context7.prev = _context7.next) {
           case 0:
             e.preventDefault();
             setError("");
             if (!(newPassword !== confirmPassword)) {
-              _context5.next = 5;
+              _context7.next = 5;
               break;
             }
             setError("Passwords do not match. Please verify.");
-            return _context5.abrupt("return");
+            return _context7.abrupt("return");
           case 5:
             if (!(newPassword.length < 6)) {
-              _context5.next = 8;
+              _context7.next = 8;
               break;
             }
             setError("Password must be at least 6 characters.");
-            return _context5.abrupt("return");
+            return _context7.abrupt("return");
           case 8:
             setLoading(true);
-            _context5.prev = 9;
-            _context5.next = 12;
+            _context7.prev = 9;
+            _context7.next = 12;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/reset-password"), {
               method: "POST",
               headers: {
@@ -1412,11 +1578,11 @@ function ForgotPasswordModal(_ref8) {
               })
             });
           case 12:
-            res = _context5.sent;
-            _context5.next = 15;
+            res = _context7.sent;
+            _context7.next = 15;
             return res.json();
           case 15:
-            data = _context5.sent;
+            data = _context7.sent;
             if (res.ok) {
               setStep(3);
               setSuccessMessage(data.message || "Password successfully reset!");
@@ -1424,24 +1590,24 @@ function ForgotPasswordModal(_ref8) {
             } else {
               setError(data.detail || "Password reset failed. Please check the OTP.");
             }
-            _context5.next = 22;
+            _context7.next = 22;
             break;
           case 19:
-            _context5.prev = 19;
-            _context5.t0 = _context5["catch"](9);
-            setError(_context5.t0.message);
+            _context7.prev = 19;
+            _context7.t0 = _context7["catch"](9);
+            setError(_context7.t0.message);
           case 22:
-            _context5.prev = 22;
+            _context7.prev = 22;
             setLoading(false);
-            return _context5.finish(22);
+            return _context7.finish(22);
           case 25:
           case "end":
-            return _context5.stop();
+            return _context7.stop();
         }
-      }, _callee5, null, [[9, 19, 22, 25]]);
+      }, _callee7, null, [[9, 19, 22, 25]]);
     }));
     return function handleResetPassword(_x3) {
-      return _ref10.apply(this, arguments);
+      return _ref12.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1553,47 +1719,47 @@ function ForgotPasswordModal(_ref8) {
 // ==========================================
 // Component: Minimal Login Screen
 // ==========================================
-function LoginScreen(_ref11) {
-  var onLoginSuccess = _ref11.onLoginSuccess,
-    showToast = _ref11.showToast;
-  var _useState49 = useState(""),
-    _useState50 = _slicedToArray(_useState49, 2),
-    email = _useState50[0],
-    setEmail = _useState50[1];
-  var _useState51 = useState(""),
-    _useState52 = _slicedToArray(_useState51, 2),
-    password = _useState52[0],
-    setPassword = _useState52[1];
-  var _useState53 = useState(false),
-    _useState54 = _slicedToArray(_useState53, 2),
-    loading = _useState54[0],
-    setLoading = _useState54[1];
+function LoginScreen(_ref13) {
+  var onLoginSuccess = _ref13.onLoginSuccess,
+    showToast = _ref13.showToast;
   var _useState55 = useState(""),
     _useState56 = _slicedToArray(_useState55, 2),
-    error = _useState56[0],
-    setError = _useState56[1];
-  var _useState57 = useState(false),
+    email = _useState56[0],
+    setEmail = _useState56[1];
+  var _useState57 = useState(""),
     _useState58 = _slicedToArray(_useState57, 2),
-    forgotModalOpen = _useState58[0],
-    setForgotModalOpen = _useState58[1];
+    password = _useState58[0],
+    setPassword = _useState58[1];
+  var _useState59 = useState(false),
+    _useState60 = _slicedToArray(_useState59, 2),
+    loading = _useState60[0],
+    setLoading = _useState60[1];
+  var _useState61 = useState(""),
+    _useState62 = _slicedToArray(_useState61, 2),
+    error = _useState62[0],
+    setError = _useState62[1];
+  var _useState63 = useState(false),
+    _useState64 = _slicedToArray(_useState63, 2),
+    forgotModalOpen = _useState64[0],
+    setForgotModalOpen = _useState64[1];
   var handleSubmit = /*#__PURE__*/function () {
-    var _ref12 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee6(e) {
+    var _ref14 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee6$(_context6) {
-        while (1) switch (_context6.prev = _context6.next) {
+      return _regeneratorRuntime().wrap(function _callee8$(_context8) {
+        while (1) switch (_context8.prev = _context8.next) {
           case 0:
             e.preventDefault();
             setError("");
             if (API_BASE_URL) {
-              _context6.next = 5;
+              _context8.next = 5;
               break;
             }
             setError("Backend URL not configured in .env (VITE_BACKEND_URL is empty).");
-            return _context6.abrupt("return");
+            return _context8.abrupt("return");
           case 5:
             setLoading(true);
-            _context6.prev = 6;
-            _context6.next = 9;
+            _context8.prev = 6;
+            _context8.next = 9;
             return fetch("".concat(API_BASE_URL, "/api/v1/auth/login"), {
               method: 'POST',
               headers: {
@@ -1605,36 +1771,36 @@ function LoginScreen(_ref11) {
               })
             });
           case 9:
-            res = _context6.sent;
-            _context6.next = 12;
+            res = _context8.sent;
+            _context8.next = 12;
             return res.json();
           case 12:
-            data = _context6.sent;
+            data = _context8.sent;
             if (res.ok) {
-              _context6.next = 15;
+              _context8.next = 15;
               break;
             }
             throw new Error(data.detail || "Authentication failed.");
           case 15:
             onLoginSuccess(data.access_token, data.user);
-            _context6.next = 21;
+            _context8.next = 21;
             break;
           case 18:
-            _context6.prev = 18;
-            _context6.t0 = _context6["catch"](6);
-            setError(_context6.t0.message);
+            _context8.prev = 18;
+            _context8.t0 = _context8["catch"](6);
+            setError(_context8.t0.message);
           case 21:
-            _context6.prev = 21;
+            _context8.prev = 21;
             setLoading(false);
-            return _context6.finish(21);
+            return _context8.finish(21);
           case 24:
           case "end":
-            return _context6.stop();
+            return _context8.stop();
         }
-      }, _callee6, null, [[6, 18, 21, 24]]);
+      }, _callee8, null, [[6, 18, 21, 24]]);
     }));
     return function handleSubmit(_x4) {
-      return _ref12.apply(this, arguments);
+      return _ref14.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -1697,68 +1863,74 @@ function LoginScreen(_ref11) {
     }
   }));
 }
-function JobSearchDashboard(_ref13) {
+function JobSearchDashboard(_ref15) {
   var _resumeProfile$skills;
-  var token = _ref13.token,
-    user = _ref13.user,
-    cookieStatusInfo = _ref13.cookieStatusInfo,
-    _ref13$appliedJobs = _ref13.appliedJobs,
-    appliedJobs = _ref13$appliedJobs === void 0 ? [] : _ref13$appliedJobs,
-    onToggleApplied = _ref13.onToggleApplied,
-    onOpenAppliedModal = _ref13.onOpenAppliedModal,
-    onOpenCookieModal = _ref13.onOpenCookieModal,
-    showToast = _ref13.showToast,
-    activeSnapshot = _ref13.activeSnapshot,
-    onExitSnapshot = _ref13.onExitSnapshot;
+  var token = _ref15.token,
+    user = _ref15.user,
+    cookieStatusInfo = _ref15.cookieStatusInfo,
+    _ref15$appliedJobs = _ref15.appliedJobs,
+    appliedJobs = _ref15$appliedJobs === void 0 ? [] : _ref15$appliedJobs,
+    _ref15$bgCheckEnabled = _ref15.bgCheckEnabled,
+    bgCheckEnabled = _ref15$bgCheckEnabled === void 0 ? true : _ref15$bgCheckEnabled,
+    _ref15$bgCheckLoading = _ref15.bgCheckLoading,
+    bgCheckLoading = _ref15$bgCheckLoading === void 0 ? false : _ref15$bgCheckLoading,
+    onToggleBgCheck = _ref15.onToggleBgCheck,
+    onOpenAdmin = _ref15.onOpenAdmin,
+    onToggleApplied = _ref15.onToggleApplied,
+    onOpenAppliedModal = _ref15.onOpenAppliedModal,
+    onOpenCookieModal = _ref15.onOpenCookieModal,
+    showToast = _ref15.showToast,
+    activeSnapshot = _ref15.activeSnapshot,
+    onExitSnapshot = _ref15.onExitSnapshot;
   // Form Inputs
-  var _useState59 = useState("AI ML Engineer"),
-    _useState60 = _slicedToArray(_useState59, 2),
-    role = _useState60[0],
-    setRole = _useState60[1];
+  var _useState65 = useState("AI ML Engineer"),
+    _useState66 = _slicedToArray(_useState65, 2),
+    role = _useState66[0],
+    setRole = _useState66[1];
 
   // Resume Profile State & Persistence
-  var _useState61 = useState(null),
-    _useState62 = _slicedToArray(_useState61, 2),
-    resumeFile = _useState62[0],
-    setResumeFile = _useState62[1];
-  var _useState63 = useState(null),
-    _useState64 = _slicedToArray(_useState63, 2),
-    resumeProfile = _useState64[0],
-    setResumeProfile = _useState64[1];
-  var _useState65 = useState(false),
-    _useState66 = _slicedToArray(_useState65, 2),
-    parsingResume = _useState66[0],
-    setParsingResume = _useState66[1];
+  var _useState67 = useState(null),
+    _useState68 = _slicedToArray(_useState67, 2),
+    resumeFile = _useState68[0],
+    setResumeFile = _useState68[1];
+  var _useState69 = useState(null),
+    _useState70 = _slicedToArray(_useState69, 2),
+    resumeProfile = _useState70[0],
+    setResumeProfile = _useState70[1];
+  var _useState71 = useState(false),
+    _useState72 = _slicedToArray(_useState71, 2),
+    parsingResume = _useState72[0],
+    setParsingResume = _useState72[1];
   var resumeInputRef = useRef(null);
 
   // Search Execution State & Result Lists
-  var _useState67 = useState(false),
-    _useState68 = _slicedToArray(_useState67, 2),
-    searching = _useState68[0],
-    setSearching = _useState68[1];
-  var _useState69 = useState(""),
-    _useState70 = _slicedToArray(_useState69, 2),
-    currentSearchId = _useState70[0],
-    setCurrentSearchId = _useState70[1];
-  var _useState71 = useState([]),
-    _useState72 = _slicedToArray(_useState71, 2),
-    allMatchedJobs = _useState72[0],
-    setAllMatchedJobs = _useState72[1];
-  var _useState73 = useState([]),
+  var _useState73 = useState(false),
     _useState74 = _slicedToArray(_useState73, 2),
-    allUniqueJobs = _useState74[0],
-    setAllUniqueJobs = _useState74[1];
-  var _useState75 = useState([]),
+    searching = _useState74[0],
+    setSearching = _useState74[1];
+  var _useState75 = useState(""),
     _useState76 = _slicedToArray(_useState75, 2),
-    allRawJobs = _useState76[0],
-    setAllRawJobs = _useState76[1];
-  var _useState77 = useState({
+    currentSearchId = _useState76[0],
+    setCurrentSearchId = _useState76[1];
+  var _useState77 = useState([]),
+    _useState78 = _slicedToArray(_useState77, 2),
+    allMatchedJobs = _useState78[0],
+    setAllMatchedJobs = _useState78[1];
+  var _useState79 = useState([]),
+    _useState80 = _slicedToArray(_useState79, 2),
+    allUniqueJobs = _useState80[0],
+    setAllUniqueJobs = _useState80[1];
+  var _useState81 = useState([]),
+    _useState82 = _slicedToArray(_useState81, 2),
+    allRawJobs = _useState82[0],
+    setAllRawJobs = _useState82[1];
+  var _useState83 = useState({
       total_found: 0,
       unique_count: 0
     }),
-    _useState78 = _slicedToArray(_useState77, 2),
-    searchStats = _useState78[0],
-    setSearchStats = _useState78[1];
+    _useState84 = _slicedToArray(_useState83, 2),
+    searchStats = _useState84[0],
+    setSearchStats = _useState84[1];
 
   // Mutable refs to prevent asynchronous batching loss in merge operations
   var allMatchedJobsRef = useRef([]);
@@ -1775,106 +1947,106 @@ function JobSearchDashboard(_ref13) {
   }, [allRawJobs]);
 
   // Selected Job for Detailed Modal
-  var _useState79 = useState(null),
-    _useState80 = _slicedToArray(_useState79, 2),
-    selectedJob = _useState80[0],
-    setSelectedJob = _useState80[1];
-  var _useState81 = useState(null),
-    _useState82 = _slicedToArray(_useState81, 2),
-    dossierCompany = _useState82[0],
-    setDossierCompany = _useState82[1];
-  var _useState83 = useState([]),
-    _useState84 = _slicedToArray(_useState83, 2),
-    blacklistedCompanies = _useState84[0],
-    setBlacklistedCompanies = _useState84[1];
+  var _useState85 = useState(null),
+    _useState86 = _slicedToArray(_useState85, 2),
+    selectedJob = _useState86[0],
+    setSelectedJob = _useState86[1];
+  var _useState87 = useState(null),
+    _useState88 = _slicedToArray(_useState87, 2),
+    dossierCompany = _useState88[0],
+    setDossierCompany = _useState88[1];
+  var _useState89 = useState([]),
+    _useState90 = _slicedToArray(_useState89, 2),
+    blacklistedCompanies = _useState90[0],
+    setBlacklistedCompanies = _useState90[1];
 
   // Pre-Harvesting Setup State (Strictly controls scraper criteria & background harvesting)
-  var _useState85 = useState("AI ML Intern"),
-    _useState86 = _slicedToArray(_useState85, 2),
-    harvestRole = _useState86[0],
-    setHarvestRole = _useState86[1];
-  var _useState87 = useState(""),
-    _useState88 = _slicedToArray(_useState87, 2),
-    harvestLocation = _useState88[0],
-    setHarvestLocation = _useState88[1];
-  var _useState89 = useState("any"),
-    _useState90 = _slicedToArray(_useState89, 2),
-    harvestWorkMode = _useState90[0],
-    setHarvestWorkMode = _useState90[1]; // 'any' | 'remote' | 'hybrid' | 'onsite'
-  var _useState91 = useState("all"),
+  var _useState91 = useState("AI ML Intern"),
     _useState92 = _slicedToArray(_useState91, 2),
-    harvestExperience = _useState92[0],
-    setHarvestExperience = _useState92[1]; // 'all' | 'intern' | 'entry' | 'junior' | 'mid' | 'senior' | 'lead'
-  var _useState93 = useState("all"),
+    harvestRole = _useState92[0],
+    setHarvestRole = _useState92[1];
+  var _useState93 = useState(""),
     _useState94 = _slicedToArray(_useState93, 2),
-    harvestDate = _useState94[0],
-    setHarvestDate = _useState94[1]; // 'all' | '1' | '3' | '7' | '14' | '30'
-  var _useState95 = useState("all"),
+    harvestLocation = _useState94[0],
+    setHarvestLocation = _useState94[1];
+  var _useState95 = useState("any"),
     _useState96 = _slicedToArray(_useState95, 2),
-    harvestSource = _useState96[0],
-    setHarvestSource = _useState96[1];
-  var _useState97 = useState("All"),
+    harvestWorkMode = _useState96[0],
+    setHarvestWorkMode = _useState96[1]; // 'any' | 'remote' | 'hybrid' | 'onsite'
+  var _useState97 = useState("all"),
     _useState98 = _slicedToArray(_useState97, 2),
-    harvestSubDomain = _useState98[0],
-    setHarvestSubDomain = _useState98[1];
-  var _useState99 = useState([]),
+    harvestExperience = _useState98[0],
+    setHarvestExperience = _useState98[1]; // 'all' | 'intern' | 'entry' | 'junior' | 'mid' | 'senior' | 'lead'
+  var _useState99 = useState("all"),
     _useState100 = _slicedToArray(_useState99, 2),
-    harvestFacets = _useState100[0],
-    setHarvestFacets = _useState100[1];
-  var _useState101 = useState("All"),
+    harvestDate = _useState100[0],
+    setHarvestDate = _useState100[1]; // 'all' | '1' | '3' | '7' | '14' | '30'
+  var _useState101 = useState("all"),
     _useState102 = _slicedToArray(_useState101, 2),
-    filterSubDomain = _useState102[0],
-    setFilterSubDomain = _useState102[1];
-  var _useState103 = useState([]),
+    harvestSource = _useState102[0],
+    setHarvestSource = _useState102[1];
+  var _useState103 = useState("All"),
     _useState104 = _slicedToArray(_useState103, 2),
-    filterFacets = _useState104[0],
-    setFilterFacets = _useState104[1]; // 'all' | 'greenhouse' | 'lever' | 'ashby' | 'linkedin' | 'himalayas' | 'arbeitnow' | 'freehire' | 'jobicy' | 'remoteok'
+    harvestSubDomain = _useState104[0],
+    setHarvestSubDomain = _useState104[1];
+  var _useState105 = useState([]),
+    _useState106 = _slicedToArray(_useState105, 2),
+    harvestFacets = _useState106[0],
+    setHarvestFacets = _useState106[1];
+  var _useState107 = useState("All"),
+    _useState108 = _slicedToArray(_useState107, 2),
+    filterSubDomain = _useState108[0],
+    setFilterSubDomain = _useState108[1];
+  var _useState109 = useState([]),
+    _useState110 = _slicedToArray(_useState109, 2),
+    filterFacets = _useState110[0],
+    setFilterFacets = _useState110[1]; // 'all' | 'greenhouse' | 'lever' | 'ashby' | 'linkedin' | 'himalayas' | 'arbeitnow' | 'freehire' | 'jobicy' | 'remoteok'
 
   // In-Memory Result Filter Toolbar State (Strictly filters already-fetched jobs in real-time)
-  var _useState105 = useState(""),
-    _useState106 = _slicedToArray(_useState105, 2),
-    filterKeyword = _useState106[0],
-    setFilterKeyword = _useState106[1];
-  var _useState107 = useState(""),
-    _useState108 = _slicedToArray(_useState107, 2),
-    filterLocationInput = _useState108[0],
-    setFilterLocationInput = _useState108[1];
-  var _useState109 = useState("all"),
-    _useState110 = _slicedToArray(_useState109, 2),
-    filterExpYears = _useState110[0],
-    setFilterExpYears = _useState110[1];
-  var _useState111 = useState("all"),
+  var _useState111 = useState(""),
     _useState112 = _slicedToArray(_useState111, 2),
-    filterWorkMode = _useState112[0],
-    setFilterWorkMode = _useState112[1];
-  var _useState113 = useState("all"),
+    filterKeyword = _useState112[0],
+    setFilterKeyword = _useState112[1];
+  var _useState113 = useState(""),
     _useState114 = _slicedToArray(_useState113, 2),
-    filterCategory = _useState114[0],
-    setFilterCategory = _useState114[1]; // 'all' | 'india' | 'ai_registry' | 'enterprise_workday' | 'startups' | 'remote'
-  var _useState115 = useState(0),
+    filterLocationInput = _useState114[0],
+    setFilterLocationInput = _useState114[1];
+  var _useState115 = useState("all"),
     _useState116 = _slicedToArray(_useState115, 2),
-    minScore = _useState116[0],
-    setMinScore = _useState116[1];
+    filterExpYears = _useState116[0],
+    setFilterExpYears = _useState116[1];
   var _useState117 = useState("all"),
     _useState118 = _slicedToArray(_useState117, 2),
-    filterSeniority = _useState118[0],
-    setFilterSeniority = _useState118[1];
+    filterWorkMode = _useState118[0],
+    setFilterWorkMode = _useState118[1];
   var _useState119 = useState("all"),
     _useState120 = _slicedToArray(_useState119, 2),
-    filterDate = _useState120[0],
-    setFilterDate = _useState120[1];
-  var _useState121 = useState("all"),
+    filterCategory = _useState120[0],
+    setFilterCategory = _useState120[1]; // 'all' | 'india' | 'ai_registry' | 'enterprise_workday' | 'startups' | 'remote'
+  var _useState121 = useState(0),
     _useState122 = _slicedToArray(_useState121, 2),
-    filterSource = _useState122[0],
-    setFilterSource = _useState122[1];
-  var _useState123 = useState("curated"),
+    minScore = _useState122[0],
+    setMinScore = _useState122[1];
+  var _useState123 = useState("all"),
     _useState124 = _slicedToArray(_useState123, 2),
-    jobScope = _useState124[0],
-    setJobScope = _useState124[1]; // 'curated' | 'unique' | 'raw' | 'applied'
-  var _useState125 = useState("score"),
+    filterSeniority = _useState124[0],
+    setFilterSeniority = _useState124[1];
+  var _useState125 = useState("all"),
     _useState126 = _slicedToArray(_useState125, 2),
-    sortBy = _useState126[0],
-    setSortBy = _useState126[1]; // 'score' | 'date'
+    filterDate = _useState126[0],
+    setFilterDate = _useState126[1];
+  var _useState127 = useState("all"),
+    _useState128 = _slicedToArray(_useState127, 2),
+    filterSource = _useState128[0],
+    setFilterSource = _useState128[1];
+  var _useState129 = useState("curated"),
+    _useState130 = _slicedToArray(_useState129, 2),
+    jobScope = _useState130[0],
+    setJobScope = _useState130[1]; // 'curated' | 'unique' | 'raw' | 'applied'
+  var _useState131 = useState("score"),
+    _useState132 = _slicedToArray(_useState131, 2),
+    sortBy = _useState132[0],
+    setSortBy = _useState132[1]; // 'score' | 'date'
 
   var getJobKey = function getJobKey(job) {
     if (!job) return "";
@@ -1918,36 +2090,36 @@ function JobSearchDashboard(_ref13) {
   }, [activeSnapshot]);
 
   // RAG AI Query State
-  var _useState127 = useState(false),
-    _useState128 = _slicedToArray(_useState127, 2),
-    ragModalOpen = _useState128[0],
-    setRagModalOpen = _useState128[1];
-  var _useState129 = useState(""),
-    _useState130 = _slicedToArray(_useState129, 2),
-    ragQuery = _useState130[0],
-    setRagQuery = _useState130[1];
-  var _useState131 = useState(""),
-    _useState132 = _slicedToArray(_useState131, 2),
-    ragAnswer = _useState132[0],
-    setRagAnswer = _useState132[1];
   var _useState133 = useState(false),
     _useState134 = _slicedToArray(_useState133, 2),
-    ragLoading = _useState134[0],
-    setRagLoading = _useState134[1];
-
-  // Exporting Insights CSV State
-  var _useState135 = useState(false),
+    ragModalOpen = _useState134[0],
+    setRagModalOpen = _useState134[1];
+  var _useState135 = useState(""),
     _useState136 = _slicedToArray(_useState135, 2),
-    exportingInsights = _useState136[0],
-    setExportingInsights = _useState136[1];
-  var _useState137 = useState(false),
+    ragQuery = _useState136[0],
+    setRagQuery = _useState136[1];
+  var _useState137 = useState(""),
     _useState138 = _slicedToArray(_useState137, 2),
-    isHarvestingLive = _useState138[0],
-    setIsHarvestingLive = _useState138[1];
+    ragAnswer = _useState138[0],
+    setRagAnswer = _useState138[1];
   var _useState139 = useState(false),
     _useState140 = _slicedToArray(_useState139, 2),
-    csvMenuOpen = _useState140[0],
-    setCsvMenuOpen = _useState140[1];
+    ragLoading = _useState140[0],
+    setRagLoading = _useState140[1];
+
+  // Exporting Insights CSV State
+  var _useState141 = useState(false),
+    _useState142 = _slicedToArray(_useState141, 2),
+    exportingInsights = _useState142[0],
+    setExportingInsights = _useState142[1];
+  var _useState143 = useState(false),
+    _useState144 = _slicedToArray(_useState143, 2),
+    isHarvestingLive = _useState144[0],
+    setIsHarvestingLive = _useState144[1];
+  var _useState145 = useState(false),
+    _useState146 = _slicedToArray(_useState145, 2),
+    csvMenuOpen = _useState146[0],
+    setCsvMenuOpen = _useState146[1];
 
   // ==========================================
   // High-Capacity Offline Storage (IndexedDB + LocalStorage Fallback)
@@ -1978,21 +2150,21 @@ function JobSearchDashboard(_ref13) {
     },
     savePool: function savePool(data) {
       var _this2 = this;
-      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee7() {
+      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9() {
         var db;
-        return _regeneratorRuntime().wrap(function _callee7$(_context7) {
-          while (1) switch (_context7.prev = _context7.next) {
+        return _regeneratorRuntime().wrap(function _callee9$(_context9) {
+          while (1) switch (_context9.prev = _context9.next) {
             case 0:
-              _context7.prev = 0;
-              _context7.next = 3;
+              _context9.prev = 0;
+              _context9.next = 3;
               return _this2.getDB();
             case 3:
-              db = _context7.sent;
+              db = _context9.sent;
               if (!db) {
-                _context7.next = 6;
+                _context9.next = 6;
                 break;
               }
-              return _context7.abrupt("return", new Promise(function (resolve) {
+              return _context9.abrupt("return", new Promise(function (resolve) {
                 var tx = db.transaction(_this2.storeName, "readwrite");
                 var store = tx.objectStore(_this2.storeName);
                 store.put(data, "current_pool");
@@ -2004,12 +2176,12 @@ function JobSearchDashboard(_ref13) {
                 };
               }));
             case 6:
-              _context7.next = 11;
+              _context9.next = 11;
               break;
             case 8:
-              _context7.prev = 8;
-              _context7.t0 = _context7["catch"](0);
-              console.warn("IndexedDB save notice:", _context7.t0);
+              _context9.prev = 8;
+              _context9.t0 = _context9["catch"](0);
+              console.warn("IndexedDB save notice:", _context9.t0);
             case 11:
               // Fallback to localStorage with lightweight summaries
               try {
@@ -2023,28 +2195,28 @@ function JobSearchDashboard(_ref13) {
               } catch (e) {}
             case 12:
             case "end":
-              return _context7.stop();
+              return _context9.stop();
           }
-        }, _callee7, null, [[0, 8]]);
+        }, _callee9, null, [[0, 8]]);
       }))();
     },
     loadPool: function loadPool() {
       var _this3 = this;
-      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee8() {
+      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10() {
         var db, _result$raw, _result$unique, _result$matched, result, saved;
-        return _regeneratorRuntime().wrap(function _callee8$(_context8) {
-          while (1) switch (_context8.prev = _context8.next) {
+        return _regeneratorRuntime().wrap(function _callee10$(_context10) {
+          while (1) switch (_context10.prev = _context10.next) {
             case 0:
-              _context8.prev = 0;
-              _context8.next = 3;
+              _context10.prev = 0;
+              _context10.next = 3;
               return _this3.getDB();
             case 3:
-              db = _context8.sent;
+              db = _context10.sent;
               if (!db) {
-                _context8.next = 10;
+                _context10.next = 10;
                 break;
               }
-              _context8.next = 7;
+              _context10.next = 7;
               return new Promise(function (resolve) {
                 var tx = db.transaction(_this3.storeName, "readonly");
                 var store = tx.objectStore(_this3.storeName);
@@ -2057,73 +2229,73 @@ function JobSearchDashboard(_ref13) {
                 };
               });
             case 7:
-              result = _context8.sent;
+              result = _context10.sent;
               if (!(result && ((_result$raw = result.raw) !== null && _result$raw !== void 0 && _result$raw.length || (_result$unique = result.unique) !== null && _result$unique !== void 0 && _result$unique.length || (_result$matched = result.matched) !== null && _result$matched !== void 0 && _result$matched.length))) {
-                _context8.next = 10;
+                _context10.next = 10;
                 break;
               }
-              return _context8.abrupt("return", result);
+              return _context10.abrupt("return", result);
             case 10:
-              _context8.next = 15;
+              _context10.next = 15;
               break;
             case 12:
-              _context8.prev = 12;
-              _context8.t0 = _context8["catch"](0);
-              console.warn("IndexedDB load notice:", _context8.t0);
+              _context10.prev = 12;
+              _context10.t0 = _context10["catch"](0);
+              console.warn("IndexedDB load notice:", _context10.t0);
             case 15:
-              _context8.prev = 15;
+              _context10.prev = 15;
               saved = localStorage.getItem("jobhunt_cached_search");
               if (!saved) {
-                _context8.next = 19;
+                _context10.next = 19;
                 break;
               }
-              return _context8.abrupt("return", JSON.parse(saved));
+              return _context10.abrupt("return", JSON.parse(saved));
             case 19:
-              _context8.next = 23;
+              _context10.next = 23;
               break;
             case 21:
-              _context8.prev = 21;
-              _context8.t1 = _context8["catch"](15);
+              _context10.prev = 21;
+              _context10.t1 = _context10["catch"](15);
             case 23:
-              return _context8.abrupt("return", null);
+              return _context10.abrupt("return", null);
             case 24:
             case "end":
-              return _context8.stop();
+              return _context10.stop();
           }
-        }, _callee8, null, [[0, 12], [15, 21]]);
+        }, _callee10, null, [[0, 12], [15, 21]]);
       }))();
     },
     clearPool: function clearPool() {
       var _this4 = this;
-      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee9() {
+      return _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee11() {
         var db, tx, store;
-        return _regeneratorRuntime().wrap(function _callee9$(_context9) {
-          while (1) switch (_context9.prev = _context9.next) {
+        return _regeneratorRuntime().wrap(function _callee11$(_context11) {
+          while (1) switch (_context11.prev = _context11.next) {
             case 0:
-              _context9.prev = 0;
-              _context9.next = 3;
+              _context11.prev = 0;
+              _context11.next = 3;
               return _this4.getDB();
             case 3:
-              db = _context9.sent;
+              db = _context11.sent;
               if (db) {
                 tx = db.transaction(_this4.storeName, "readwrite");
                 store = tx.objectStore(_this4.storeName);
                 store["delete"]("current_pool");
               }
-              _context9.next = 9;
+              _context11.next = 9;
               break;
             case 7:
-              _context9.prev = 7;
-              _context9.t0 = _context9["catch"](0);
+              _context11.prev = 7;
+              _context11.t0 = _context11["catch"](0);
             case 9:
               try {
                 localStorage.removeItem("jobhunt_cached_search");
               } catch (e) {}
             case 10:
             case "end":
-              return _context9.stop();
+              return _context11.stop();
           }
-        }, _callee9, null, [[0, 7]]);
+        }, _callee11, null, [[0, 7]]);
       }))();
     }
   };
@@ -2347,7 +2519,7 @@ function JobSearchDashboard(_ref13) {
 
   // Execute Pre-Harvest across 9 platforms based strictly on Pre-Harvest Criteria and merge into pool
   var executeSearch = /*#__PURE__*/function () {
-    var _ref14 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee10() {
+    var _ref16 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12() {
       var _resumeProfile$senior;
       var overrideFile,
         overrideRole,
@@ -2367,13 +2539,13 @@ function JobSearchDashboard(_ref13) {
         mergedUnique,
         mergedRaw,
         newStats,
-        _args10 = arguments;
-      return _regeneratorRuntime().wrap(function _callee10$(_context10) {
-        while (1) switch (_context10.prev = _context10.next) {
+        _args12 = arguments;
+      return _regeneratorRuntime().wrap(function _callee12$(_context12) {
+        while (1) switch (_context12.prev = _context12.next) {
           case 0:
-            overrideFile = _args10.length > 0 && _args10[0] !== undefined ? _args10[0] : null;
-            overrideRole = _args10.length > 1 && _args10[1] !== undefined ? _args10[1] : null;
-            overrideLocation = _args10.length > 2 && _args10[2] !== undefined ? _args10[2] : null;
+            overrideFile = _args12.length > 0 && _args12[0] !== undefined ? _args12[0] : null;
+            overrideRole = _args12.length > 1 && _args12[1] !== undefined ? _args12[1] : null;
+            overrideLocation = _args12.length > 2 && _args12[2] !== undefined ? _args12[2] : null;
             setSearching(true);
             setIsHarvestingLive(false);
             activeRole = (overrideRole !== null ? overrideRole : harvestRole || role || "Software Engineer").trim();
@@ -2413,8 +2585,8 @@ function JobSearchDashboard(_ref13) {
             if (resumeProfile) {
               formData.append("resume_profile", JSON.stringify(resumeProfile));
             }
-            _context10.prev = 24;
-            _context10.next = 27;
+            _context12.prev = 24;
+            _context12.next = 27;
             return fetch("".concat(API_BASE_URL, "/api/v1/search"), {
               method: "POST",
               headers: {
@@ -2423,11 +2595,11 @@ function JobSearchDashboard(_ref13) {
               body: formData
             });
           case 27:
-            res = _context10.sent;
-            _context10.next = 30;
+            res = _context12.sent;
+            _context12.next = 30;
             return res.json();
           case 30:
-            data = _context10.sent;
+            data = _context12.sent;
             if (res.ok && data.status === 'success') {
               setCurrentSearchId(data.search_id);
               try {
@@ -2460,24 +2632,24 @@ function JobSearchDashboard(_ref13) {
             } else {
               showToast(data.detail || "Search failed.", "error");
             }
-            _context10.next = 37;
+            _context12.next = 37;
             break;
           case 34:
-            _context10.prev = 34;
-            _context10.t0 = _context10["catch"](24);
-            showToast(_context10.t0.message, "error");
+            _context12.prev = 34;
+            _context12.t0 = _context12["catch"](24);
+            showToast(_context12.t0.message, "error");
           case 37:
-            _context10.prev = 37;
+            _context12.prev = 37;
             setSearching(false);
-            return _context10.finish(37);
+            return _context12.finish(37);
           case 40:
           case "end":
-            return _context10.stop();
+            return _context12.stop();
         }
-      }, _callee10, null, [[24, 34, 37, 40]]);
+      }, _callee12, null, [[24, 34, 37, 40]]);
     }));
     return function executeSearch() {
-      return _ref14.apply(this, arguments);
+      return _ref16.apply(this, arguments);
     };
   }();
 
@@ -2487,33 +2659,33 @@ function JobSearchDashboard(_ref13) {
     var pollCount = 0;
     var maxPolls = 35; // 35 polls * 2s = ~70s of continuous streaming
 
-    var pollInterval = setInterval( /*#__PURE__*/_asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee11() {
+    var pollInterval = setInterval( /*#__PURE__*/_asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13() {
       var res, data, streamMergedRaw, streamMergedUnique, streamMergedMatched, updatedStats;
-      return _regeneratorRuntime().wrap(function _callee11$(_context11) {
-        while (1) switch (_context11.prev = _context11.next) {
+      return _regeneratorRuntime().wrap(function _callee13$(_context13) {
+        while (1) switch (_context13.prev = _context13.next) {
           case 0:
             pollCount++;
             if (!(pollCount > maxPolls)) {
-              _context11.next = 5;
+              _context13.next = 5;
               break;
             }
             clearInterval(pollInterval);
             setIsHarvestingLive(false);
-            return _context11.abrupt("return");
+            return _context13.abrupt("return");
           case 5:
-            _context11.prev = 5;
-            _context11.next = 8;
+            _context13.prev = 5;
+            _context13.next = 8;
             return fetch("".concat(API_BASE_URL, "/api/v1/jobs/").concat(currentSearchId));
           case 8:
-            res = _context11.sent;
+            res = _context13.sent;
             if (!res.ok) {
-              _context11.next = 15;
+              _context13.next = 15;
               break;
             }
-            _context11.next = 12;
+            _context13.next = 12;
             return res.json();
           case 12:
-            data = _context11.sent;
+            data = _context13.sent;
             if (data.raw_jobs && data.raw_jobs.length > 0) {
               streamMergedRaw = mergeJobList(allRawJobsRef.current, data.raw_jobs || []);
               streamMergedUnique = mergeJobList(allUniqueJobsRef.current, data.unique_jobs || []);
@@ -2551,16 +2723,16 @@ function JobSearchDashboard(_ref13) {
               clearInterval(pollInterval);
             }
           case 15:
-            _context11.next = 19;
+            _context13.next = 19;
             break;
           case 17:
-            _context11.prev = 17;
-            _context11.t0 = _context11["catch"](5);
+            _context13.prev = 17;
+            _context13.t0 = _context13["catch"](5);
           case 19:
           case "end":
-            return _context11.stop();
+            return _context13.stop();
         }
-      }, _callee11, null, [[5, 17]]);
+      }, _callee13, null, [[5, 17]]);
     })), 2000);
     return function () {
       return clearInterval(pollInterval);
@@ -2569,34 +2741,34 @@ function JobSearchDashboard(_ref13) {
 
   // Resume Upload & Parse (Auto triggers search on upload)
   var handleResumeChange = /*#__PURE__*/function () {
-    var _ref16 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee12(e) {
+    var _ref18 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(e) {
       var file, formData, res, data, _data$profile$skills, newRole;
-      return _regeneratorRuntime().wrap(function _callee12$(_context12) {
-        while (1) switch (_context12.prev = _context12.next) {
+      return _regeneratorRuntime().wrap(function _callee14$(_context14) {
+        while (1) switch (_context14.prev = _context14.next) {
           case 0:
             file = e.target.files[0];
             if (file) {
-              _context12.next = 3;
+              _context14.next = 3;
               break;
             }
-            return _context12.abrupt("return");
+            return _context14.abrupt("return");
           case 3:
             setResumeFile(file);
             setParsingResume(true);
             formData = new FormData();
             formData.append("file", file);
-            _context12.prev = 7;
-            _context12.next = 10;
+            _context14.prev = 7;
+            _context14.next = 10;
             return fetch("".concat(API_BASE_URL, "/api/v1/search/parse-resume"), {
               method: "POST",
               body: formData
             });
           case 10:
-            res = _context12.sent;
-            _context12.next = 13;
+            res = _context14.sent;
+            _context14.next = 13;
             return res.json();
           case 13:
-            data = _context12.sent;
+            data = _context14.sent;
             if (res.ok && data.status === 'success') {
               setResumeProfile(data.profile);
               try {
@@ -2611,24 +2783,24 @@ function JobSearchDashboard(_ref13) {
             } else {
               showToast(data.detail || "Failed to parse resume.", "error");
             }
-            _context12.next = 20;
+            _context14.next = 20;
             break;
           case 17:
-            _context12.prev = 17;
-            _context12.t0 = _context12["catch"](7);
-            showToast(_context12.t0.message, "error");
+            _context14.prev = 17;
+            _context14.t0 = _context14["catch"](7);
+            showToast(_context14.t0.message, "error");
           case 20:
-            _context12.prev = 20;
+            _context14.prev = 20;
             setParsingResume(false);
-            return _context12.finish(20);
+            return _context14.finish(20);
           case 23:
           case "end":
-            return _context12.stop();
+            return _context14.stop();
         }
-      }, _callee12, null, [[7, 17, 20, 23]]);
+      }, _callee14, null, [[7, 17, 20, 23]]);
     }));
     return function handleResumeChange(_x5) {
-      return _ref16.apply(this, arguments);
+      return _ref18.apply(this, arguments);
     };
   }();
 
@@ -2698,20 +2870,20 @@ function JobSearchDashboard(_ref13) {
 
   // Export Company Insights CSV
   var handleExportInsightsCSV = /*#__PURE__*/function () {
-    var _ref17 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee13() {
+    var _ref19 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15() {
       var res, blob, url, a;
-      return _regeneratorRuntime().wrap(function _callee13$(_context13) {
-        while (1) switch (_context13.prev = _context13.next) {
+      return _regeneratorRuntime().wrap(function _callee15$(_context15) {
+        while (1) switch (_context15.prev = _context15.next) {
           case 0:
             if (currentSearchId) {
-              _context13.next = 2;
+              _context15.next = 2;
               break;
             }
-            return _context13.abrupt("return");
+            return _context15.abrupt("return");
           case 2:
             setExportingInsights(true);
-            _context13.prev = 3;
-            _context13.next = 6;
+            _context15.prev = 3;
+            _context15.next = 6;
             return fetch("".concat(API_BASE_URL, "/api/v1/jobs/").concat(currentSearchId, "/export-insights"), {
               method: "POST",
               headers: {
@@ -2724,15 +2896,15 @@ function JobSearchDashboard(_ref13) {
               })
             });
           case 6:
-            res = _context13.sent;
+            res = _context15.sent;
             if (!res.ok) {
-              _context13.next = 21;
+              _context15.next = 21;
               break;
             }
-            _context13.next = 10;
+            _context15.next = 10;
             return res.blob();
           case 10:
-            blob = _context13.sent;
+            blob = _context15.sent;
             url = window.URL.createObjectURL(blob);
             a = document.createElement("a");
             a.href = url;
@@ -2741,29 +2913,29 @@ function JobSearchDashboard(_ref13) {
             a.click();
             a.remove();
             showToast("Downloaded Company Insights & Team Contacts CSV!");
-            _context13.next = 22;
+            _context15.next = 22;
             break;
           case 21:
             showToast("Failed to generate insights CSV.", "error");
           case 22:
-            _context13.next = 27;
+            _context15.next = 27;
             break;
           case 24:
-            _context13.prev = 24;
-            _context13.t0 = _context13["catch"](3);
-            showToast(_context13.t0.message, "error");
+            _context15.prev = 24;
+            _context15.t0 = _context15["catch"](3);
+            showToast(_context15.t0.message, "error");
           case 27:
-            _context13.prev = 27;
+            _context15.prev = 27;
             setExportingInsights(false);
-            return _context13.finish(27);
+            return _context15.finish(27);
           case 30:
           case "end":
-            return _context13.stop();
+            return _context15.stop();
         }
-      }, _callee13, null, [[3, 24, 27, 30]]);
+      }, _callee15, null, [[3, 24, 27, 30]]);
     }));
     return function handleExportInsightsCSV() {
-      return _ref17.apply(this, arguments);
+      return _ref19.apply(this, arguments);
     };
   }();
 
@@ -2938,22 +3110,22 @@ function JobSearchDashboard(_ref13) {
 
   // RAG AI Query Handler
   var handleAskAI = /*#__PURE__*/function () {
-    var _ref18 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee14(e) {
+    var _ref20 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee16(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee14$(_context14) {
-        while (1) switch (_context14.prev = _context14.next) {
+      return _regeneratorRuntime().wrap(function _callee16$(_context16) {
+        while (1) switch (_context16.prev = _context16.next) {
           case 0:
             e === null || e === void 0 || e.preventDefault();
             if (!(!ragQuery.trim() || !currentSearchId)) {
-              _context14.next = 3;
+              _context16.next = 3;
               break;
             }
-            return _context14.abrupt("return");
+            return _context16.abrupt("return");
           case 3:
             setRagLoading(true);
             setRagAnswer("");
-            _context14.prev = 5;
-            _context14.next = 8;
+            _context16.prev = 5;
+            _context16.next = 8;
             return fetch("".concat(API_BASE_URL, "/api/v1/jobs/").concat(currentSearchId, "/query"), {
               method: "POST",
               headers: {
@@ -2964,34 +3136,34 @@ function JobSearchDashboard(_ref13) {
               })
             });
           case 8:
-            res = _context14.sent;
-            _context14.next = 11;
+            res = _context16.sent;
+            _context16.next = 11;
             return res.json();
           case 11:
-            data = _context14.sent;
+            data = _context16.sent;
             if (res.ok) {
               setRagAnswer(data.answer || "No response received.");
             } else {
               setRagAnswer("Error: ".concat(data.detail || 'Could not query assistant.'));
             }
-            _context14.next = 18;
+            _context16.next = 18;
             break;
           case 15:
-            _context14.prev = 15;
-            _context14.t0 = _context14["catch"](5);
-            setRagAnswer("Error: ".concat(_context14.t0.message));
+            _context16.prev = 15;
+            _context16.t0 = _context16["catch"](5);
+            setRagAnswer("Error: ".concat(_context16.t0.message));
           case 18:
-            _context14.prev = 18;
+            _context16.prev = 18;
             setRagLoading(false);
-            return _context14.finish(18);
+            return _context16.finish(18);
           case 21:
           case "end":
-            return _context14.stop();
+            return _context16.stop();
         }
-      }, _callee14, null, [[5, 15, 18, 21]]);
+      }, _callee16, null, [[5, 15, 18, 21]]);
     }));
     return function handleAskAI(_x6) {
-      return _ref18.apply(this, arguments);
+      return _ref20.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -3035,6 +3207,35 @@ function JobSearchDashboard(_ref13) {
     },
     className: "px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/15 text-xs font-bold shrink-0 transition-all flex items-center gap-2 shadow-sm"
   }, /*#__PURE__*/React.createElement("span", null, "\u2715"), /*#__PURE__*/React.createElement("span", null, "Exit Snapshot"))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-3.5 sm:p-4 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md mb-2 ".concat(bgCheckEnabled ? "bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30" : "bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border-rose-500/30")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-9 h-9 rounded-lg flex items-center justify-center text-base border shrink-0 ".concat(bgCheckEnabled ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-rose-500/10 border-rose-500/30 text-rose-400")
+  }, bgCheckEnabled ? "⚙️" : "🛑"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-bold text-white"
+  }, "24/7 Platform Background Job Search:"), /*#__PURE__*/React.createElement("span", {
+    className: "px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 border ".concat(bgCheckEnabled ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : "bg-rose-500/20 text-rose-300 border-rose-500/40")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-1.5 h-1.5 rounded-full ".concat(bgCheckEnabled ? "bg-emerald-400 animate-pulse" : "bg-rose-400")
+  }), bgCheckEnabled ? "ACTIVE (Crawling Every 1 Hr)" : "STOPPED (On-Demand Searches Only)")), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-300 mt-0.5 leading-relaxed"
+  }, bgCheckEnabled ? "Continuous background crawler crawls platforms every 1 hour across recent roles and saves fresh jobs to the pool for all users." : "Background check is STOPPED for everyone. Results will only be fetched when a user actively clicks search on-demand."))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 shrink-0"
+  }, (user === null || user === void 0 ? void 0 : user.role) === 'admin' ? /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onToggleBgCheck,
+    disabled: bgCheckLoading,
+    className: "w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow ".concat(bgCheckEnabled ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/50" : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50", " disabled:opacity-50")
+  }, /*#__PURE__*/React.createElement("span", null, bgCheckLoading ? "Updating..." : bgCheckEnabled ? "⏹️ Stop Background Check" : "▶️ Start Background Check")) : /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] text-slate-400 italic"
+  }, "(Admin control required to toggle)"), (user === null || user === void 0 ? void 0 : user.role) === 'admin' && onOpenAdmin && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onOpenAdmin,
+    className: "px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10 text-xs font-semibold transition-all hidden md:flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDEE1\uFE0F Admin Panel")))), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-1 lg:grid-cols-3 gap-5"
   }, /*#__PURE__*/React.createElement("div", {
     className: "lg:col-span-2 minimal-card rounded-xl p-5 sm:p-6 border border-white/[0.08] flex flex-col justify-between"
@@ -4285,18 +4486,18 @@ function getJobSkillLists(job) {
 // ==========================================
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
-function JobCard(_ref19) {
+function JobCard(_ref21) {
   var _job$experience_compa, _job$experience_compa2;
-  var job = _ref19.job,
-    _ref19$jobScope = _ref19.jobScope,
-    jobScope = _ref19$jobScope === void 0 ? "curated" : _ref19$jobScope,
-    _ref19$resumeSkills = _ref19.resumeSkills,
-    resumeSkills = _ref19$resumeSkills === void 0 ? [] : _ref19$resumeSkills,
-    _ref19$isApplied = _ref19.isApplied,
-    isApplied = _ref19$isApplied === void 0 ? false : _ref19$isApplied,
-    onToggleApplied = _ref19.onToggleApplied,
-    onViewDetails = _ref19.onViewDetails,
-    onQueryAI = _ref19.onQueryAI;
+  var job = _ref21.job,
+    _ref21$jobScope = _ref21.jobScope,
+    jobScope = _ref21$jobScope === void 0 ? "curated" : _ref21$jobScope,
+    _ref21$resumeSkills = _ref21.resumeSkills,
+    resumeSkills = _ref21$resumeSkills === void 0 ? [] : _ref21$resumeSkills,
+    _ref21$isApplied = _ref21.isApplied,
+    isApplied = _ref21$isApplied === void 0 ? false : _ref21$isApplied,
+    onToggleApplied = _ref21.onToggleApplied,
+    onViewDetails = _ref21.onViewDetails,
+    onQueryAI = _ref21.onQueryAI;
   var score = Math.round(job.match_score || 0);
   var badgeText = "".concat(score, "% Match");
   var scoreColor = "bg-slate-800 text-slate-300 border-slate-700";
@@ -4462,27 +4663,27 @@ function JobCard(_ref19) {
 // ==========================================
 // Component: Interactive Job Details Modal
 // ==========================================
-function JobDetailModal(_ref20) {
+function JobDetailModal(_ref22) {
   var _job$location;
-  var job = _ref20.job,
-    user = _ref20.user,
-    token = _ref20.token,
-    resumeSkills = _ref20.resumeSkills,
-    _ref20$isApplied = _ref20.isApplied,
-    isApplied = _ref20$isApplied === void 0 ? false : _ref20$isApplied,
-    onToggleApplied = _ref20.onToggleApplied,
-    onClose = _ref20.onClose,
-    onUpdateJob = _ref20.onUpdateJob,
-    onOpenCookieModal = _ref20.onOpenCookieModal,
-    showToast = _ref20.showToast;
-  var _useState141 = useState(false),
-    _useState142 = _slicedToArray(_useState141, 2),
-    fetchingContacts = _useState142[0],
-    setFetchingContacts = _useState142[1];
-  var _useState143 = useState("overview"),
-    _useState144 = _slicedToArray(_useState143, 2),
-    activeTab = _useState144[0],
-    setActiveTab = _useState144[1]; // 'overview' | 'contacts' | 'outreach'
+  var job = _ref22.job,
+    user = _ref22.user,
+    token = _ref22.token,
+    resumeSkills = _ref22.resumeSkills,
+    _ref22$isApplied = _ref22.isApplied,
+    isApplied = _ref22$isApplied === void 0 ? false : _ref22$isApplied,
+    onToggleApplied = _ref22.onToggleApplied,
+    onClose = _ref22.onClose,
+    onUpdateJob = _ref22.onUpdateJob,
+    onOpenCookieModal = _ref22.onOpenCookieModal,
+    showToast = _ref22.showToast;
+  var _useState147 = useState(false),
+    _useState148 = _slicedToArray(_useState147, 2),
+    fetchingContacts = _useState148[0],
+    setFetchingContacts = _useState148[1];
+  var _useState149 = useState("overview"),
+    _useState150 = _slicedToArray(_useState149, 2),
+    activeTab = _useState150[0],
+    setActiveTab = _useState150[1]; // 'overview' | 'contacts' | 'outreach'
 
   var score = Math.round(job.match_score || 0);
   var insights = job.company_insights || {};
@@ -4492,14 +4693,14 @@ function JobDetailModal(_ref20) {
 
   // Fetch / Refresh HR & Tech Contacts
   var handleFetchContacts = /*#__PURE__*/function () {
-    var _ref21 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee15() {
+    var _ref23 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee17() {
       var res, data, _data$hr_contacts, _data$tech_contacts, updated;
-      return _regeneratorRuntime().wrap(function _callee15$(_context15) {
-        while (1) switch (_context15.prev = _context15.next) {
+      return _regeneratorRuntime().wrap(function _callee17$(_context17) {
+        while (1) switch (_context17.prev = _context17.next) {
           case 0:
             setFetchingContacts(true);
-            _context15.prev = 1;
-            _context15.next = 4;
+            _context17.prev = 1;
+            _context17.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/jobs/").concat(job.id, "/fetch-hr-contacts"), {
               method: "POST",
               headers: {
@@ -4513,11 +4714,11 @@ function JobDetailModal(_ref20) {
               })
             });
           case 4:
-            res = _context15.sent;
-            _context15.next = 7;
+            res = _context17.sent;
+            _context17.next = 7;
             return res.json();
           case 7:
-            data = _context15.sent;
+            data = _context17.sent;
             if (res.ok && data.status === 'success') {
               updated = _objectSpread(_objectSpread({}, job), {}, {
                 hr_contacts: data.hr_contacts || [],
@@ -4531,24 +4732,24 @@ function JobDetailModal(_ref20) {
             } else {
               showToast(data.message || "Failed to discover contacts.", "error");
             }
-            _context15.next = 14;
+            _context17.next = 14;
             break;
           case 11:
-            _context15.prev = 11;
-            _context15.t0 = _context15["catch"](1);
-            showToast(_context15.t0.message, "error");
+            _context17.prev = 11;
+            _context17.t0 = _context17["catch"](1);
+            showToast(_context17.t0.message, "error");
           case 14:
-            _context15.prev = 14;
+            _context17.prev = 14;
             setFetchingContacts(false);
-            return _context15.finish(14);
+            return _context17.finish(14);
           case 17:
           case "end":
-            return _context15.stop();
+            return _context17.stop();
         }
-      }, _callee15, null, [[1, 11, 14, 17]]);
+      }, _callee17, null, [[1, 11, 14, 17]]);
     }));
     return function handleFetchContacts() {
-      return _ref21.apply(this, arguments);
+      return _ref23.apply(this, arguments);
     };
   }();
 
@@ -4898,9 +5099,9 @@ function JobDetailModal(_ref20) {
 // ==========================================
 // Sub-Component: Contact Card
 // ==========================================
-function ContactCard(_ref22) {
-  var contact = _ref22.contact,
-    onCopy = _ref22.onCopy;
+function ContactCard(_ref24) {
+  var contact = _ref24.contact,
+    onCopy = _ref24.onCopy;
   var conf = contact.confidence_score || 65;
   var confBadge = "bg-slate-800 text-slate-300";
   if (conf >= 85) confBadge = "bg-emerald-950 text-emerald-300 border border-emerald-500/30";else if (conf >= 60) confBadge = "bg-amber-950 text-amber-300 border border-amber-500/30";
@@ -4950,63 +5151,63 @@ function ContactCard(_ref22) {
 // ==========================================
 // Component: Company Intelligence Dossier Modal (Feature 3)
 // ==========================================
-function CompanyDossierModal(_ref23) {
+function CompanyDossierModal(_ref25) {
   var _dossier$active_openi;
-  var companyName = _ref23.companyName,
-    token = _ref23.token,
-    onClose = _ref23.onClose,
-    showToast = _ref23.showToast;
-  var _useState145 = useState(null),
-    _useState146 = _slicedToArray(_useState145, 2),
-    dossier = _useState146[0],
-    setDossier = _useState146[1];
-  var _useState147 = useState(true),
-    _useState148 = _slicedToArray(_useState147, 2),
-    loading = _useState148[0],
-    setLoading = _useState148[1];
+  var companyName = _ref25.companyName,
+    token = _ref25.token,
+    onClose = _ref25.onClose,
+    showToast = _ref25.showToast;
+  var _useState151 = useState(null),
+    _useState152 = _slicedToArray(_useState151, 2),
+    dossier = _useState152[0],
+    setDossier = _useState152[1];
+  var _useState153 = useState(true),
+    _useState154 = _slicedToArray(_useState153, 2),
+    loading = _useState154[0],
+    setLoading = _useState154[1];
   useEffect(function () {
     if (!companyName) return;
     var fetchDossier = /*#__PURE__*/function () {
-      var _ref24 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee16() {
+      var _ref26 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee18() {
         var res, data;
-        return _regeneratorRuntime().wrap(function _callee16$(_context16) {
-          while (1) switch (_context16.prev = _context16.next) {
+        return _regeneratorRuntime().wrap(function _callee18$(_context18) {
+          while (1) switch (_context18.prev = _context18.next) {
             case 0:
-              _context16.prev = 0;
+              _context18.prev = 0;
               setLoading(true);
-              _context16.next = 4;
+              _context18.next = 4;
               return fetch("".concat(API_BASE_URL, "/api/v1/company/").concat(encodeURIComponent(companyName), "/dossier"), {
                 headers: {
                   'Authorization': "Bearer ".concat(token)
                 }
               });
             case 4:
-              res = _context16.sent;
-              _context16.next = 7;
+              res = _context18.sent;
+              _context18.next = 7;
               return res.json();
             case 7:
-              data = _context16.sent;
+              data = _context18.sent;
               if (res.ok && data.dossier) {
                 setDossier(data.dossier);
               }
-              _context16.next = 14;
+              _context18.next = 14;
               break;
             case 11:
-              _context16.prev = 11;
-              _context16.t0 = _context16["catch"](0);
-              console.error("Dossier error:", _context16.t0);
+              _context18.prev = 11;
+              _context18.t0 = _context18["catch"](0);
+              console.error("Dossier error:", _context18.t0);
             case 14:
-              _context16.prev = 14;
+              _context18.prev = 14;
               setLoading(false);
-              return _context16.finish(14);
+              return _context18.finish(14);
             case 17:
             case "end":
-              return _context16.stop();
+              return _context18.stop();
           }
-        }, _callee16, null, [[0, 11, 14, 17]]);
+        }, _callee18, null, [[0, 11, 14, 17]]);
       }));
       return function fetchDossier() {
-        return _ref24.apply(this, arguments);
+        return _ref26.apply(this, arguments);
       };
     }();
     fetchDossier();
@@ -5104,32 +5305,32 @@ function CompanyDossierModal(_ref23) {
 // ==========================================
 // Component: Pipeline Funnel Velocity & Analytics View (Feature 5)
 // ==========================================
-function PipelineAnalyticsView(_ref25) {
-  var token = _ref25.token,
-    _ref25$appliedJobs = _ref25.appliedJobs,
-    appliedJobs = _ref25$appliedJobs === void 0 ? [] : _ref25$appliedJobs;
-  var _useState149 = useState(null),
-    _useState150 = _slicedToArray(_useState149, 2),
-    metrics = _useState150[0],
-    setMetrics = _useState150[1];
-  var _useState151 = useState([]),
-    _useState152 = _slicedToArray(_useState151, 2),
-    heatmap = _useState152[0],
-    setHeatmap = _useState152[1];
-  var _useState153 = useState(true),
-    _useState154 = _slicedToArray(_useState153, 2),
-    loading = _useState154[0],
-    setLoading = _useState154[1];
+function PipelineAnalyticsView(_ref27) {
+  var token = _ref27.token,
+    _ref27$appliedJobs = _ref27.appliedJobs,
+    appliedJobs = _ref27$appliedJobs === void 0 ? [] : _ref27$appliedJobs;
+  var _useState155 = useState(null),
+    _useState156 = _slicedToArray(_useState155, 2),
+    metrics = _useState156[0],
+    setMetrics = _useState156[1];
+  var _useState157 = useState([]),
+    _useState158 = _slicedToArray(_useState157, 2),
+    heatmap = _useState158[0],
+    setHeatmap = _useState158[1];
+  var _useState159 = useState(true),
+    _useState160 = _slicedToArray(_useState159, 2),
+    loading = _useState160[0],
+    setLoading = _useState160[1];
   useEffect(function () {
     var fetchAnalytics = /*#__PURE__*/function () {
-      var _ref26 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee17() {
+      var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee19() {
         var _yield$Promise$all, _yield$Promise$all2, funnelRes, heatRes, funnelData, heatData;
-        return _regeneratorRuntime().wrap(function _callee17$(_context17) {
-          while (1) switch (_context17.prev = _context17.next) {
+        return _regeneratorRuntime().wrap(function _callee19$(_context19) {
+          while (1) switch (_context19.prev = _context19.next) {
             case 0:
-              _context17.prev = 0;
+              _context19.prev = 0;
               setLoading(true);
-              _context17.next = 4;
+              _context19.next = 4;
               return Promise.all([fetch("".concat(API_BASE_URL, "/api/v1/analytics/pipeline"), {
                 headers: {
                   'Authorization': "Bearer ".concat(token)
@@ -5140,38 +5341,38 @@ function PipelineAnalyticsView(_ref25) {
                 }
               })]);
             case 4:
-              _yield$Promise$all = _context17.sent;
+              _yield$Promise$all = _context19.sent;
               _yield$Promise$all2 = _slicedToArray(_yield$Promise$all, 2);
               funnelRes = _yield$Promise$all2[0];
               heatRes = _yield$Promise$all2[1];
-              _context17.next = 10;
+              _context19.next = 10;
               return funnelRes.json();
             case 10:
-              funnelData = _context17.sent;
-              _context17.next = 13;
+              funnelData = _context19.sent;
+              _context19.next = 13;
               return heatRes.json();
             case 13:
-              heatData = _context17.sent;
+              heatData = _context19.sent;
               if (funnelData.metrics) setMetrics(funnelData.metrics);
               if (heatData.market_skill_heatmap) setHeatmap(heatData.market_skill_heatmap);
-              _context17.next = 21;
+              _context19.next = 21;
               break;
             case 18:
-              _context17.prev = 18;
-              _context17.t0 = _context17["catch"](0);
-              console.error("Analytics fetch error:", _context17.t0);
+              _context19.prev = 18;
+              _context19.t0 = _context19["catch"](0);
+              console.error("Analytics fetch error:", _context19.t0);
             case 21:
-              _context17.prev = 21;
+              _context19.prev = 21;
               setLoading(false);
-              return _context17.finish(21);
+              return _context19.finish(21);
             case 24:
             case "end":
-              return _context17.stop();
+              return _context19.stop();
           }
-        }, _callee17, null, [[0, 18, 21, 24]]);
+        }, _callee19, null, [[0, 18, 21, 24]]);
       }));
       return function fetchAnalytics() {
-        return _ref26.apply(this, arguments);
+        return _ref28.apply(this, arguments);
       };
     }();
     fetchAnalytics();
@@ -5241,100 +5442,100 @@ function PipelineAnalyticsView(_ref25) {
 // ==========================================
 // Component: STAR+R Interview Story Bank View (Feature 6)
 // ==========================================
-function StoryBankView(_ref27) {
-  var token = _ref27.token,
-    showToast = _ref27.showToast;
-  var _useState155 = useState([]),
-    _useState156 = _slicedToArray(_useState155, 2),
-    stories = _useState156[0],
-    setStories = _useState156[1];
-  var _useState157 = useState(true),
-    _useState158 = _slicedToArray(_useState157, 2),
-    loading = _useState158[0],
-    setLoading = _useState158[1];
-  var _useState159 = useState(false),
-    _useState160 = _slicedToArray(_useState159, 2),
-    showCreate = _useState160[0],
-    setShowCreate = _useState160[1];
-  var _useState161 = useState(""),
+function StoryBankView(_ref29) {
+  var token = _ref29.token,
+    showToast = _ref29.showToast;
+  var _useState161 = useState([]),
     _useState162 = _slicedToArray(_useState161, 2),
-    title = _useState162[0],
-    setTitle = _useState162[1];
-  var _useState163 = useState(""),
+    stories = _useState162[0],
+    setStories = _useState162[1];
+  var _useState163 = useState(true),
     _useState164 = _slicedToArray(_useState163, 2),
-    situation = _useState164[0],
-    setSituation = _useState164[1];
-  var _useState165 = useState(""),
+    loading = _useState164[0],
+    setLoading = _useState164[1];
+  var _useState165 = useState(false),
     _useState166 = _slicedToArray(_useState165, 2),
-    task = _useState166[0],
-    setTask = _useState166[1];
+    showCreate = _useState166[0],
+    setShowCreate = _useState166[1];
   var _useState167 = useState(""),
     _useState168 = _slicedToArray(_useState167, 2),
-    action = _useState168[0],
-    setAction = _useState168[1];
+    title = _useState168[0],
+    setTitle = _useState168[1];
   var _useState169 = useState(""),
     _useState170 = _slicedToArray(_useState169, 2),
-    result = _useState170[0],
-    setResult = _useState170[1];
-  var _useState171 = useState("Python, LangGraph, FastAPI"),
+    situation = _useState170[0],
+    setSituation = _useState170[1];
+  var _useState171 = useState(""),
     _useState172 = _slicedToArray(_useState171, 2),
-    techs = _useState172[0],
-    setTechs = _useState172[1];
+    task = _useState172[0],
+    setTask = _useState172[1];
+  var _useState173 = useState(""),
+    _useState174 = _slicedToArray(_useState173, 2),
+    action = _useState174[0],
+    setAction = _useState174[1];
+  var _useState175 = useState(""),
+    _useState176 = _slicedToArray(_useState175, 2),
+    result = _useState176[0],
+    setResult = _useState176[1];
+  var _useState177 = useState("Python, LangGraph, FastAPI"),
+    _useState178 = _slicedToArray(_useState177, 2),
+    techs = _useState178[0],
+    setTechs = _useState178[1];
   var fetchStories = /*#__PURE__*/function () {
-    var _ref28 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee18() {
+    var _ref30 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee20() {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee18$(_context18) {
-        while (1) switch (_context18.prev = _context18.next) {
+      return _regeneratorRuntime().wrap(function _callee20$(_context20) {
+        while (1) switch (_context20.prev = _context20.next) {
           case 0:
-            _context18.prev = 0;
+            _context20.prev = 0;
             setLoading(true);
-            _context18.next = 4;
+            _context20.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/stories"), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 4:
-            res = _context18.sent;
-            _context18.next = 7;
+            res = _context20.sent;
+            _context20.next = 7;
             return res.json();
           case 7:
-            data = _context18.sent;
+            data = _context20.sent;
             if (res.ok && data.stories) {
               setStories(data.stories || []);
             }
-            _context18.next = 14;
+            _context20.next = 14;
             break;
           case 11:
-            _context18.prev = 11;
-            _context18.t0 = _context18["catch"](0);
-            console.error("Story fetch error:", _context18.t0);
+            _context20.prev = 11;
+            _context20.t0 = _context20["catch"](0);
+            console.error("Story fetch error:", _context20.t0);
           case 14:
-            _context18.prev = 14;
+            _context20.prev = 14;
             setLoading(false);
-            return _context18.finish(14);
+            return _context20.finish(14);
           case 17:
           case "end":
-            return _context18.stop();
+            return _context20.stop();
         }
-      }, _callee18, null, [[0, 11, 14, 17]]);
+      }, _callee20, null, [[0, 11, 14, 17]]);
     }));
     return function fetchStories() {
-      return _ref28.apply(this, arguments);
+      return _ref30.apply(this, arguments);
     };
   }();
   useEffect(function () {
     fetchStories();
   }, [token]);
   var handleSaveStory = /*#__PURE__*/function () {
-    var _ref29 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee19(e) {
+    var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee21(e) {
       var res;
-      return _regeneratorRuntime().wrap(function _callee19$(_context19) {
-        while (1) switch (_context19.prev = _context19.next) {
+      return _regeneratorRuntime().wrap(function _callee21$(_context21) {
+        while (1) switch (_context21.prev = _context21.next) {
           case 0:
             e.preventDefault();
-            _context19.prev = 1;
-            _context19.next = 4;
+            _context21.prev = 1;
+            _context21.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/stories"), {
               method: "POST",
               headers: {
@@ -5353,26 +5554,26 @@ function StoryBankView(_ref27) {
               })
             });
           case 4:
-            res = _context19.sent;
+            res = _context21.sent;
             if (res.ok) {
               showToast("STAR story added to bank!");
               setShowCreate(false);
               fetchStories();
             }
-            _context19.next = 11;
+            _context21.next = 11;
             break;
           case 8:
-            _context19.prev = 8;
-            _context19.t0 = _context19["catch"](1);
+            _context21.prev = 8;
+            _context21.t0 = _context21["catch"](1);
             showToast("Failed to save story", "error");
           case 11:
           case "end":
-            return _context19.stop();
+            return _context21.stop();
         }
-      }, _callee19, null, [[1, 8]]);
+      }, _callee21, null, [[1, 8]]);
     }));
     return function handleSaveStory(_x7) {
-      return _ref29.apply(this, arguments);
+      return _ref31.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
@@ -5490,238 +5691,152 @@ function StoryBankView(_ref27) {
 // ==========================================
 // Component: Email Automation & Live Alerts
 // ==========================================
-function EmailAlertsView(_ref30) {
-  var token = _ref30.token,
-    user = _ref30.user,
-    cookieStatusInfo = _ref30.cookieStatusInfo,
-    onOpenCookieModal = _ref30.onOpenCookieModal,
-    showToast = _ref30.showToast,
-    _ref30$appliedJobs = _ref30.appliedJobs,
-    appliedJobs = _ref30$appliedJobs === void 0 ? [] : _ref30$appliedJobs,
-    onToggleApplied = _ref30.onToggleApplied,
-    onInspectSnapshot = _ref30.onInspectSnapshot;
-  var _useState173 = useState(user.email || ""),
-    _useState174 = _slicedToArray(_useState173, 2),
-    email = _useState174[0],
-    setEmail = _useState174[1];
-  var _useState175 = useState("AI ML Intern"),
-    _useState176 = _slicedToArray(_useState175, 2),
-    role = _useState176[0],
-    setRole = _useState176[1];
-  var _useState177 = useState("Pune"),
-    _useState178 = _slicedToArray(_useState177, 2),
-    location = _useState178[0],
-    setLocation = _useState178[1];
-  var _useState179 = useState("any"),
+function EmailAlertsView(_ref32) {
+  var token = _ref32.token,
+    user = _ref32.user,
+    cookieStatusInfo = _ref32.cookieStatusInfo,
+    onOpenCookieModal = _ref32.onOpenCookieModal,
+    showToast = _ref32.showToast,
+    _ref32$appliedJobs = _ref32.appliedJobs,
+    appliedJobs = _ref32$appliedJobs === void 0 ? [] : _ref32$appliedJobs,
+    onToggleApplied = _ref32.onToggleApplied,
+    onInspectSnapshot = _ref32.onInspectSnapshot;
+  var _useState179 = useState(user.email || ""),
     _useState180 = _slicedToArray(_useState179, 2),
-    workMode = _useState180[0],
-    setWorkMode = _useState180[1];
-  var _useState181 = useState("intern"),
+    email = _useState180[0],
+    setEmail = _useState180[1];
+  var _useState181 = useState("AI ML Intern"),
     _useState182 = _slicedToArray(_useState181, 2),
-    experienceLevel = _useState182[0],
-    setExperienceLevel = _useState182[1];
-  var _useState183 = useState(3),
+    role = _useState182[0],
+    setRole = _useState182[1];
+  var _useState183 = useState("Pune"),
     _useState184 = _slicedToArray(_useState183, 2),
-    maxAgeDays = _useState184[0],
-    setMaxAgeDays = _useState184[1];
-  var _useState185 = useState("09:00"),
+    location = _useState184[0],
+    setLocation = _useState184[1];
+  var _useState185 = useState("any"),
     _useState186 = _slicedToArray(_useState185, 2),
-    preferredTime = _useState186[0],
-    setPreferredTime = _useState186[1];
-  var _useState187 = useState("All"),
+    workMode = _useState186[0],
+    setWorkMode = _useState186[1];
+  var _useState187 = useState("intern"),
     _useState188 = _slicedToArray(_useState187, 2),
-    subDomain = _useState188[0],
-    setSubDomain = _useState188[1];
-  var _useState189 = useState([]),
+    experienceLevel = _useState188[0],
+    setExperienceLevel = _useState188[1];
+  var _useState189 = useState(3),
     _useState190 = _slicedToArray(_useState189, 2),
-    aiFacets = _useState190[0],
-    setAiFacets = _useState190[1];
-  var _useState191 = useState(""),
+    maxAgeDays = _useState190[0],
+    setMaxAgeDays = _useState190[1];
+  var _useState191 = useState("09:00"),
     _useState192 = _slicedToArray(_useState191, 2),
-    stipendRange = _useState192[0],
-    setStipendRange = _useState192[1];
-  var _useState193 = useState([]),
+    preferredTime = _useState192[0],
+    setPreferredTime = _useState192[1];
+  var _useState193 = useState("All"),
     _useState194 = _slicedToArray(_useState193, 2),
-    followupsList = _useState194[0],
-    setFollowupsList = _useState194[1];
-  var _useState195 = useState(false),
+    subDomain = _useState194[0],
+    setSubDomain = _useState194[1];
+  var _useState195 = useState([]),
     _useState196 = _slicedToArray(_useState195, 2),
-    loadingFollowups = _useState196[0],
-    setLoadingFollowups = _useState196[1];
-  var _useState197 = useState(null),
+    aiFacets = _useState196[0],
+    setAiFacets = _useState196[1];
+  var _useState197 = useState(""),
     _useState198 = _slicedToArray(_useState197, 2),
-    resumeFile = _useState198[0],
-    setResumeFile = _useState198[1];
-  var _useState199 = useState(null),
+    stipendRange = _useState198[0],
+    setStipendRange = _useState198[1];
+  var _useState199 = useState([]),
     _useState200 = _slicedToArray(_useState199, 2),
-    resumeProfile = _useState200[0],
-    setResumeProfile = _useState200[1];
+    followupsList = _useState200[0],
+    setFollowupsList = _useState200[1];
   var _useState201 = useState(false),
     _useState202 = _slicedToArray(_useState201, 2),
-    parsingResume = _useState202[0],
-    setParsingResume = _useState202[1];
-  var _useState203 = useState(false),
+    loadingFollowups = _useState202[0],
+    setLoadingFollowups = _useState202[1];
+  var _useState203 = useState(null),
     _useState204 = _slicedToArray(_useState203, 2),
-    saving = _useState204[0],
-    setSaving = _useState204[1];
-  var _useState205 = useState(false),
+    resumeFile = _useState204[0],
+    setResumeFile = _useState204[1];
+  var _useState205 = useState(null),
     _useState206 = _slicedToArray(_useState205, 2),
-    testing = _useState206[0],
-    setTesting = _useState206[1];
-  var _useState207 = useState([]),
+    resumeProfile = _useState206[0],
+    setResumeProfile = _useState206[1];
+  var _useState207 = useState(false),
     _useState208 = _slicedToArray(_useState207, 2),
-    activeAlerts = _useState208[0],
-    setActiveAlerts = _useState208[1];
-  var _useState209 = useState(true),
+    parsingResume = _useState208[0],
+    setParsingResume = _useState208[1];
+  var _useState209 = useState(false),
     _useState210 = _slicedToArray(_useState209, 2),
-    loadingAlerts = _useState210[0],
-    setLoadingAlerts = _useState210[1];
-  var _useState211 = useState([]),
+    saving = _useState210[0],
+    setSaving = _useState210[1];
+  var _useState211 = useState(false),
     _useState212 = _slicedToArray(_useState211, 2),
-    historyList = _useState212[0],
-    setHistoryList = _useState212[1];
-  var _useState213 = useState(true),
+    testing = _useState212[0],
+    setTesting = _useState212[1];
+  var _useState213 = useState([]),
     _useState214 = _slicedToArray(_useState213, 2),
-    loadingHistory = _useState214[0],
-    setLoadingHistory = _useState214[1];
-  var _useState215 = useState(null),
+    activeAlerts = _useState214[0],
+    setActiveAlerts = _useState214[1];
+  var _useState215 = useState(true),
     _useState216 = _slicedToArray(_useState215, 2),
-    inspectingId = _useState216[0],
-    setInspectingId = _useState216[1];
+    loadingAlerts = _useState216[0],
+    setLoadingAlerts = _useState216[1];
+  var _useState217 = useState([]),
+    _useState218 = _slicedToArray(_useState217, 2),
+    historyList = _useState218[0],
+    setHistoryList = _useState218[1];
+  var _useState219 = useState(true),
+    _useState220 = _slicedToArray(_useState219, 2),
+    loadingHistory = _useState220[0],
+    setLoadingHistory = _useState220[1];
+  var _useState221 = useState(null),
+    _useState222 = _slicedToArray(_useState221, 2),
+    inspectingId = _useState222[0],
+    setInspectingId = _useState222[1];
 
   // Direct In-Page Historical Automation Snapshot Viewer State
-  var _useState217 = useState(null),
-    _useState218 = _slicedToArray(_useState217, 2),
-    viewingSnapshot = _useState218[0],
-    setViewingSnapshot = _useState218[1];
-  var _useState219 = useState("curated"),
-    _useState220 = _slicedToArray(_useState219, 2),
-    snapshotScope = _useState220[0],
-    setSnapshotScope = _useState220[1]; // 'curated' | 'unique' | 'raw'
-  var _useState221 = useState(""),
-    _useState222 = _slicedToArray(_useState221, 2),
-    snapshotFilterKeyword = _useState222[0],
-    setSnapshotFilterKeyword = _useState222[1];
-  var _useState223 = useState(""),
+  var _useState223 = useState(null),
     _useState224 = _slicedToArray(_useState223, 2),
-    snapshotFilterLocation = _useState224[0],
-    setSnapshotFilterLocation = _useState224[1];
-  var _useState225 = useState("all"),
+    viewingSnapshot = _useState224[0],
+    setViewingSnapshot = _useState224[1];
+  var _useState225 = useState("curated"),
     _useState226 = _slicedToArray(_useState225, 2),
-    snapshotFilterWorkMode = _useState226[0],
-    setSnapshotFilterWorkMode = _useState226[1];
-  var _useState227 = useState("all"),
+    snapshotScope = _useState226[0],
+    setSnapshotScope = _useState226[1]; // 'curated' | 'unique' | 'raw'
+  var _useState227 = useState(""),
     _useState228 = _slicedToArray(_useState227, 2),
-    snapshotFilterExperience = _useState228[0],
-    setSnapshotFilterExperience = _useState228[1];
-  var _useState229 = useState(0),
+    snapshotFilterKeyword = _useState228[0],
+    setSnapshotFilterKeyword = _useState228[1];
+  var _useState229 = useState(""),
     _useState230 = _slicedToArray(_useState229, 2),
-    snapshotMinScore = _useState230[0],
-    setSnapshotMinScore = _useState230[1];
-  var _useState231 = useState("score"),
+    snapshotFilterLocation = _useState230[0],
+    setSnapshotFilterLocation = _useState230[1];
+  var _useState231 = useState("all"),
     _useState232 = _slicedToArray(_useState231, 2),
-    snapshotSortBy = _useState232[0],
-    setSnapshotSortBy = _useState232[1]; // 'score' | 'date'
-  var _useState233 = useState(null),
+    snapshotFilterWorkMode = _useState232[0],
+    setSnapshotFilterWorkMode = _useState232[1];
+  var _useState233 = useState("all"),
     _useState234 = _slicedToArray(_useState233, 2),
-    selectedJob = _useState234[0],
-    setSelectedJob = _useState234[1];
+    snapshotFilterExperience = _useState234[0],
+    setSnapshotFilterExperience = _useState234[1];
+  var _useState235 = useState(0),
+    _useState236 = _slicedToArray(_useState235, 2),
+    snapshotMinScore = _useState236[0],
+    setSnapshotMinScore = _useState236[1];
+  var _useState237 = useState("score"),
+    _useState238 = _slicedToArray(_useState237, 2),
+    snapshotSortBy = _useState238[0],
+    setSnapshotSortBy = _useState238[1]; // 'score' | 'date'
+  var _useState239 = useState(null),
+    _useState240 = _slicedToArray(_useState239, 2),
+    selectedJob = _useState240[0],
+    setSelectedJob = _useState240[1];
   var fetchAlerts = /*#__PURE__*/function () {
-    var _ref31 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee20() {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee20$(_context20) {
-        while (1) switch (_context20.prev = _context20.next) {
-          case 0:
-            _context20.prev = 0;
-            setLoadingAlerts(true);
-            _context20.next = 4;
-            return fetch("".concat(API_BASE_URL, "/api/v1/alerts"), {
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 4:
-            res = _context20.sent;
-            _context20.next = 7;
-            return res.json();
-          case 7:
-            data = _context20.sent;
-            if (res.ok) {
-              setActiveAlerts(data || []);
-            }
-            _context20.next = 14;
-            break;
-          case 11:
-            _context20.prev = 11;
-            _context20.t0 = _context20["catch"](0);
-            console.error("Fetch alerts error:", _context20.t0);
-          case 14:
-            _context20.prev = 14;
-            setLoadingAlerts(false);
-            return _context20.finish(14);
-          case 17:
-          case "end":
-            return _context20.stop();
-        }
-      }, _callee20, null, [[0, 11, 14, 17]]);
-    }));
-    return function fetchAlerts() {
-      return _ref31.apply(this, arguments);
-    };
-  }();
-  var fetchHistory = /*#__PURE__*/function () {
-    var _ref32 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee21() {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee21$(_context21) {
-        while (1) switch (_context21.prev = _context21.next) {
-          case 0:
-            _context21.prev = 0;
-            setLoadingHistory(true);
-            _context21.next = 4;
-            return fetch("".concat(API_BASE_URL, "/api/v1/alerts/history"), {
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 4:
-            res = _context21.sent;
-            _context21.next = 7;
-            return res.json();
-          case 7:
-            data = _context21.sent;
-            if (res.ok && data.history) {
-              setHistoryList(data.history || []);
-            }
-            _context21.next = 14;
-            break;
-          case 11:
-            _context21.prev = 11;
-            _context21.t0 = _context21["catch"](0);
-            console.error("Fetch history error:", _context21.t0);
-          case 14:
-            _context21.prev = 14;
-            setLoadingHistory(false);
-            return _context21.finish(14);
-          case 17:
-          case "end":
-            return _context21.stop();
-        }
-      }, _callee21, null, [[0, 11, 14, 17]]);
-    }));
-    return function fetchHistory() {
-      return _ref32.apply(this, arguments);
-    };
-  }();
-  var fetchFollowups = /*#__PURE__*/function () {
     var _ref33 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee22() {
       var res, data;
       return _regeneratorRuntime().wrap(function _callee22$(_context22) {
         while (1) switch (_context22.prev = _context22.next) {
           case 0:
             _context22.prev = 0;
-            setLoadingFollowups(true);
+            setLoadingAlerts(true);
             _context22.next = 4;
-            return fetch("".concat(API_BASE_URL, "/api/v1/alerts/followups"), {
+            return fetch("".concat(API_BASE_URL, "/api/v1/alerts"), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
@@ -5732,18 +5847,18 @@ function EmailAlertsView(_ref30) {
             return res.json();
           case 7:
             data = _context22.sent;
-            if (res.ok && data.followups) {
-              setFollowupsList(data.followups || []);
+            if (res.ok) {
+              setActiveAlerts(data || []);
             }
             _context22.next = 14;
             break;
           case 11:
             _context22.prev = 11;
             _context22.t0 = _context22["catch"](0);
-            console.error("Fetch followups error:", _context22.t0);
+            console.error("Fetch alerts error:", _context22.t0);
           case 14:
             _context22.prev = 14;
-            setLoadingFollowups(false);
+            setLoadingAlerts(false);
             return _context22.finish(14);
           case 17:
           case "end":
@@ -5751,42 +5866,128 @@ function EmailAlertsView(_ref30) {
         }
       }, _callee22, null, [[0, 11, 14, 17]]);
     }));
-    return function fetchFollowups() {
+    return function fetchAlerts() {
       return _ref33.apply(this, arguments);
+    };
+  }();
+  var fetchHistory = /*#__PURE__*/function () {
+    var _ref34 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee23() {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee23$(_context23) {
+        while (1) switch (_context23.prev = _context23.next) {
+          case 0:
+            _context23.prev = 0;
+            setLoadingHistory(true);
+            _context23.next = 4;
+            return fetch("".concat(API_BASE_URL, "/api/v1/alerts/history"), {
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 4:
+            res = _context23.sent;
+            _context23.next = 7;
+            return res.json();
+          case 7:
+            data = _context23.sent;
+            if (res.ok && data.history) {
+              setHistoryList(data.history || []);
+            }
+            _context23.next = 14;
+            break;
+          case 11:
+            _context23.prev = 11;
+            _context23.t0 = _context23["catch"](0);
+            console.error("Fetch history error:", _context23.t0);
+          case 14:
+            _context23.prev = 14;
+            setLoadingHistory(false);
+            return _context23.finish(14);
+          case 17:
+          case "end":
+            return _context23.stop();
+        }
+      }, _callee23, null, [[0, 11, 14, 17]]);
+    }));
+    return function fetchHistory() {
+      return _ref34.apply(this, arguments);
+    };
+  }();
+  var fetchFollowups = /*#__PURE__*/function () {
+    var _ref35 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee24() {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee24$(_context24) {
+        while (1) switch (_context24.prev = _context24.next) {
+          case 0:
+            _context24.prev = 0;
+            setLoadingFollowups(true);
+            _context24.next = 4;
+            return fetch("".concat(API_BASE_URL, "/api/v1/alerts/followups"), {
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 4:
+            res = _context24.sent;
+            _context24.next = 7;
+            return res.json();
+          case 7:
+            data = _context24.sent;
+            if (res.ok && data.followups) {
+              setFollowupsList(data.followups || []);
+            }
+            _context24.next = 14;
+            break;
+          case 11:
+            _context24.prev = 11;
+            _context24.t0 = _context24["catch"](0);
+            console.error("Fetch followups error:", _context24.t0);
+          case 14:
+            _context24.prev = 14;
+            setLoadingFollowups(false);
+            return _context24.finish(14);
+          case 17:
+          case "end":
+            return _context24.stop();
+        }
+      }, _callee24, null, [[0, 11, 14, 17]]);
+    }));
+    return function fetchFollowups() {
+      return _ref35.apply(this, arguments);
     };
   }();
   useEffect(function () {
     Promise.all([fetchAlerts(), fetchHistory(), fetchFollowups()]);
   }, []);
   var handleResumeChange = /*#__PURE__*/function () {
-    var _ref34 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee23(e) {
+    var _ref36 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee25(e) {
       var file, formData, res, data, _data$profile$skills2;
-      return _regeneratorRuntime().wrap(function _callee23$(_context23) {
-        while (1) switch (_context23.prev = _context23.next) {
+      return _regeneratorRuntime().wrap(function _callee25$(_context25) {
+        while (1) switch (_context25.prev = _context25.next) {
           case 0:
             file = e.target.files[0];
             if (file) {
-              _context23.next = 3;
+              _context25.next = 3;
               break;
             }
-            return _context23.abrupt("return");
+            return _context25.abrupt("return");
           case 3:
             setResumeFile(file);
             setParsingResume(true);
             formData = new FormData();
             formData.append("file", file);
-            _context23.prev = 7;
-            _context23.next = 10;
+            _context25.prev = 7;
+            _context25.next = 10;
             return fetch("".concat(API_BASE_URL, "/api/v1/search/parse-resume"), {
               method: "POST",
               body: formData
             });
           case 10:
-            res = _context23.sent;
-            _context23.next = 13;
+            res = _context25.sent;
+            _context25.next = 13;
             return res.json();
           case 13:
-            data = _context23.sent;
+            data = _context25.sent;
             if (res.ok && data.status === 'success') {
               setResumeProfile(data.profile);
               if (data.profile.target_roles && data.profile.target_roles[0]) {
@@ -5794,31 +5995,31 @@ function EmailAlertsView(_ref30) {
               }
               showToast("Resume attached! Extracted ".concat(((_data$profile$skills2 = data.profile.skills) === null || _data$profile$skills2 === void 0 ? void 0 : _data$profile$skills2.length) || 0, " skills."));
             }
-            _context23.next = 20;
+            _context25.next = 20;
             break;
           case 17:
-            _context23.prev = 17;
-            _context23.t0 = _context23["catch"](7);
+            _context25.prev = 17;
+            _context25.t0 = _context25["catch"](7);
             showToast("Resume attached.");
           case 20:
-            _context23.prev = 20;
+            _context25.prev = 20;
             setParsingResume(false);
-            return _context23.finish(20);
+            return _context25.finish(20);
           case 23:
           case "end":
-            return _context23.stop();
+            return _context25.stop();
         }
-      }, _callee23, null, [[7, 17, 20, 23]]);
+      }, _callee25, null, [[7, 17, 20, 23]]);
     }));
     return function handleResumeChange(_x8) {
-      return _ref34.apply(this, arguments);
+      return _ref36.apply(this, arguments);
     };
   }();
   var handleSaveAlert = /*#__PURE__*/function () {
-    var _ref35 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee24(e) {
+    var _ref37 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee26(e) {
       var formData, expMap, res, data;
-      return _regeneratorRuntime().wrap(function _callee24$(_context24) {
-        while (1) switch (_context24.prev = _context24.next) {
+      return _regeneratorRuntime().wrap(function _callee26$(_context26) {
+        while (1) switch (_context26.prev = _context26.next) {
           case 0:
             e.preventDefault();
             setSaving(true);
@@ -5854,8 +6055,8 @@ function EmailAlertsView(_ref30) {
             if (resumeFile) {
               formData.append("resume", resumeFile);
             }
-            _context24.prev = 19;
-            _context24.next = 22;
+            _context26.prev = 19;
+            _context26.next = 22;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts"), {
               method: "POST",
               headers: {
@@ -5864,11 +6065,11 @@ function EmailAlertsView(_ref30) {
               body: formData
             });
           case 22:
-            res = _context24.sent;
-            _context24.next = 25;
+            res = _context26.sent;
+            _context26.next = 25;
             return res.json();
           case 25:
-            data = _context24.sent;
+            data = _context26.sent;
             if (res.ok) {
               showToast("Daily job automation scheduled for ".concat(email, "!"));
               if (data.alert) {
@@ -5882,31 +6083,31 @@ function EmailAlertsView(_ref30) {
             } else {
               showToast(data.detail || "Failed to schedule alert.", "error");
             }
-            _context24.next = 32;
+            _context26.next = 32;
             break;
           case 29:
-            _context24.prev = 29;
-            _context24.t0 = _context24["catch"](19);
-            showToast(_context24.t0.message, "error");
+            _context26.prev = 29;
+            _context26.t0 = _context26["catch"](19);
+            showToast(_context26.t0.message, "error");
           case 32:
-            _context24.prev = 32;
+            _context26.prev = 32;
             setSaving(false);
-            return _context24.finish(32);
+            return _context26.finish(32);
           case 35:
           case "end":
-            return _context24.stop();
+            return _context26.stop();
         }
-      }, _callee24, null, [[19, 29, 32, 35]]);
+      }, _callee26, null, [[19, 29, 32, 35]]);
     }));
     return function handleSaveAlert(_x9) {
-      return _ref35.apply(this, arguments);
+      return _ref37.apply(this, arguments);
     };
   }();
   var handleSendTestEmail = /*#__PURE__*/function () {
-    var _ref36 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee25() {
+    var _ref38 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee27() {
       var formData, expMap, res, data;
-      return _regeneratorRuntime().wrap(function _callee25$(_context25) {
-        while (1) switch (_context25.prev = _context25.next) {
+      return _regeneratorRuntime().wrap(function _callee27$(_context27) {
+        while (1) switch (_context27.prev = _context27.next) {
           case 0:
             setTesting(true);
             formData = new FormData();
@@ -5928,8 +6129,8 @@ function EmailAlertsView(_ref30) {
             if (resumeFile) {
               formData.append("resume", resumeFile);
             }
-            _context25.prev = 11;
-            _context25.next = 14;
+            _context27.prev = 11;
+            _context27.next = 14;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts/test-send"), {
               method: "POST",
               headers: {
@@ -5938,42 +6139,42 @@ function EmailAlertsView(_ref30) {
               body: formData
             });
           case 14:
-            res = _context25.sent;
-            _context25.next = 17;
+            res = _context27.sent;
+            _context27.next = 17;
             return res.json();
           case 17:
-            data = _context25.sent;
+            data = _context27.sent;
             if (res.ok && (data.status === 'success' || data.status === 'partial')) {
               showToast("Sent ".concat(data.jobs_sent || 0, " Jobs + CSV to ").concat(email, "!"));
               fetchHistory();
             } else {
               showToast(data.detail || data.message || "Failed to send test email.", "error");
             }
-            _context25.next = 24;
+            _context27.next = 24;
             break;
           case 21:
-            _context25.prev = 21;
-            _context25.t0 = _context25["catch"](11);
-            showToast(_context25.t0.message, "error");
+            _context27.prev = 21;
+            _context27.t0 = _context27["catch"](11);
+            showToast(_context27.t0.message, "error");
           case 24:
-            _context25.prev = 24;
+            _context27.prev = 24;
             setTesting(false);
-            return _context25.finish(24);
+            return _context27.finish(24);
           case 27:
           case "end":
-            return _context25.stop();
+            return _context27.stop();
         }
-      }, _callee25, null, [[11, 21, 24, 27]]);
+      }, _callee27, null, [[11, 21, 24, 27]]);
     }));
     return function handleSendTestEmail() {
-      return _ref36.apply(this, arguments);
+      return _ref38.apply(this, arguments);
     };
   }();
   var handleDeleteAlert = /*#__PURE__*/function () {
-    var _ref37 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee26(alertId) {
+    var _ref39 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee28(alertId) {
       var res;
-      return _regeneratorRuntime().wrap(function _callee26$(_context26) {
-        while (1) switch (_context26.prev = _context26.next) {
+      return _regeneratorRuntime().wrap(function _callee28$(_context28) {
+        while (1) switch (_context28.prev = _context28.next) {
           case 0:
             setActiveAlerts(function (prev) {
               return prev.filter(function (a) {
@@ -5981,8 +6182,8 @@ function EmailAlertsView(_ref30) {
               });
             });
             showToast("Alert automation removed.");
-            _context26.prev = 2;
-            _context26.next = 5;
+            _context28.prev = 2;
+            _context28.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts/").concat(alertId), {
               method: "DELETE",
               headers: {
@@ -5990,31 +6191,31 @@ function EmailAlertsView(_ref30) {
               }
             });
           case 5:
-            res = _context26.sent;
+            res = _context28.sent;
             if (!res.ok) {
               fetchAlerts();
             }
-            _context26.next = 13;
+            _context28.next = 13;
             break;
           case 9:
-            _context26.prev = 9;
-            _context26.t0 = _context26["catch"](2);
+            _context28.prev = 9;
+            _context28.t0 = _context28["catch"](2);
             fetchAlerts();
-            showToast(_context26.t0.message, "error");
+            showToast(_context28.t0.message, "error");
           case 13:
           case "end":
-            return _context26.stop();
+            return _context28.stop();
         }
-      }, _callee26, null, [[2, 9]]);
+      }, _callee28, null, [[2, 9]]);
     }));
     return function handleDeleteAlert(_x10) {
-      return _ref37.apply(this, arguments);
+      return _ref39.apply(this, arguments);
     };
   }();
   var handleDeleteHistory = /*#__PURE__*/function () {
-    var _ref38 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee27(historyId) {
-      return _regeneratorRuntime().wrap(function _callee27$(_context27) {
-        while (1) switch (_context27.prev = _context27.next) {
+    var _ref40 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee29(historyId) {
+      return _regeneratorRuntime().wrap(function _callee29$(_context29) {
+        while (1) switch (_context29.prev = _context29.next) {
           case 0:
             setHistoryList(function (prev) {
               return prev.filter(function (h) {
@@ -6022,8 +6223,8 @@ function EmailAlertsView(_ref30) {
               });
             });
             showToast("Automation digest history snapshot removed.");
-            _context27.prev = 2;
-            _context27.next = 5;
+            _context29.prev = 2;
+            _context29.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts/history/").concat(historyId), {
               method: "DELETE",
               headers: {
@@ -6031,42 +6232,42 @@ function EmailAlertsView(_ref30) {
               }
             });
           case 5:
-            _context27.next = 10;
+            _context29.next = 10;
             break;
           case 7:
-            _context27.prev = 7;
-            _context27.t0 = _context27["catch"](2);
+            _context29.prev = 7;
+            _context29.t0 = _context29["catch"](2);
             fetchHistory();
           case 10:
           case "end":
-            return _context27.stop();
+            return _context29.stop();
         }
-      }, _callee27, null, [[2, 7]]);
+      }, _callee29, null, [[2, 7]]);
     }));
     return function handleDeleteHistory(_x11) {
-      return _ref38.apply(this, arguments);
+      return _ref40.apply(this, arguments);
     };
   }();
   var handleInspectClick = /*#__PURE__*/function () {
-    var _ref39 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee28(historyId) {
+    var _ref41 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee30(historyId) {
       var res, data, _data$history$curated;
-      return _regeneratorRuntime().wrap(function _callee28$(_context28) {
-        while (1) switch (_context28.prev = _context28.next) {
+      return _regeneratorRuntime().wrap(function _callee30$(_context30) {
+        while (1) switch (_context30.prev = _context30.next) {
           case 0:
-            _context28.prev = 0;
+            _context30.prev = 0;
             setInspectingId(historyId);
-            _context28.next = 4;
+            _context30.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts/history/").concat(historyId), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 4:
-            res = _context28.sent;
-            _context28.next = 7;
+            res = _context30.sent;
+            _context30.next = 7;
             return res.json();
           case 7:
-            data = _context28.sent;
+            data = _context30.sent;
             if (res.ok && data.history) {
               setViewingSnapshot(data.history);
               setSnapshotScope("curated");
@@ -6086,52 +6287,52 @@ function EmailAlertsView(_ref30) {
             } else {
               showToast("Failed to load historical snapshot.", "error");
             }
-            _context28.next = 14;
+            _context30.next = 14;
             break;
           case 11:
-            _context28.prev = 11;
-            _context28.t0 = _context28["catch"](0);
-            showToast(_context28.t0.message, "error");
+            _context30.prev = 11;
+            _context30.t0 = _context30["catch"](0);
+            showToast(_context30.t0.message, "error");
           case 14:
-            _context28.prev = 14;
+            _context30.prev = 14;
             setInspectingId(null);
-            return _context28.finish(14);
+            return _context30.finish(14);
           case 17:
           case "end":
-            return _context28.stop();
+            return _context30.stop();
         }
-      }, _callee28, null, [[0, 11, 14, 17]]);
+      }, _callee30, null, [[0, 11, 14, 17]]);
     }));
     return function handleInspectClick(_x12) {
-      return _ref39.apply(this, arguments);
+      return _ref41.apply(this, arguments);
     };
   }();
   var handleDownloadHistoryCSV = /*#__PURE__*/function () {
-    var _ref40 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee29(historyId) {
+    var _ref42 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee31(historyId) {
       var type,
         res,
         data,
         list,
         label,
         prefix,
-        _args29 = arguments;
-      return _regeneratorRuntime().wrap(function _callee29$(_context29) {
-        while (1) switch (_context29.prev = _context29.next) {
+        _args31 = arguments;
+      return _regeneratorRuntime().wrap(function _callee31$(_context31) {
+        while (1) switch (_context31.prev = _context31.next) {
           case 0:
-            type = _args29.length > 1 && _args29[1] !== undefined ? _args29[1] : 'curated';
-            _context29.prev = 1;
-            _context29.next = 4;
+            type = _args31.length > 1 && _args31[1] !== undefined ? _args31[1] : 'curated';
+            _context31.prev = 1;
+            _context31.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/alerts/history/").concat(historyId), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 4:
-            res = _context29.sent;
-            _context29.next = 7;
+            res = _context31.sent;
+            _context31.next = 7;
             return res.json();
           case 7:
-            data = _context29.sent;
+            data = _context31.sent;
             if (res.ok && data.history) {
               list = type === 'raw' ? data.history.raw_jobs || [] : data.history.curated_jobs || [];
               label = type === 'raw' ? "Raw Harvested" : "Curated Matches";
@@ -6141,20 +6342,20 @@ function EmailAlertsView(_ref30) {
             } else {
               showToast("Failed to export historical CSV.", "error");
             }
-            _context29.next = 14;
+            _context31.next = 14;
             break;
           case 11:
-            _context29.prev = 11;
-            _context29.t0 = _context29["catch"](1);
-            showToast("Error generating CSV: " + _context29.t0.message, "error");
+            _context31.prev = 11;
+            _context31.t0 = _context31["catch"](1);
+            showToast("Error generating CSV: " + _context31.t0.message, "error");
           case 14:
           case "end":
-            return _context29.stop();
+            return _context31.stop();
         }
-      }, _callee29, null, [[1, 11]]);
+      }, _callee31, null, [[1, 11]]);
     }));
     return function handleDownloadHistoryCSV(_x13) {
-      return _ref40.apply(this, arguments);
+      return _ref42.apply(this, arguments);
     };
   }();
   var activeSnapshotList = useMemo(function () {
@@ -6696,153 +6897,169 @@ function EmailAlertsView(_ref30) {
 // ==========================================
 // Component: Admin User Management Portal
 // ==========================================
-function AdminPortal(_ref41) {
-  var token = _ref41.token,
-    user = _ref41.user,
-    showToast = _ref41.showToast;
-  var _useState235 = useState([]),
-    _useState236 = _slicedToArray(_useState235, 2),
-    users = _useState236[0],
-    setUsers = _useState236[1];
-  var _useState237 = useState(true),
-    _useState238 = _slicedToArray(_useState237, 2),
-    loading = _useState238[0],
-    setLoading = _useState238[1];
-  var _useState239 = useState(""),
-    _useState240 = _slicedToArray(_useState239, 2),
-    newEmail = _useState240[0],
-    setNewEmail = _useState240[1];
-  var _useState241 = useState(""),
+function AdminPortal(_ref43) {
+  var token = _ref43.token,
+    user = _ref43.user,
+    showToast = _ref43.showToast,
+    parentBgEnabled = _ref43.bgCheckEnabled,
+    parentBgLoading = _ref43.bgCheckLoading,
+    parentBgMeta = _ref43.bgCheckMeta,
+    parentOnToggle = _ref43.onToggleBgCheck;
+  var _useState241 = useState([]),
     _useState242 = _slicedToArray(_useState241, 2),
-    newPassword = _useState242[0],
-    setNewPassword = _useState242[1];
-  var _useState243 = useState("user"),
+    users = _useState242[0],
+    setUsers = _useState242[1];
+  var _useState243 = useState(true),
     _useState244 = _slicedToArray(_useState243, 2),
-    newRole = _useState244[0],
-    setNewRole = _useState244[1];
-  var _useState245 = useState(false),
+    loading = _useState244[0],
+    setLoading = _useState244[1];
+  var _useState245 = useState(""),
     _useState246 = _slicedToArray(_useState245, 2),
-    creating = _useState246[0],
-    setCreating = _useState246[1];
+    newEmail = _useState246[0],
+    setNewEmail = _useState246[1];
+  var _useState247 = useState(""),
+    _useState248 = _slicedToArray(_useState247, 2),
+    newPassword = _useState248[0],
+    setNewPassword = _useState248[1];
+  var _useState249 = useState("user"),
+    _useState250 = _slicedToArray(_useState249, 2),
+    newRole = _useState250[0],
+    setNewRole = _useState250[1];
+  var _useState251 = useState(false),
+    _useState252 = _slicedToArray(_useState251, 2),
+    creating = _useState252[0],
+    setCreating = _useState252[1];
 
   // Global Platform Background Check / Crawler State
-  var _useState247 = useState(true),
-    _useState248 = _slicedToArray(_useState247, 2),
-    bgCheckEnabled = _useState248[0],
-    setBgCheckEnabled = _useState248[1];
-  var _useState249 = useState(false),
-    _useState250 = _slicedToArray(_useState249, 2),
-    bgCheckLoading = _useState250[0],
-    setBgCheckLoading = _useState250[1];
-  var _useState251 = useState(null),
-    _useState252 = _slicedToArray(_useState251, 2),
-    bgCheckMeta = _useState252[0],
-    setBgCheckMeta = _useState252[1];
+  var _useState253 = useState(true),
+    _useState254 = _slicedToArray(_useState253, 2),
+    internalBgEnabled = _useState254[0],
+    setInternalBgEnabled = _useState254[1];
+  var _useState255 = useState(false),
+    _useState256 = _slicedToArray(_useState255, 2),
+    internalBgLoading = _useState256[0],
+    setInternalBgLoading = _useState256[1];
+  var _useState257 = useState(null),
+    _useState258 = _slicedToArray(_useState257, 2),
+    internalBgMeta = _useState258[0],
+    setInternalBgMeta = _useState258[1];
+  var bgCheckEnabled = parentBgEnabled !== undefined ? parentBgEnabled : internalBgEnabled;
+  var bgCheckLoading = parentBgLoading !== undefined ? parentBgLoading : internalBgLoading;
+  var bgCheckMeta = parentBgMeta !== undefined ? parentBgMeta : internalBgMeta;
   var fetchUsers = /*#__PURE__*/function () {
-    var _ref42 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee30() {
+    var _ref44 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee32() {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee30$(_context30) {
-        while (1) switch (_context30.prev = _context30.next) {
+      return _regeneratorRuntime().wrap(function _callee32$(_context32) {
+        while (1) switch (_context32.prev = _context32.next) {
           case 0:
-            _context30.prev = 0;
+            _context32.prev = 0;
             setLoading(true);
-            _context30.next = 4;
+            _context32.next = 4;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/users"), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 4:
-            res = _context30.sent;
-            _context30.next = 7;
+            res = _context32.sent;
+            _context32.next = 7;
             return res.json();
           case 7:
-            data = _context30.sent;
+            data = _context32.sent;
             if (res.ok) {
               setUsers(data || []);
             } else {
               showToast(data.detail || "Failed to load users", "error");
             }
-            _context30.next = 14;
+            _context32.next = 14;
             break;
           case 11:
-            _context30.prev = 11;
-            _context30.t0 = _context30["catch"](0);
-            showToast(_context30.t0.message, "error");
+            _context32.prev = 11;
+            _context32.t0 = _context32["catch"](0);
+            showToast(_context32.t0.message, "error");
           case 14:
-            _context30.prev = 14;
+            _context32.prev = 14;
             setLoading(false);
-            return _context30.finish(14);
+            return _context32.finish(14);
           case 17:
           case "end":
-            return _context30.stop();
+            return _context32.stop();
         }
-      }, _callee30, null, [[0, 11, 14, 17]]);
+      }, _callee32, null, [[0, 11, 14, 17]]);
     }));
     return function fetchUsers() {
-      return _ref42.apply(this, arguments);
+      return _ref44.apply(this, arguments);
     };
   }();
   var fetchBgCheckStatus = /*#__PURE__*/function () {
-    var _ref43 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee31() {
+    var _ref45 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee33() {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee31$(_context31) {
-        while (1) switch (_context31.prev = _context31.next) {
+      return _regeneratorRuntime().wrap(function _callee33$(_context33) {
+        while (1) switch (_context33.prev = _context33.next) {
           case 0:
-            _context31.prev = 0;
-            _context31.next = 3;
+            _context33.prev = 0;
+            _context33.next = 3;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check"), {
               headers: {
                 'Authorization': "Bearer ".concat(token)
               }
             });
           case 3:
-            res = _context31.sent;
-            _context31.next = 6;
+            res = _context33.sent;
+            _context33.next = 6;
             return res.json();
           case 6:
-            data = _context31.sent;
+            data = _context33.sent;
             if (res.ok) {
-              setBgCheckEnabled(Boolean(data.enabled));
-              setBgCheckMeta(data);
+              setInternalBgEnabled(Boolean(data.enabled));
+              setInternalBgMeta(data);
             }
-            _context31.next = 13;
+            _context33.next = 13;
             break;
           case 10:
-            _context31.prev = 10;
-            _context31.t0 = _context31["catch"](0);
-            console.warn("Could not fetch background check status:", _context31.t0);
+            _context33.prev = 10;
+            _context33.t0 = _context33["catch"](0);
+            console.warn("Could not fetch background check status:", _context33.t0);
           case 13:
           case "end":
-            return _context31.stop();
+            return _context33.stop();
         }
-      }, _callee31, null, [[0, 10]]);
+      }, _callee33, null, [[0, 10]]);
     }));
     return function fetchBgCheckStatus() {
-      return _ref43.apply(this, arguments);
+      return _ref45.apply(this, arguments);
     };
   }();
   useEffect(function () {
     fetchUsers();
-    fetchBgCheckStatus();
-  }, []);
+    if (parentBgEnabled === undefined) {
+      fetchBgCheckStatus();
+    }
+  }, [parentBgEnabled]);
   var handleToggleBgCheck = /*#__PURE__*/function () {
-    var _ref44 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee32() {
+    var _ref46 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee34() {
       var willDisable, confirmMsg, res, data;
-      return _regeneratorRuntime().wrap(function _callee32$(_context32) {
-        while (1) switch (_context32.prev = _context32.next) {
+      return _regeneratorRuntime().wrap(function _callee34$(_context34) {
+        while (1) switch (_context34.prev = _context34.next) {
           case 0:
+            if (!parentOnToggle) {
+              _context34.next = 3;
+              break;
+            }
+            parentOnToggle();
+            return _context34.abrupt("return");
+          case 3:
             willDisable = bgCheckEnabled;
             confirmMsg = willDisable ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website." : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
             if (confirm(confirmMsg)) {
-              _context32.next = 4;
+              _context34.next = 7;
               break;
             }
-            return _context32.abrupt("return");
-          case 4:
-            _context32.prev = 4;
+            return _context34.abrupt("return");
+          case 7:
+            _context34.prev = 7;
             setBgCheckLoading(true);
-            _context32.next = 8;
+            _context34.next = 11;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check/toggle"), {
               method: "POST",
               headers: {
@@ -6853,12 +7070,12 @@ function AdminPortal(_ref41) {
                 enabled: !bgCheckEnabled
               })
             });
-          case 8:
-            res = _context32.sent;
-            _context32.next = 11;
-            return res.json();
           case 11:
-            data = _context32.sent;
+            res = _context34.sent;
+            _context34.next = 14;
+            return res.json();
+          case 14:
+            data = _context34.sent;
             if (res.ok) {
               setBgCheckEnabled(Boolean(data.enabled));
               showToast(data.message, data.enabled ? "success" : "info");
@@ -6866,36 +7083,36 @@ function AdminPortal(_ref41) {
             } else {
               showToast(data.detail || "Failed to update background check status", "error");
             }
-            _context32.next = 18;
+            _context34.next = 21;
             break;
-          case 15:
-            _context32.prev = 15;
-            _context32.t0 = _context32["catch"](4);
-            showToast(_context32.t0.message, "error");
           case 18:
-            _context32.prev = 18;
-            setBgCheckLoading(false);
-            return _context32.finish(18);
+            _context34.prev = 18;
+            _context34.t0 = _context34["catch"](7);
+            showToast(_context34.t0.message, "error");
           case 21:
+            _context34.prev = 21;
+            setBgCheckLoading(false);
+            return _context34.finish(21);
+          case 24:
           case "end":
-            return _context32.stop();
+            return _context34.stop();
         }
-      }, _callee32, null, [[4, 15, 18, 21]]);
+      }, _callee34, null, [[7, 18, 21, 24]]);
     }));
     return function handleToggleBgCheck() {
-      return _ref44.apply(this, arguments);
+      return _ref46.apply(this, arguments);
     };
   }();
   var handleCreateUser = /*#__PURE__*/function () {
-    var _ref45 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee33(e) {
+    var _ref47 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee35(e) {
       var res, data;
-      return _regeneratorRuntime().wrap(function _callee33$(_context33) {
-        while (1) switch (_context33.prev = _context33.next) {
+      return _regeneratorRuntime().wrap(function _callee35$(_context35) {
+        while (1) switch (_context35.prev = _context35.next) {
           case 0:
             e.preventDefault();
             setCreating(true);
-            _context33.prev = 2;
-            _context33.next = 5;
+            _context35.prev = 2;
+            _context35.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/users"), {
               method: "POST",
               headers: {
@@ -6909,11 +7126,11 @@ function AdminPortal(_ref41) {
               })
             });
           case 5:
-            res = _context33.sent;
-            _context33.next = 8;
+            res = _context35.sent;
+            _context35.next = 8;
             return res.json();
           case 8:
-            data = _context33.sent;
+            data = _context35.sent;
             if (res.ok) {
               showToast("User '".concat(newEmail, "' created!"));
               setNewEmail("");
@@ -6923,100 +7140,6 @@ function AdminPortal(_ref41) {
             } else {
               showToast(data.detail || "Failed to create user", "error");
             }
-            _context33.next = 15;
-            break;
-          case 12:
-            _context33.prev = 12;
-            _context33.t0 = _context33["catch"](2);
-            showToast(_context33.t0.message, "error");
-          case 15:
-            _context33.prev = 15;
-            setCreating(false);
-            return _context33.finish(15);
-          case 18:
-          case "end":
-            return _context33.stop();
-        }
-      }, _callee33, null, [[2, 12, 15, 18]]);
-    }));
-    return function handleCreateUser(_x14) {
-      return _ref45.apply(this, arguments);
-    };
-  }();
-  var handleToggleStatus = /*#__PURE__*/function () {
-    var _ref46 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee34(userId) {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee34$(_context34) {
-        while (1) switch (_context34.prev = _context34.next) {
-          case 0:
-            _context34.prev = 0;
-            _context34.next = 3;
-            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId, "/status"), {
-              method: "PATCH",
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 3:
-            res = _context34.sent;
-            _context34.next = 6;
-            return res.json();
-          case 6:
-            data = _context34.sent;
-            if (res.ok) {
-              showToast(data.message);
-              fetchUsers();
-            } else {
-              showToast(data.detail || "Status toggle failed", "error");
-            }
-            _context34.next = 13;
-            break;
-          case 10:
-            _context34.prev = 10;
-            _context34.t0 = _context34["catch"](0);
-            showToast(_context34.t0.message, "error");
-          case 13:
-          case "end":
-            return _context34.stop();
-        }
-      }, _callee34, null, [[0, 10]]);
-    }));
-    return function handleToggleStatus(_x15) {
-      return _ref46.apply(this, arguments);
-    };
-  }();
-  var handleDeleteUser = /*#__PURE__*/function () {
-    var _ref47 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee35(userId) {
-      var res, data;
-      return _regeneratorRuntime().wrap(function _callee35$(_context35) {
-        while (1) switch (_context35.prev = _context35.next) {
-          case 0:
-            if (confirm("Are you sure you want to delete this user?")) {
-              _context35.next = 2;
-              break;
-            }
-            return _context35.abrupt("return");
-          case 2:
-            _context35.prev = 2;
-            _context35.next = 5;
-            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId), {
-              method: "DELETE",
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
-            });
-          case 5:
-            res = _context35.sent;
-            _context35.next = 8;
-            return res.json();
-          case 8:
-            data = _context35.sent;
-            if (res.ok) {
-              showToast(data.message);
-              fetchUsers();
-            } else {
-              showToast(data.detail || "Delete user failed", "error");
-            }
             _context35.next = 15;
             break;
           case 12:
@@ -7024,13 +7147,107 @@ function AdminPortal(_ref41) {
             _context35.t0 = _context35["catch"](2);
             showToast(_context35.t0.message, "error");
           case 15:
+            _context35.prev = 15;
+            setCreating(false);
+            return _context35.finish(15);
+          case 18:
           case "end":
             return _context35.stop();
         }
-      }, _callee35, null, [[2, 12]]);
+      }, _callee35, null, [[2, 12, 15, 18]]);
+    }));
+    return function handleCreateUser(_x14) {
+      return _ref47.apply(this, arguments);
+    };
+  }();
+  var handleToggleStatus = /*#__PURE__*/function () {
+    var _ref48 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee36(userId) {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee36$(_context36) {
+        while (1) switch (_context36.prev = _context36.next) {
+          case 0:
+            _context36.prev = 0;
+            _context36.next = 3;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId, "/status"), {
+              method: "PATCH",
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 3:
+            res = _context36.sent;
+            _context36.next = 6;
+            return res.json();
+          case 6:
+            data = _context36.sent;
+            if (res.ok) {
+              showToast(data.message);
+              fetchUsers();
+            } else {
+              showToast(data.detail || "Status toggle failed", "error");
+            }
+            _context36.next = 13;
+            break;
+          case 10:
+            _context36.prev = 10;
+            _context36.t0 = _context36["catch"](0);
+            showToast(_context36.t0.message, "error");
+          case 13:
+          case "end":
+            return _context36.stop();
+        }
+      }, _callee36, null, [[0, 10]]);
+    }));
+    return function handleToggleStatus(_x15) {
+      return _ref48.apply(this, arguments);
+    };
+  }();
+  var handleDeleteUser = /*#__PURE__*/function () {
+    var _ref49 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee37(userId) {
+      var res, data;
+      return _regeneratorRuntime().wrap(function _callee37$(_context37) {
+        while (1) switch (_context37.prev = _context37.next) {
+          case 0:
+            if (confirm("Are you sure you want to delete this user?")) {
+              _context37.next = 2;
+              break;
+            }
+            return _context37.abrupt("return");
+          case 2:
+            _context37.prev = 2;
+            _context37.next = 5;
+            return fetch("".concat(API_BASE_URL, "/api/v1/admin/users/").concat(userId), {
+              method: "DELETE",
+              headers: {
+                'Authorization': "Bearer ".concat(token)
+              }
+            });
+          case 5:
+            res = _context37.sent;
+            _context37.next = 8;
+            return res.json();
+          case 8:
+            data = _context37.sent;
+            if (res.ok) {
+              showToast(data.message);
+              fetchUsers();
+            } else {
+              showToast(data.detail || "Delete user failed", "error");
+            }
+            _context37.next = 15;
+            break;
+          case 12:
+            _context37.prev = 12;
+            _context37.t0 = _context37["catch"](2);
+            showToast(_context37.t0.message, "error");
+          case 15:
+          case "end":
+            return _context37.stop();
+        }
+      }, _callee37, null, [[2, 12]]);
     }));
     return function handleDeleteUser(_x16) {
-      return _ref47.apply(this, arguments);
+      return _ref49.apply(this, arguments);
     };
   }();
   return /*#__PURE__*/React.createElement("div", {
