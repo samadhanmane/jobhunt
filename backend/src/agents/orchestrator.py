@@ -211,10 +211,17 @@ Candidate Background:
                 if cleaned_q and len(cleaned_q) > 2 and cleaned_q.lower() not in [sq.lower() for sq in search_queries]:
                     search_queries.append(cleaned_q)
 
-        target_queries = search_queries[:3]
+        is_alert = bool(preferences.get("is_alert_run", False))
+        if is_alert:
+            # During scheduled daily alerts, limit to top 1 primary query and semaphore 2 to strictly bound memory below 250MB
+            target_queries = search_queries[:1]
+            sem = asyncio.Semaphore(2)
+        else:
+            target_queries = search_queries[:3]
+            sem = asyncio.Semaphore(4)
 
         print(f"[Orchestrator] ===========================================")
-        print(f"[Orchestrator] Active Search Titles ({len(target_queries)}): {target_queries}")
+        print(f"[Orchestrator] Active Search Titles ({len(target_queries)}): {target_queries}{' [Alert Digest Mode]' if is_alert else ''}")
         print(f"[Orchestrator] Target Location: '{location or 'Worldwide'}'")
         print(f"[Orchestrator] Remote Only: {remote}")
         print(f"[Orchestrator] Domain Keywords: {domain_keywords[:6]}")
@@ -222,7 +229,6 @@ Candidate Background:
         print(f"[Orchestrator] ===========================================")
 
         import gc
-        sem = asyncio.Semaphore(4)
 
         async def run_guarded(coro):
             async with sem:
@@ -333,8 +339,9 @@ Candidate Background:
         for idx, res in enumerate(results):
             if isinstance(res, list):
                 for job in res:
-                    if job.get("description") and len(job["description"]) > 3000:
-                        job["description"] = job["description"][:3000]
+                    max_desc_len = 1500 if is_alert else 3000
+                    if job.get("description") and len(job["description"]) > max_desc_len:
+                        job["description"] = job["description"][:max_desc_len]
                     source = (job.get("source") or "unknown").lower()
                     platform_counts[source] = platform_counts.get(source, 0) + 1
 

@@ -37,6 +37,15 @@ class SchedulerService:
         self.deduplicator = DeduplicationAgent()
         self.ranking_agent = RankingAgent()
         self._discovery_running = False
+        self._alert_lock = None
+        self._queued_or_running_alert_ids = set()
+        self._alert_queue = []
+        self._alert_worker_running = False
+
+    def _get_alert_lock(self):
+        if self._alert_lock is None:
+            self._alert_lock = asyncio.Lock()
+        return self._alert_lock
 
     def cleanup_old_jobs(self, db: Session, days: int = 7) -> int:
         """
@@ -125,7 +134,8 @@ class SchedulerService:
                 "sub_domain": sub_dom,
                 "ai_facets": facets,
                 "experience_years": alert.experience_years or 0.0,
-                "max_age_days": max_days
+                "max_age_days": max_days,
+                "is_alert_run": True
             }
 
             candidate_profile = {
@@ -278,16 +288,20 @@ class SchedulerService:
                 raw_total_count=len(raw_jobs)
             )
 
-            # 7. Update Database with sent hashes and last_sent_at
-            try:
-                sent_curated_hashes = list(sent_hashes)
-                for j in curated_jobs:
-                    sent_curated_hashes.append(generate_job_hash(j))
-                alert.sent_job_hashes = list(dict.fromkeys(sent_curated_hashes))[-300:]
-                alert.last_sent_at = datetime.utcnow()
-                db.commit()
-            except Exception as db_err:
-                print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
+            # 7. Update Database with sent hashes and last_sent_at ONLY on successful delivery
+            if sent_success:
+                try:
+                    sent_curated_hashes = list(sent_hashes)
+                    for j in curated_jobs:
+                        sent_curated_hashes.append(generate_job_hash(j))
+                    alert.sent_job_hashes = list(dict.fromkeys(sent_curated_hashes))[-300:]
+                    alert.last_sent_at = datetime.utcnow()
+                    db.commit()
+                    print(f"[Scheduler] ✅ Alert {alert.id} ({alert.email}) successfully delivered and last_sent_at updated.")
+                except Exception as db_err:
+                    print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
+            else:
+                print(f"[Scheduler] ⚠️ Email delivery failed or partial for {alert.email}. last_sent_at preserved for safe retry.")
 
             # 8. Record in AutomationHistory for interactive website inspection
             try:
@@ -327,6 +341,27 @@ class SchedulerService:
             print(f"[Scheduler] Error executing alert {alert_id}: {e}")
             return {"status": "error", "message": str(e)}
         finally:
+            try:
+                del raw_jobs
+            except Exception:
+                pass
+            try:
+                del unique_batch
+            except Exception:
+                pass
+            try:
+                del fresh_jobs
+            except Exception:
+                pass
+            try:
+                del ranked_jobs
+            except Exception:
+                pass
+            try:
+                del curated_jobs
+            except Exception:
+                pass
+            gc.collect()
             if close_db:
                 db.close()
 
@@ -458,12 +493,14 @@ class SchedulerService:
             for alert in active_alerts:
                 pref_time = (alert.preferred_time or "09:00").strip()
                 if is_daily_alert_due(pref_time, alert.last_sent_at):
-                    print(f"[Scheduler] Daily Digest Due (Scheduled: {pref_time} IST | Now: {now_ist.strftime('%H:%M')} IST) for '{alert.email}' (Role: {alert.role}). Dispatching now...")
-                    # Update last_sent_at immediately to prevent duplicate dispatch during long runs
-                    alert.last_sent_at = now_utc
-                    db.commit()
-                    asyncio.create_task(self.execute_alert_run(alert.id))
-                    dispatched_count += 1
+                    if alert.id not in self._queued_or_running_alert_ids:
+                        print(f"[Scheduler] Daily Digest Due (Scheduled: {pref_time} IST | Now: {now_ist.strftime('%H:%M')} IST) for '{alert.email}' (Role: {alert.role}, Loc: {alert.location}). Enqueuing for sequential execution...")
+                        self._queued_or_running_alert_ids.add(alert.id)
+                        self._alert_queue.append(alert.id)
+                        dispatched_count += 1
+
+            if self._alert_queue and not self._alert_worker_running:
+                asyncio.create_task(self._process_alert_queue())
 
             return dispatched_count
         except Exception as e:
@@ -479,6 +516,38 @@ class SchedulerService:
             except Exception:
                 pass
 
+    async def _process_alert_queue(self):
+        """
+        Processes queued daily email alerts SEQUENTIALLY one at a time.
+        Serializing execution prevents memory spikes and OOM crashes on Render's 512MB RAM tier,
+        ensuring each alert crawls, digests, emails, updates DB, and frees RAM with garbage collection
+        before the next alert begins.
+        """
+        if self._alert_worker_running:
+            return
+
+        lock = self._get_alert_lock()
+        async with lock:
+            self._alert_worker_running = True
+            try:
+                while self._alert_queue:
+                    alert_id = self._alert_queue.pop(0)
+                    print(f"[Scheduler/Worker] 🚀 Starting sequential alert execution for ID: {alert_id} ({len(self._alert_queue)} remaining in queue)")
+                    try:
+                        res = await self.execute_alert_run(alert_id)
+                        print(f"[Scheduler/Worker] ✅ Alert {alert_id} finished with status: {res.get('status')}")
+                    except Exception as run_err:
+                        print(f"[Scheduler/Worker] ❌ Error executing alert {alert_id}: {run_err}")
+                    finally:
+                        self._queued_or_running_alert_ids.discard(alert_id)
+                        gc.collect()
+                        if self._alert_queue:
+                            print(f"[Scheduler/Worker] Cooling event loop for 4s before next alert...")
+                            await asyncio.sleep(4)
+            finally:
+                self._alert_worker_running = False
+                gc.collect()
+
     async def run_continuous_background_job_discovery(self):
         """
         Runs periodic server-side background job discovery across platforms for all
@@ -489,6 +558,10 @@ class SchedulerService:
         """
         if self._discovery_running:
             print("[Background Auto-Discovery] Notice: Background discovery already running, skipping overlapping cycle.")
+            return
+
+        if self._alert_worker_running or bool(self._queued_or_running_alert_ids):
+            print("[Background Auto-Discovery] Scheduled daily email alerts are currently processing. Deferring discovery cycle to preserve memory.")
             return
 
         self._discovery_running = True
