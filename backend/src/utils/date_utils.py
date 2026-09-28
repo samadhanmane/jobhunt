@@ -1,10 +1,50 @@
 import datetime
+import re
 from typing import Any, Optional
 import pandas as pd
 
+def parse_relative_posted_date(s_val: str) -> Optional[str]:
+    """
+    Parses relative date strings like '5d ago', 'today', 'yesterday',
+    '2 weeks ago', '3h ago' into a standard 'YYYY-MM-DD' date string.
+    """
+    if not s_val:
+        return None
+    s = s_val.lower().strip()
+    now = datetime.datetime.utcnow()
+    
+    if s in ["today", "just now", "moments ago", "few seconds ago", "recently", "active today"]:
+        return now.strftime("%Y-%m-%d")
+    if s in ["yesterday", "active yesterday", "1d ago", "1 day ago", "1day ago"]:
+        return (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Hours / minutes ago -> today
+    if re.search(r'\b\d+\s*(?:h|hr|hrs|hour|hours|min|mins|minute|minutes)\s*(?:ago)?\b', s):
+        return now.strftime("%Y-%m-%d")
+
+    # Days ago (e.g. '5d ago', '3 days ago', '5d', '3 days')
+    m_day = re.search(r'\b(\d+)\s*(?:d|day|days)\s*(?:ago)?\b', s)
+    if m_day:
+        days = int(m_day.group(1))
+        return (now - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+
+    # Weeks ago (e.g. '2w ago', '3 weeks ago', '2w', '1 week')
+    m_wk = re.search(r'\b(\d+)\s*(?:w|wk|wks|week|weeks)\s*(?:ago)?\b', s)
+    if m_wk:
+        weeks = int(m_wk.group(1))
+        return (now - datetime.timedelta(days=weeks * 7)).strftime("%Y-%m-%d")
+
+    # Months ago (e.g. '1mo ago', '2 months ago', '1m ago')
+    m_mo = re.search(r'\b(\d+)\s*(?:mo|mon|mons|month|months)\s*(?:ago)?\b', s)
+    if m_mo:
+        months = int(m_mo.group(1))
+        return (now - datetime.timedelta(days=months * 30)).strftime("%Y-%m-%d")
+
+    return None
+
 def format_posted_date_for_csv(raw_date: Any) -> str:
     """
-    Standardizes any raw date, ISO string, or numeric epoch timestamp into 'YYYY-MM-DD'.
+    Standardizes any raw date, ISO string, relative text, or numeric epoch timestamp into 'YYYY-MM-DD'.
     If the date is missing, empty, or unparseable into a realistic valid date, returns 'N/A'.
     """
     if raw_date is None:
@@ -15,6 +55,11 @@ def format_posted_date_for_csv(raw_date: Any) -> str:
         return "N/A"
         
     try:
+        # Check relative date expressions (e.g. '5d ago', 'today', 'yesterday')
+        rel_date = parse_relative_posted_date(s_val)
+        if rel_date:
+            return rel_date
+
         # Check numeric epoch timestamp (seconds or milliseconds)
         clean_num = s_val.replace(".", "", 1)
         if clean_num.isdigit():
@@ -73,7 +118,8 @@ def is_within_days(raw_date: Any, max_days: int) -> bool:
         dt = datetime.datetime.strptime(formatted, "%Y-%m-%d")
         now = datetime.datetime.utcnow()
         diff_days = (now - dt).total_seconds() / (24 * 3600)
-        # Allow up to 1.5 days future timezone leeway
-        return -1.5 <= diff_days <= float(max_days)
+        # Allow up to 1.5 days future timezone leeway (e.g. IST vs UTC)
+        # and allow up to max_days + 0.5 day buffer for 24-hr daily digests
+        return -1.5 <= diff_days <= float(max_days) + 0.5
     except Exception:
         return False if max_days <= 7 else True

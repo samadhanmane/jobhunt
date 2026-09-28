@@ -375,6 +375,29 @@ Candidate Background:
             blacklist_clean = {b.lower().strip() for b in blacklist if b}
             all_jobs = [j for j in all_jobs if j.get("company", "").lower().strip() not in blacklist_clean]
 
+        # Geographic Location Alignment Gate:
+        # If user specified a target location (e.g. Pune, Bangalore, India), strictly filter all gathered jobs
+        # so foreign / mismatched jobs do not pollute raw ingestion results or reports
+        if location and location.lower() not in ["worldwide", "global", "all", "any", "remote", ""]:
+            from src.utils.location_helper import is_job_location_match
+            pref_mode = preferences.get("work_mode") or preferences.get("remote_preference") or ("remote" if remote else "any")
+            filtered_jobs = []
+            for j in all_jobs:
+                if is_job_location_match(
+                    job_location=j.get("location", ""),
+                    pref_location=location,
+                    pref_work_mode=pref_mode,
+                    job_source=j.get("source", ""),
+                    job_description=j.get("description", "")[:800],
+                    job_title=j.get("title", ""),
+                    job_url=j.get("url", "")
+                ):
+                    filtered_jobs.append(j)
+            all_jobs = filtered_jobs
+        elif location and location.lower() == "remote":
+            from src.utils.location_helper import detect_work_mode
+            all_jobs = [j for j in all_jobs if detect_work_mode(j.get("location", ""), j.get("title", ""), j.get("description", "")[:800]).lower() == "remote"]
+
         del results
         gc.collect()
 

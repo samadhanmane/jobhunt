@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import List, Dict, Any
 import httpx
 from bs4 import BeautifulSoup
@@ -106,7 +107,7 @@ class HireDoorClient(BaseJobIntegration):
 
                         for b in badges:
                             b_lower = b.lower()
-                            if "ago" in b_lower or "today" in b_lower or "yesterday" in b_lower:
+                            if any(k in b_lower for k in ["ago", "today", "yesterday", "just now"]) or re.search(r'^\d+\s*[dhwm](?:rs?|ays?|ks?|os?)?$', b_lower):
                                 posted_raw = b
                             elif b_lower in ["remote", "onsite", "hybrid"]:
                                 card_work_mode = b.capitalize()

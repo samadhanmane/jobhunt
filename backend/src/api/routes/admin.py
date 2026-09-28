@@ -195,10 +195,16 @@ def toggle_background_check(
 
     scheduler_service.set_background_discovery_enabled(new_val, updated_by=admin.email)
 
+    from src.services.keepalive_service import keepalive_service
+    if not new_val:
+        keepalive_service.stop()
+    else:
+        keepalive_service.start()
+
     msg = (
-        "Background check has been STOPPED for everyone. Continuous background crawling is paused, and results will only be fetched when users search on-demand."
+        "Background check has been STOPPED for everyone. Continuous background crawling and keepalive pings are paused to prevent consuming Render credits. Results will only be fetched when users search on-demand."
         if not new_val else
-        "Background check has been ENABLED for everyone. Continuous background job discovery will run every 1 hour."
+        "Background check has been ENABLED for everyone. Continuous background job discovery will run periodically."
     )
 
     return {

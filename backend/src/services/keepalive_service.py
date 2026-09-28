@@ -48,9 +48,17 @@ class KeepAliveService:
                 await asyncio.sleep(interval_sec)
 
     def start(self):
-        if not getattr(settings, "KEEPALIVE_ENABLED", True):
-            print("[KeepAlive] Notice: KeepAlive disabled by configuration.")
+        if not getattr(settings, "KEEPALIVE_ENABLED", False):
+            print("[KeepAlive] Notice: KeepAlive disabled by configuration. Render free tier will sleep when idle.")
             return
+
+        try:
+            from src.services.scheduler_service import scheduler_service
+            if not scheduler_service.is_background_discovery_enabled():
+                print("[KeepAlive] Notice: Background check is disabled by Admin. KeepAlive will not start.")
+                return
+        except Exception:
+            pass
 
         if not self._running:
             self._running = True
@@ -60,5 +68,6 @@ class KeepAliveService:
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
+        print("[KeepAlive] KeepAlive self-ping heartbeat stopped.")
 
 keepalive_service = KeepAliveService()

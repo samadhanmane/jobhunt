@@ -162,6 +162,22 @@ class SchedulerService:
             if user_blacklist:
                 raw_jobs = [j for j in raw_jobs if j.get("company", "").lower().strip() not in user_blacklist]
 
+            # Enforce Location Alignment on Raw Jobs (prevents foreign jobs from leaking into raw reports)
+            if alert.location and alert.location.lower() not in ["worldwide", "global", "all", "any", "remote", ""]:
+                from src.utils.location_helper import is_job_location_match
+                raw_jobs = [
+                    j for j in raw_jobs
+                    if is_job_location_match(
+                        job_location=j.get("location", ""),
+                        pref_location=alert.location,
+                        pref_work_mode=alert.work_mode or "any",
+                        job_source=j.get("source", ""),
+                        job_description=j.get("description", "")[:800],
+                        job_title=j.get("title", ""),
+                        job_url=j.get("url", "")
+                    )
+                ]
+
             # 2. Intra-Batch Deduplication
             unique_batch = await self.deduplicator.deduplicate(raw_jobs)
 
@@ -175,6 +191,15 @@ class SchedulerService:
                     # Filter by posted date age if user selected a date window
                     if is_within_days(job.get("posted_date"), max_days):
                         fresh_jobs.append(job)
+
+            # Freshness fallback: if strict 24h filter yields 0 fresh jobs, expand to 3 days for unsent jobs
+            if not fresh_jobs and max_days == 1:
+                print(f"[Scheduler] Notice: 0 unsent jobs found strictly within 24h for '{alert.email}'. Expanding to 3-day window for unsent openings...")
+                for job in unique_batch:
+                    j_hash = generate_job_hash(job)
+                    if j_hash not in sent_hashes:
+                        if is_within_days(job.get("posted_date"), 3):
+                            fresh_jobs.append(job)
 
             print(f"[Scheduler] Found {len(raw_jobs)} raw jobs -> {len(unique_batch)} unique -> {len(fresh_jobs)} fresh matching date jobs.")
 
@@ -297,11 +322,11 @@ class SchedulerService:
                     alert.sent_job_hashes = list(dict.fromkeys(sent_curated_hashes))[-300:]
                     alert.last_sent_at = datetime.utcnow()
                     db.commit()
-                    print(f"[Scheduler] ✅ Alert {alert.id} ({alert.email}) successfully delivered and last_sent_at updated.")
+                    print(f"[Scheduler] [OK] Alert {alert.id} ({alert.email}) successfully delivered and last_sent_at updated.")
                 except Exception as db_err:
                     print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
             else:
-                print(f"[Scheduler] ⚠️ Email delivery failed or partial for {alert.email}. last_sent_at preserved for safe retry.")
+                print(f"[Scheduler] [WARN] Email delivery failed or partial for {alert.email}. last_sent_at preserved for safe retry.")
 
             # 8. Record in AutomationHistory for interactive website inspection
             try:

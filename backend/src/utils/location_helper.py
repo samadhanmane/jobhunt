@@ -8,10 +8,15 @@ INDIA_CITIES = [
     "secunderabad", "karnataka", "maharashtra", "telangana", "tamil nadu"
 ]
 
-FOREIGN_COUNTRIES = [
-    r'\b(us|u\.s\.|usa|united states|uk|united kingdom|canada|germany|france|spain|poland|netherlands|australia|brazil|japan|taiwan|egypt|romania|ireland|korea|south korea|dubai|uae|mexico|chile|argentina|peru|colombia|israel|singapore|china|hong kong|sweden|switzerland|italy|portugal|austria|belgium|denmark|norway|finland|czech|hungary|greece|turkey|saudi)\b',
-    r'\b(eu|emea|latam|latin america|europe|dach|na|north america|nordics|benelux|socal|norcal)\b',
-    r'\b(tx|ca|ny|wa|dc|nc|ma|il|va|co|ga|fl|pa|oh|mi|az|nj)\b'
+FOREIGN_US_STATES = [
+    "california", "texas", "florida", "new york", "washington", "massachusetts",
+    "illinois", "georgia", "colorado", "north carolina", "virginia", "ohio",
+    "michigan", "pennsylvania", "new jersey", "arizona", "tennessee", "indiana",
+    "missouri", "maryland", "wisconsin", "minnesota", "oregon", "utah", "nevada",
+    "alabama", "alaska", "arkansas", "connecticut", "delaware", "hawaii", "idaho",
+    "iowa", "kansas", "kentucky", "louisiana", "maine", "mississippi", "montana",
+    "nebraska", "new hampshire", "new mexico", "north dakota", "oklahoma", "rhode island",
+    "south carolina", "south dakota", "vermont", "west virginia", "wyoming"
 ]
 
 FOREIGN_CITIES = [
@@ -20,8 +25,39 @@ FOREIGN_CITIES = [
     "madrid", "barcelona", "sydney", "melbourne", "toronto", "vancouver", "sao paulo",
     "cairo", "taipei", "bucharest", "stuttgart", "singapore", "tokyo", "dallas",
     "houston", "charlotte", "raleigh", "washington", "mountain view", "palo alto",
-    "sunnyvale", "santa clara", "san jose", "seoul", "dubai"
+    "sunnyvale", "santa clara", "san jose", "seoul", "dubai", "denver", "atlanta",
+    "miami", "philadelphia", "phoenix", "san diego", "detroit", "minneapolis",
+    "pittsburgh", "tampa", "orlando", "baltimore", "salt lake city", "portland",
+    "manchester", "birmingham", "edinburgh", "glasgow", "frankfurt", "hamburg",
+    "cologne", "warsaw", "krakow", "zurich", "geneva", "stockholm", "oslo",
+    "helsinki", "copenhagen", "vienna", "brussels", "lisbon", "tel aviv",
+    "montreal", "calgary", "ottawa", "auckland", "brisbane"
 ]
+
+FOREIGN_COUNTRIES = [
+    r'\b(us|u\.s\.|usa|united states|uk|u\.k\.|united kingdom|great britain|england|scotland|canada|germany|deutschland|france|spain|poland|netherlands|australia|brazil|japan|taiwan|egypt|romania|ireland|korea|south korea|dubai|uae|mexico|chile|argentina|peru|colombia|israel|singapore|china|hong kong|sweden|switzerland|italy|portugal|austria|belgium|denmark|norway|finland|czech|hungary|greece|turkey|saudi|philippines|vietnam|indonesia|malaysia|new zealand|south africa|nigeria|kenya)\b',
+    r'\b(eu|emea|latam|latin america|europe|dach|na|north america|nordics|benelux|socal|norcal|apac)\b',
+    r'\b(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc)\b',
+    r'\b(' + '|'.join(FOREIGN_US_STATES) + r')\b'
+]
+
+def is_foreign_location(loc_str: str) -> bool:
+    """
+    Returns True if the location explicitly belongs to a foreign country, foreign state, or foreign city.
+    """
+    if not loc_str:
+        return False
+    loc = loc_str.lower().strip()
+    
+    for rx in FOREIGN_COUNTRIES:
+        if re.search(rx, loc, re.IGNORECASE):
+            return True
+            
+    for fc in FOREIGN_CITIES:
+        if re.search(r'\b' + re.escape(fc) + r'\b', loc):
+            return True
+            
+    return False
 
 LOCATION_HIERARCHY = {
     "india": {
@@ -172,15 +208,17 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     Returns True if the job is located in an Indian tech hub or is open Remote without foreign lockouts.
     """
     loc = str(location or "").lower().strip()
+    if not loc:
+        return False
+        
     u = str(url or "").lower()
     t = str(title or "").lower()
     d = str(description or "")[:800].lower()
-    combined = f"{loc} {d}"
+    combined = f"{loc} {t} {d}"
 
     # 1. Foreign exclusions FIRST (strict negative gate)
-    for rx in FOREIGN_COUNTRIES:
-        if re.search(rx, loc, re.IGNORECASE) or re.search(rx, d[:400], re.IGNORECASE):
-            return False
+    if is_foreign_location(loc) or is_foreign_location(d[:300]):
+        return False
 
     for city in FOREIGN_CITIES:
         pattern = r'\b' + re.escape(city) + r'\b'
@@ -206,10 +244,9 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     # 3. Open Remote indicator (without foreign lockouts)
     is_remote = any(k in loc for k in REMOTE_KEYWORDS) or any(k in t for k in ["remote", "worldwide"]) or "worldwide" in loc or "anywhere" in loc
     if is_remote:
-        return True
-
-    if not loc and not u:
-        return True
+        # Must not have any foreign residency or authorization restrictions
+        if not is_foreign_location(loc) and not is_foreign_location(t):
+            return True
 
     return False
 
@@ -298,41 +335,61 @@ def is_job_location_match(
         "kochi": ["kochi", "cochin", "kerala"],
     }
 
-    # Check if pref_loc targets a specific city
-    target_city_terms = None
-    for city_key, sub_terms in METRO_AREAS.items():
-        pattern = r'\b' + re.escape(city_key) + r'\b'
-        if re.search(pattern, pref_loc):
-            target_city_terms = sub_terms
-            break
+    # Check if target location is in India
+    is_target_india = (
+        detect_country_key(pref_loc) == "india" or
+        "india" in pref_loc or
+        any(c in pref_loc for c in INDIA_CITIES) or
+        any(c in pref_loc for c in METRO_AREAS.keys())
+    )
 
-    if target_city_terms:
-        # Check if the specific city/metro sub-region appears in the job
-        combined_text = f"{job_loc} {t} {job_desc[:300]}"
-        for term in target_city_terms:
-            pattern = r'\b' + re.escape(term) + r'\b'
-            if re.search(pattern, combined_text):
-                # Ensure no foreign location is also mentioned
-                for rx in FOREIGN_COUNTRIES:
-                    if re.search(rx, job_loc):
-                        return False
-                for fc in FOREIGN_CITIES:
-                    if fc in job_loc:
-                        return False
+    if is_target_india:
+        # STRICT FOREIGN REJECTION GATE:
+        # Any foreign country, US state, or foreign city is immediately rejected
+        if is_foreign_location(job_loc):
+            return False
+
+        if any(p in f"{t} {job_desc}" for p in RESTRICTION_PATTERNS["us_only"] + RESTRICTION_PATTERNS["eu_only"]):
+            return False
+
+        # Check if user requested a specific Indian metro
+        target_city_terms = None
+        for city_key, sub_terms in METRO_AREAS.items():
+            pattern = r'\b' + re.escape(city_key) + r'\b'
+            if re.search(pattern, pref_loc):
+                target_city_terms = sub_terms
+                break
+
+        if target_city_terms:
+            # City must be physically present in job location or job title
+            loc_title_text = f"{job_loc} {t}"
+            matches_target_city = any(re.search(r'\b' + re.escape(term) + r'\b', loc_title_text) for term in target_city_terms)
+            if matches_target_city:
                 return True
-        # Only allow remote if user explicitly requested remote work mode
-        if work_mode in ["remote", "remote_only"] and job_work_mode == "remote":
-            return is_india_location(job_loc, u, t, job_desc)
-        return False
 
-    # If target location is India broadly ("india", "in", "bharat")
+            # If the job is remote and user explicitly requested remote work mode, check if it's an Indian remote opening
+            if work_mode in ["remote", "remote_only"] and job_work_mode == "remote":
+                return is_india_location(job_loc, u, t, job_desc)
+
+            return False
+
+        # If general India requested ("India", "Bharat")
+        return is_india_location(job_loc, u, t, job_desc)
+
+    # For other countries/regions
     target_country = detect_country_key(pref_loc)
-    if target_country == "india" or "india" in pref_loc:
-        return is_india_location(job_loc, job_url, job_title, job_desc)
+    if target_country and target_country in LOCATION_HIERARCHY:
+        hierarchy = LOCATION_HIERARCHY[target_country]
+        for c in hierarchy["cities"]:
+            if c in job_loc:
+                return True
+        for a in hierarchy["aliases"]:
+            if a in job_loc:
+                return True
 
     # Token match for other regions or cities
     pref_tokens = [t.strip() for t in re.split(r'[,/\s-]+', pref_loc) if len(t.strip()) > 2]
-    if any(t in job_loc for t in pref_tokens):
+    if any(tok in job_loc for tok in pref_tokens):
         return True
 
     return False

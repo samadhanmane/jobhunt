@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # Background Checking & Concurrency Settings
     BACKGROUND_DISCOVERY_INTERVAL_MINUTES: int = 60
     BACKGROUND_DISCOVERY_ENABLED: bool = True
-    KEEPALIVE_ENABLED: bool = True
+    KEEPALIVE_ENABLED: bool = False
     KEEPALIVE_INTERVAL_SECONDS: int = 180
     WORKER_THREAD_POOL_SIZE: int = 8
 

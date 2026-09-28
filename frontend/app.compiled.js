@@ -43,11 +43,13 @@ function isWithinDays(dateStr, days) {
   var str = String(dateStr).toLowerCase().trim();
   if (str.includes("today") || str.includes("just") || str.includes("hour") || str.includes("minute")) return true;
   if (days >= 1 && str.includes("yesterday")) return true;
-  if (str.includes("day ago") || str.includes("days ago")) {
-    var match = str.match(/(\d+)\s*day/);
-    if (match) {
-      return parseInt(match[1]) <= days;
-    }
+  var dMatch = str.match(/(\d+)\s*d(?:ay|ays)?\s*(?:ago)?/);
+  if (dMatch) {
+    return parseInt(dMatch[1], 10) <= days;
+  }
+  var wMatch = str.match(/(\d+)\s*w(?:eek|eeks)?\s*(?:ago)?/);
+  if (wMatch) {
+    return parseInt(wMatch[1], 10) * 7 <= days;
   }
   try {
     var jobDate;

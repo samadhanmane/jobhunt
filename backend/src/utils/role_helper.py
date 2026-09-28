@@ -147,17 +147,31 @@ def is_title_role_match(job_title: str, target_role: str) -> bool:
     role_tokens = [w for w in re.sub(r'[^a-zA-Z0-9]', ' ', t_role).split() if len(w) >= 2 and w not in generic_words]
 
     # AI / ML domain specific check
-    ai_targets = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "artificial intelligence"]
-    is_ai_target = any(a in t_role for a in ai_targets)
+    ai_targets = [
+        "ai", "ml", "aiml", "ai/ml", "ai-ml", "machine learning", "deep learning",
+        "llm", "genai", "nlp", "vision", "rag", "data science", "artificial intelligence"
+    ]
+    is_ai_target = (
+        any(a in t_role for a in ai_targets) or
+        bool(re.search(r'\b(ai[/\-_ ]?ml|aiml)\b', t_role)) or
+        "aiml" in t_role.replace(" ", "")
+    )
     if is_ai_target:
-        ai_title_indicators = ["ai", "ml", "machine learning", "deep learning", "llm", "genai", "nlp", "vision", "rag", "data science", "data scientist", "prompt", "artificial intelligence"]
+        ai_title_indicators = [
+            "aiml", "ai", "ml", "ai/ml", "ai-ml", "machine learning", "deep learning",
+            "llm", "genai", "nlp", "vision", "rag", "data science", "data scientist",
+            "prompt", "artificial intelligence"
+        ]
         for ind in ai_title_indicators:
-            if len(ind) <= 3:
+            if len(ind) <= 4:
                 if re.search(r'\b' + re.escape(ind) + r'\b', j_title):
                     return True
             else:
                 if ind in j_title:
                     return True
+        # Check compound regex pattern
+        if re.search(r'\b(ai[/\-_ ]?ml|aiml)\b', j_title):
+            return True
         return False
 
     if role_tokens:
@@ -225,6 +239,10 @@ def filter_curated_jobs_by_role(
                 continue
 
         title = str(j.get("title", "")).lower()
+
+        # Precision role matcher gate
+        if clean_target and not is_title_role_match(title, clean_target):
+            continue
         
         # Negative noise filter check
         if not any(k in clean_target for k in ["sales", "support", "marketing"]):
