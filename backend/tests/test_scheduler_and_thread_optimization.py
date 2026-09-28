@@ -37,9 +37,9 @@ class TestSchedulerAndThreadOptimization(unittest.IsolatedAsyncioTestCase):
         self.assertTrue("JobHunt-Worker" in worker_thread_name or "ThreadPoolExecutor" in worker_thread_name)
 
     def test_scheduler_1_hour_configuration(self):
-        """Verify background discovery interval defaults to 60 minutes (1 hour)."""
+        """Verify background discovery interval defaults to 60 minutes (1 hour) and defaults to False (fail-closed)."""
         self.assertEqual(settings.BACKGROUND_DISCOVERY_INTERVAL_MINUTES, 60)
-        self.assertTrue(settings.BACKGROUND_DISCOVERY_ENABLED)
+        self.assertFalse(settings.BACKGROUND_DISCOVERY_ENABLED)
 
     async def test_scheduler_discovery_mutex_lock(self):
         """Verify discovery lock prevents overlapping runs."""
@@ -76,6 +76,59 @@ class TestSchedulerAndThreadOptimization(unittest.IsolatedAsyncioTestCase):
         # Re-enable background discovery
         svc.set_background_discovery_enabled(True, updated_by="test_admin")
         self.assertTrue(svc.is_background_discovery_enabled())
+
+    def test_is_background_discovery_enabled_fails_closed(self):
+        """Verify is_background_discovery_enabled returns False on database-read failure."""
+        from unittest.mock import patch
+        svc = SchedulerService()
+
+        with patch("src.services.scheduler_service.SessionLocal", side_effect=Exception("Database connection timeout")):
+            # Must fail closed (return False)
+            self.assertFalse(svc.is_background_discovery_enabled())
+
+    async def test_background_discovery_disabled_blocks_crawling(self):
+        """Verify when background discovery is disabled, run_continuous_background_job_discovery makes 0 scraping calls."""
+        from unittest.mock import patch, AsyncMock
+        svc = SchedulerService()
+        svc.set_background_discovery_enabled(False, updated_by="test_admin")
+
+        with patch.object(svc.orchestrator, "orchestrate_search", new_callable=AsyncMock) as mock_scrape:
+            await svc.run_continuous_background_job_discovery()
+            mock_scrape.assert_not_called()
+
+    async def test_in_progress_crawl_aborts_immediately_when_disabled(self):
+        """Verify in-progress crawl halts when crawler toggle is set to False."""
+        svc = SchedulerService()
+        svc.set_background_discovery_enabled(False, updated_by="test_admin")
+        self.assertTrue(svc._stop_discovery_requested)
+        self.assertFalse(svc._discovery_running)
+
+    def test_alert_timing_delays_without_polling(self):
+        """Verify get_next_due_alerts_and_delay calculates precise future seconds without polling."""
+        from datetime import datetime, timedelta
+        from unittest.mock import patch, MagicMock
+        svc = SchedulerService()
+
+        # Mock an active alert scheduled at 09:00 IST
+        mock_alert = MagicMock()
+        mock_alert.id = "alert-123"
+        mock_alert.preferred_time = "09:00"
+        mock_alert.last_sent_at = None
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [mock_alert]
+
+        with patch("src.services.scheduler_service.SessionLocal", return_value=mock_db):
+            # Test when current IST is 14:00 (past 09:00 today)
+            # Should NOT be due now; should delay until tomorrow at 09:00
+            now_utc = datetime(2026, 9, 28, 8, 30) # 14:00 IST
+            with patch("src.services.scheduler_service.datetime") as mock_dt:
+                mock_dt.utcnow.return_value = now_utc
+                mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+                due_ids, next_delay = svc.get_next_due_alerts_and_delay()
+                self.assertEqual(due_ids, [])
+                # Delay should be ~19 hours (greater than 18 hours = 64800s)
+                self.assertGreater(next_delay, 18 * 3600)
 
 if __name__ == "__main__":
     unittest.main()

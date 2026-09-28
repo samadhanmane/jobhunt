@@ -11,7 +11,7 @@ import uuid
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from src.models.database import SessionLocal
@@ -37,10 +37,22 @@ class SchedulerService:
         self.deduplicator = DeduplicationAgent()
         self.ranking_agent = RankingAgent()
         self._discovery_running = False
+        self._stop_discovery_requested = False
+        self._schedule_changed_event = None
         self._alert_lock = None
         self._queued_or_running_alert_ids = set()
         self._alert_queue = []
         self._alert_worker_running = False
+
+    def _get_schedule_event(self) -> asyncio.Event:
+        if self._schedule_changed_event is None:
+            self._schedule_changed_event = asyncio.Event()
+        return self._schedule_changed_event
+
+    def notify_schedule_changed(self):
+        """Signals the background scheduler to recalibrate sleep time when an alert is added/updated/deleted."""
+        event = self._get_schedule_event()
+        event.set()
 
     def _get_alert_lock(self):
         if self._alert_lock is None:
@@ -396,6 +408,9 @@ class SchedulerService:
         1 hour prior to their scheduled automation and periodically every 6-12 hours.
         Dispatches an email alert if a cookie has expired.
         """
+        if not self.is_background_discovery_enabled():
+            return
+
         db = SessionLocal()
         try:
             active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
@@ -469,77 +484,91 @@ class SchedulerService:
             except Exception:
                 pass
 
-    async def check_and_trigger_due_alerts(self):
+    def get_next_due_alerts_and_delay(self) -> Tuple[List[str], float]:
         """
-        Polls active email alerts and triggers execution if current IST time
-        has reached or passed preferred_time and alert hasn't been dispatched today.
-        Guarantees reliable delivery even if the server was sleeping or restarted.
+        Inspects active email alerts and calculates:
+        1. List of alert IDs that are due right now (current IST time matches scheduled preferred_time window).
+        2. Exact seconds until the next upcoming alert preferred_time in IST.
+        Does NOT poll continuously; enables asyncio.sleep(delay) without memory or DB churn.
         """
         db = SessionLocal()
-        dispatched_count = 0
         try:
             active_alerts = db.query(EmailAlert).filter(EmailAlert.is_active == True).all()
             if not active_alerts:
-                return 0
+                return [], 3600.0
 
             now_utc = datetime.utcnow()
             now_ist = now_utc + timedelta(hours=5, minutes=30)
+            now_ist_mins = now_ist.hour * 60 + now_ist.minute
 
-            def is_daily_alert_due(pref_time_str: str, last_sent_at: Optional[datetime]) -> bool:
+            due_alert_ids = []
+            upcoming_delays = []
+
+            for alert in active_alerts:
+                pref_time = (alert.preferred_time or "09:00").strip()
                 try:
-                    parts = (pref_time_str or "09:00").strip().split(":")
+                    parts = pref_time.split(":")
                     ph, pm = int(parts[0]), int(parts[1])
                 except Exception:
                     ph, pm = 9, 0
 
-                now_ist_mins = now_ist.hour * 60 + now_ist.minute
                 pref_mins = ph * 60 + pm
 
-                # If current IST time has not yet reached scheduled time today -> not due yet
-                if now_ist_mins < pref_mins:
-                    return False
+                # Check if already sent today in IST
+                already_sent_today = False
+                if alert.last_sent_at:
+                    last_sent_ist = alert.last_sent_at + timedelta(hours=5, minutes=30)
+                    if (last_sent_ist.date() == now_ist.date() and 
+                        (last_sent_ist.hour * 60 + last_sent_ist.minute) >= pref_mins - 2):
+                        already_sent_today = True
 
-                # Scheduled time today has arrived or passed!
-                if not last_sent_at:
-                    return True
+                if not already_sent_today:
+                    # Due window: current IST minute matches scheduled minute (within 5-min window)
+                    if pref_mins <= now_ist_mins <= pref_mins + 5:
+                        due_alert_ids.append(alert.id)
+                        continue
+                    elif now_ist_mins < pref_mins:
+                        # Scheduled later today
+                        delay_mins = pref_mins - now_ist_mins
+                        delay_sec = max(5.0, delay_mins * 60.0 - now_ist.second)
+                        upcoming_delays.append(delay_sec)
+                        continue
 
-                # If last sent was more than 20 hours ago -> definitely due
-                if (now_utc - last_sent_at).total_seconds() >= 20 * 3600:
-                    return True
+                # If already sent today or scheduled time has passed today, next run is tomorrow at pref_mins
+                delay_mins = (1440 - now_ist_mins) + pref_mins
+                delay_sec = max(5.0, delay_mins * 60.0 - now_ist.second)
+                upcoming_delays.append(delay_sec)
 
-                # If last sent was before today's scheduled time in IST -> due today
-                last_sent_ist = last_sent_at + timedelta(hours=5, minutes=30)
-                today_scheduled_ist = now_ist.replace(hour=ph, minute=pm, second=0, microsecond=0)
-                if last_sent_ist < today_scheduled_ist:
-                    return True
-
-                return False
-
-            for alert in active_alerts:
-                pref_time = (alert.preferred_time or "09:00").strip()
-                if is_daily_alert_due(pref_time, alert.last_sent_at):
-                    if alert.id not in self._queued_or_running_alert_ids:
-                        print(f"[Scheduler] Daily Digest Due (Scheduled: {pref_time} IST | Now: {now_ist.strftime('%H:%M')} IST) for '{alert.email}' (Role: {alert.role}, Loc: {alert.location}). Enqueuing for sequential execution...")
-                        self._queued_or_running_alert_ids.add(alert.id)
-                        self._alert_queue.append(alert.id)
-                        dispatched_count += 1
-
-            if self._alert_queue and not self._alert_worker_running:
-                asyncio.create_task(self._process_alert_queue())
-
-            return dispatched_count
+            next_delay = min(upcoming_delays) if upcoming_delays else 3600.0
+            return due_alert_ids, max(5.0, next_delay)
         except Exception as e:
-            print(f"[Scheduler] Background polling notice: {e}")
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            return 0
+            print(f"[Scheduler] Notice calculating next alert schedule: {e}")
+            return [], 60.0
         finally:
             try:
                 db.close()
             except Exception:
                 pass
+
+    async def check_and_trigger_due_alerts(self) -> int:
+        """
+        Polls active email alerts and triggers execution if current IST time
+        has reached or passed preferred_time and alert hasn't been dispatched today.
+        Guarantees reliable delivery at the scheduled time.
+        """
+        due_alert_ids, _ = self.get_next_due_alerts_and_delay()
+        dispatched_count = 0
+        for alert_id in due_alert_ids:
+            if alert_id not in self._queued_or_running_alert_ids:
+                print(f"[Scheduler] Daily Digest Due: Enqueuing alert ID {alert_id} for execution...")
+                self._queued_or_running_alert_ids.add(alert_id)
+                self._alert_queue.append(alert_id)
+                dispatched_count += 1
+
+        if self._alert_queue and not self._alert_worker_running:
+            asyncio.create_task(self._process_alert_queue())
+
+        return dispatched_count
 
     async def _process_alert_queue(self):
         """
@@ -578,6 +607,7 @@ class SchedulerService:
         Returns whether background job discovery crawler is globally enabled.
         Admin can toggle this OFF via Admin Portal to halt all background crawling,
         ensuring jobs are only fetched when users actively search on-demand.
+        Fails closed (returns False) on any error to prevent unintended crawling.
         """
         try:
             from src.models.system_setting import SystemSetting
@@ -588,10 +618,11 @@ class SchedulerService:
                     return setting.value.strip().lower() in ["true", "1", "yes", "on"]
             finally:
                 db.close()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Scheduler] Notice: Could not read background_discovery_enabled setting ({e}). Failing closed (disabled).")
+            return False
 
-        return getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True)
+        return getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", False)
 
     def set_background_discovery_enabled(self, enabled: bool, updated_by: str = "admin") -> bool:
         """
@@ -615,6 +646,12 @@ class SchedulerService:
                 setting.updated_at = datetime.utcnow()
             db.commit()
             print(f"[Scheduler] Background discovery crawler status set to: {'ENABLED' if enabled else 'DISABLED'} by {updated_by}")
+            if not enabled:
+                self._stop_discovery_requested = True
+                self._discovery_running = False
+                print("[Scheduler] Signaled active background crawlers to halt immediately.")
+            else:
+                self._stop_discovery_requested = False
             return enabled
         finally:
             db.close()
@@ -640,6 +677,7 @@ class SchedulerService:
             return
 
         self._discovery_running = True
+        self._stop_discovery_requested = False
         from src.models.job import Job
         from src.models.search_history import SearchHistory
         from src.repositories.job_repository import JobRepository
@@ -732,12 +770,15 @@ class SchedulerService:
 
             # Crawl for top 2 targets per discovery cycle to keep CPU & memory light
             for config in target_configs[:2]:
+                if not self.is_background_discovery_enabled() or self._stop_discovery_requested:
+                    print("[Background Auto-Discovery] Notice: Background crawler stopped by Admin. Aborting in-progress crawl.")
+                    break
                 role_name = config["role"]
                 loc_name = config["location"]
                 print(f"[Background Auto-Discovery] 🔎 Crawling jobs in background for '{role_name}' (Location: {loc_name}) across connected platforms (1-hr interval)...")
 
                 raw_jobs = await self.orchestrator.orchestrate_search(config["candidate_profile"], config["preferences"])
-                if not raw_jobs:
+                if not raw_jobs or not self.is_background_discovery_enabled() or self._stop_discovery_requested:
                     continue
 
                 unique_jobs = await self.deduplicator.deduplicate(raw_jobs)
@@ -814,52 +855,88 @@ class SchedulerService:
             self._discovery_running = False
             gc.collect()
 
-    async def start_background_scheduler(self):
+    async def _alert_scheduler_loop(self):
         """
-        Runs continuous background scheduler loop:
-        1. Checks daily email alerts every 60s without blocking.
-        2. Spawns background auto-discovery crawler once every 1 hour (configurable) in a separate task.
-        3. Spawns cookie health sentinel every 15 minutes in a separate task.
+        Event-driven daily alert scheduler:
+        - Sleeps until the exact scheduled preferred_time arrives (e.g. 09:00 IST).
+        - Does NOT poll the database every second or minute, preventing memory and CPU churn.
+        - When the scheduled time arrives, dispatches the due alerts sequentially.
         """
-        interval_mins = getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60)
-        enabled = getattr(settings, "BACKGROUND_DISCOVERY_ENABLED", True)
-        print(f"[Scheduler] Automated background worker started. Auto-discovery cadence: every {interval_mins} min (enabled: {enabled}).")
-        discovery_counter = 0
-        health_check_counter = 0
-
-        # Initial quick alert check 5s after boot
-        await asyncio.sleep(5)
-        try:
-            await self.check_and_trigger_due_alerts()
-        except Exception as e:
-            print(f"[Scheduler] Initial alert check notice: {e}")
+        print("[Scheduler] Daily email alert scheduler initialized (event-driven, zero polling overhead).")
+        # Allow initial server boot to settle
+        await asyncio.sleep(10)
 
         while True:
             try:
-                # 1. Alert check runs strictly every 60s
-                await self.check_and_trigger_due_alerts()
-                
-                # 2. Continuous Background Job Discovery spawned once every 1 hour (or configured interval)
-                if self.is_background_discovery_enabled():
-                    discovery_counter += 1
-                    interval = max(1, getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60))
-                    if discovery_counter >= interval:
-                        discovery_counter = 0
-                        if not self._discovery_running:
-                            asyncio.create_task(self.run_continuous_background_job_discovery())
-                        else:
-                            print("[Scheduler] Notice: Background discovery already running, skipping overlapping cycle.")
-                else:
-                    discovery_counter = 0
+                due_alert_ids, next_delay = self.get_next_due_alerts_and_delay()
 
-                # 3. Cookie Health Sentinel spawned as non-blocking task every 15 minutes
-                health_check_counter += 1
-                if health_check_counter >= 15:
-                    health_check_counter = 0
-                    asyncio.create_task(self.check_scheduled_alerts_cookie_health())
+                if due_alert_ids:
+                    for alert_id in due_alert_ids:
+                        if alert_id not in self._queued_or_running_alert_ids:
+                            print(f"[Scheduler] ⏰ Scheduled alert time reached for alert ID: {alert_id}. Enqueuing for execution...")
+                            self._queued_or_running_alert_ids.add(alert_id)
+                            self._alert_queue.append(alert_id)
+
+                    if self._alert_queue and not self._alert_worker_running:
+                        asyncio.create_task(self._process_alert_queue())
+
+                    # Recalculate next delay after enqueuing
+                    _, next_delay = self.get_next_due_alerts_and_delay()
+
+                # Sleep until the next scheduled alert time (capped at 1800s safety window)
+                # If a user adds/edits/deletes an alert, _schedule_changed_event wakes us immediately
+                event = self._get_schedule_event()
+                wait_sec = max(5.0, min(next_delay, 1800.0))
+                next_mins = round(wait_sec / 60, 1)
+                print(f"[Scheduler] Sleeping {wait_sec:.0f}s (~{next_mins}m) until next scheduled alert check...")
+
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=wait_sec)
+                    event.clear()
+                    print("[Scheduler] Alert configuration modified by user. Recalibrating schedule...")
+                except asyncio.TimeoutError:
+                    # Scheduled time reached or safety boundary elapsed
+                    pass
 
             except Exception as loop_err:
-                print(f"[Scheduler] Background loop error: {loop_err}")
-            await asyncio.sleep(60)
+                print(f"[Scheduler] Alert scheduler loop notice: {loop_err}")
+                await asyncio.sleep(60)
+
+    async def _discovery_crawler_loop(self):
+        """
+        Periodic auto-discovery crawler loop:
+        - When crawler is ENABLED by Admin: discovers fresh jobs across platforms once every 1 hour (configurable).
+        - When crawler is DISABLED by Admin: remains completely dormant (sleeps 1 hour with 0 network/DB work).
+        """
+        await asyncio.sleep(30)
+
+        while True:
+            try:
+                if self.is_background_discovery_enabled():
+                    interval_mins = max(1, getattr(settings, "BACKGROUND_DISCOVERY_INTERVAL_MINUTES", 60))
+                    print(f"[Scheduler/Crawler] Background discovery crawler active (interval: {interval_mins}m).")
+                    
+                    if not self._discovery_running and not self._stop_discovery_requested:
+                        await self.run_continuous_background_job_discovery()
+
+                    # Also run cookie health sentinel if crawler enabled
+                    asyncio.create_task(self.check_scheduled_alerts_cookie_health())
+
+                    await asyncio.sleep(interval_mins * 60)
+                else:
+                    # Crawler is STOPPED. Sleep dormant for 1 hour without running queries or scrapers
+                    await asyncio.sleep(3600)
+            except Exception as crawler_err:
+                print(f"[Scheduler/Crawler] Notice: {crawler_err}")
+                await asyncio.sleep(60)
+
+    async def start_background_scheduler(self):
+        """
+        Runs the background workers:
+        1. Event-driven daily alert scheduler (sleeps until exact scheduled time; does not poll every second/minute).
+        2. Periodic auto-discovery crawler loop (only runs when enabled by Admin; sleeps dormant when stopped).
+        """
+        asyncio.create_task(self._alert_scheduler_loop())
+        asyncio.create_task(self._discovery_crawler_loop())
 
 scheduler_service = SchedulerService()

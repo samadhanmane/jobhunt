@@ -113,6 +113,10 @@ async def create_alert(
     db.add(alert)
     db.commit()
     db.refresh(alert)
+    try:
+        scheduler_service.notify_schedule_changed()
+    except Exception:
+        pass
 
     # Send welcome confirmation email in background task (non-blocking)
     try:
@@ -527,6 +531,10 @@ def delete_alert(
     
     db.delete(alert)
     db.commit()
+    try:
+        scheduler_service.notify_schedule_changed()
+    except Exception:
+        pass
     return {"status": "success", "message": "Alert deleted successfully"}
 
 @router.post("/{alert_id}/test")

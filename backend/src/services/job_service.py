@@ -502,18 +502,22 @@ class JobService:
             cand_skills = candidate_profile.get("skills", [])
             custom_cookie = preferences.get("linkedin_cookie")
 
-            # 1. Trigger continuous live background harvesting across remaining queries/boards
+            # 1. Trigger continuous live background harvesting across remaining queries/boards ONLY if background crawler is enabled
             try:
-                asyncio.create_task(
-                    self.background_harvest_stream(
-                        search_id=search_id,
-                        candidate_profile=candidate_profile,
-                        preferences=preferences,
-                        initial_seen_urls=seen_urls,
-                        initial_seen_titles=seen_titles,
-                        custom_cookie=custom_cookie
+                from src.services.scheduler_service import scheduler_service
+                if scheduler_service.is_background_discovery_enabled():
+                    asyncio.create_task(
+                        self.background_harvest_stream(
+                            search_id=search_id,
+                            candidate_profile=candidate_profile,
+                            preferences=preferences,
+                            initial_seen_urls=seen_urls,
+                            initial_seen_titles=seen_titles,
+                            custom_cookie=custom_cookie
+                        )
                     )
-                )
+                else:
+                    print("[JobService] Notice: Background crawler is disabled by Admin. Skipping background harvest stream.")
             except Exception as stream_err:
                 print(f"Notice: Background harvest stream initialization: {stream_err}")
 
@@ -650,6 +654,10 @@ class JobService:
             seen_titles = set(initial_seen_titles)
 
             for round_idx, q_batch in enumerate(query_batches):
+                from src.services.scheduler_service import scheduler_service
+                if not scheduler_service.is_background_discovery_enabled():
+                    print("[JobService] Background crawler stopped by Admin. Halting background harvest stream.")
+                    break
                 if not q_batch or search_id not in ACTIVE_SEARCH_SESSIONS:
                     break
 
