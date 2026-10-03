@@ -763,19 +763,28 @@ function App() {
     };
 
     // Global Platform Background Check / Crawler State
-    const [bgCheckEnabled, setBgCheckEnabled] = useState(true);
+    const [bgCheckEnabled, setBgCheckEnabled] = useState(() => {
+        try {
+            return localStorage.getItem("jobagent_crawler_enabled") === "true";
+        } catch {
+            return false;
+        }
+    });
     const [bgCheckLoading, setBgCheckLoading] = useState(false);
     const [bgCheckMeta, setBgCheckMeta] = useState(null);
 
     const fetchBgCheckStatus = async () => {
-        if (!token) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, { headers });
             const data = await res.json();
             if (res.ok) {
-                setBgCheckEnabled(Boolean(data.enabled));
+                const isEnabled = Boolean(data.enabled);
+                setBgCheckEnabled(isEnabled);
+                try {
+                    localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+                } catch {}
                 setBgCheckMeta(data);
             }
         } catch (err) {
@@ -791,7 +800,7 @@ function App() {
         }
         const willDisable = bgCheckEnabled;
         const confirmMsg = willDisable
-            ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website."
+            ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. Scheduled email alerts and on-demand user searches will continue working."
             : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
 
         if (!confirm(confirmMsg)) return;
@@ -808,8 +817,12 @@ function App() {
             });
             const data = await res.json();
             if (res.ok) {
-                setBgCheckEnabled(Boolean(data.enabled));
-                showToast(data.message, data.enabled ? "success" : "info");
+                const isEnabled = Boolean(data.enabled);
+                setBgCheckEnabled(isEnabled);
+                try {
+                    localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+                } catch {}
+                showToast(data.message, isEnabled ? "success" : "info");
                 fetchBgCheckStatus();
             } else {
                 showToast(data.detail || "Failed to update background check status", "error");
@@ -822,9 +835,7 @@ function App() {
     };
 
     useEffect(() => {
-        if (token) {
-            fetchBgCheckStatus();
-        }
+        fetchBgCheckStatus();
     }, [token, currentUser]);
 
     const handleLogout = () => {
@@ -999,7 +1010,7 @@ function Navbar({
     setActiveTab,
     cookieStatusInfo,
     appliedJobsCount = 0,
-    bgCheckEnabled = true,
+    bgCheckEnabled = false,
     bgCheckLoading = false,
     onToggleBgCheck,
     onOpenAppliedModal,
@@ -6031,7 +6042,13 @@ function AdminPortal({
     const [creating, setCreating] = useState(false);
 
     // Global Platform Background Check / Crawler State
-    const [internalBgEnabled, setInternalBgEnabled] = useState(true);
+    const [internalBgEnabled, setInternalBgEnabled] = useState(() => {
+        try {
+            return localStorage.getItem("jobagent_crawler_enabled") === "true";
+        } catch {
+            return false;
+        }
+    });
     const [internalBgLoading, setInternalBgLoading] = useState(false);
     const [internalBgMeta, setInternalBgMeta] = useState(null);
 
@@ -6060,12 +6077,16 @@ function AdminPortal({
 
     const fetchBgCheckStatus = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(`${API_BASE_URL}/api/v1/admin/settings/background-check`, { headers });
             const data = await res.json();
             if (res.ok) {
-                setInternalBgEnabled(Boolean(data.enabled));
+                const isEnabled = Boolean(data.enabled);
+                setInternalBgEnabled(isEnabled);
+                try {
+                    localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+                } catch {}
                 setInternalBgMeta(data);
             }
         } catch (err) {

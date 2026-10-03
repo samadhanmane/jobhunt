@@ -119,15 +119,23 @@ class TestSchedulerAndThreadOptimization(unittest.IsolatedAsyncioTestCase):
         mock_db.query.return_value.filter.return_value.all.return_value = [mock_alert]
 
         with patch("src.services.scheduler_service.SessionLocal", return_value=mock_db):
-            # Test when current IST is 14:00 (past 09:00 today)
-            # Should NOT be due now; should delay until tomorrow at 09:00
+            # Test when current IST is 14:00 (past 09:00 today) and alert hasn't run today:
+            # Must be DUE TODAY so user receives their daily digest even after server boot/restart
             now_utc = datetime(2026, 9, 28, 8, 30) # 14:00 IST
             with patch("src.services.scheduler_service.datetime") as mock_dt:
                 mock_dt.utcnow.return_value = now_utc
                 mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
                 due_ids, next_delay = svc.get_next_due_alerts_and_delay()
+                self.assertEqual(due_ids, ["alert-123"])
+
+            # Test when alert was ALREADY sent today at 09:00 IST:
+            # Should NOT be due again today; should delay until tomorrow at 09:00 (> 18 hours)
+            mock_alert.last_sent_at = datetime(2026, 9, 28, 3, 30) # 09:00 IST
+            with patch("src.services.scheduler_service.datetime") as mock_dt:
+                mock_dt.utcnow.return_value = now_utc
+                mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+                due_ids, next_delay = svc.get_next_due_alerts_and_delay()
                 self.assertEqual(due_ids, [])
-                # Delay should be ~19 hours (greater than 18 hours = 64800s)
                 self.assertGreater(next_delay, 18 * 3600)
 
 if __name__ == "__main__":

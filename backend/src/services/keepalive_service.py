@@ -52,14 +52,6 @@ class KeepAliveService:
             print("[KeepAlive] Notice: KeepAlive disabled by configuration. Render free tier will sleep when idle.")
             return
 
-        try:
-            from src.services.scheduler_service import scheduler_service
-            if not scheduler_service.is_background_discovery_enabled():
-                print("[KeepAlive] Notice: Background check is disabled by Admin. KeepAlive will not start.")
-                return
-        except Exception:
-            pass
-
         if not self._running:
             self._running = True
             self._task = asyncio.create_task(self._ping_loop())

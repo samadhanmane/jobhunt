@@ -152,7 +152,6 @@ class ToggleBackgroundCheckRequest(BaseModel):
 
 @router.get("/settings/background-check")
 def get_background_check_status(
-    user: UserAccount = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -195,16 +194,10 @@ def toggle_background_check(
 
     scheduler_service.set_background_discovery_enabled(new_val, updated_by=admin.email)
 
-    from src.services.keepalive_service import keepalive_service
-    if not new_val:
-        keepalive_service.stop()
-    else:
-        keepalive_service.start()
-
     msg = (
-        "Background check has been STOPPED for everyone. Continuous background crawling and keepalive pings are paused to prevent consuming Render credits. Results will only be fetched when users search on-demand."
+        "Background job crawler has been STOPPED. Continuous platform scraping is paused to conserve resources. Scheduled daily email automation and on-demand user searches remain fully functional."
         if not new_val else
-        "Background check has been ENABLED for everyone. Continuous background job discovery will run periodically."
+        "Background job crawler has been ENABLED. Continuous platform job discovery will run periodically in the background."
     )
 
     return {

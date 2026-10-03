@@ -302,7 +302,25 @@ class JobService:
                 work_mode=preferences.get("work_mode") or preferences.get("remote_preference") or "any"
             )
             curated_urls = set(j.get("url") for j in curated_jobs if j.get("url"))
-            remaining_ranked = [j for j in ranked_jobs if j.get("url") not in curated_urls and not j.get("location_mismatch")]
+            target_loc = preferences.get("location", "")
+            target_mode = preferences.get("work_mode") or preferences.get("remote_preference") or "any"
+            if target_loc and target_loc.lower() not in ["worldwide", "global", "all", "any", "remote", ""]:
+                from src.utils.location_helper import is_job_location_match
+                remaining_ranked = [
+                    j for j in ranked_jobs 
+                    if j.get("url") not in curated_urls 
+                    and not j.get("location_mismatch")
+                    and is_job_location_match(
+                        job_location=j.get("location", ""),
+                        pref_location=target_loc,
+                        pref_work_mode=target_mode,
+                        job_description=(j.get("description") or "")[:800],
+                        job_title=j.get("title", ""),
+                        job_url=j.get("url", "")
+                    )
+                ]
+            else:
+                remaining_ranked = [j for j in ranked_jobs if j.get("url") not in curated_urls and not j.get("location_mismatch")]
             top_ranked_jobs = (curated_jobs + remaining_ranked)[:40]
             try:
                 with SessionLocal() as db_temp:

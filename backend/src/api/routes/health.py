@@ -17,6 +17,14 @@ def health_check(db: Session = Depends(get_db)):
         
     cache_status = "healthy" if getattr(cache_service, "client", None) else "offline"
     
+    # Opportunistically ensure due daily email alerts are dispatched without waiting
+    try:
+        import asyncio
+        from src.services.scheduler_service import scheduler_service
+        asyncio.create_task(scheduler_service.check_and_trigger_due_alerts())
+    except Exception:
+        pass
+
     return {
         "status": "ok",
         "database": db_status,

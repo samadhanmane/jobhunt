@@ -36,7 +36,7 @@ FOREIGN_CITIES = [
 
 FOREIGN_COUNTRIES = [
     r'\b(us|u\.s\.|usa|united states|uk|u\.k\.|united kingdom|great britain|england|scotland|canada|germany|deutschland|france|spain|poland|netherlands|australia|brazil|japan|taiwan|egypt|romania|ireland|korea|south korea|dubai|uae|mexico|chile|argentina|peru|colombia|israel|singapore|china|hong kong|sweden|switzerland|italy|portugal|austria|belgium|denmark|norway|finland|czech|hungary|greece|turkey|saudi|philippines|vietnam|indonesia|malaysia|new zealand|south africa|nigeria|kenya)\b',
-    r'\b(eu|emea|latam|latin america|europe|dach|na|north america|nordics|benelux|socal|norcal|apac)\b',
+    r'\b(eu|emea|latam|latin america|americas|america|europe|dach|na|north america|nordics|benelux|socal|norcal|apac|anz|anzac|oceania)\b',
     r'\b(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc)\b',
     r'\b(' + '|'.join(FOREIGN_US_STATES) + r')\b'
 ]
@@ -241,12 +241,21 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     if re.search(r'(?:^|[,\s])in(?:[,\s]|$)', loc):
         return True
 
-    # 3. Open Remote indicator (without foreign lockouts)
+    # 3. Remote indicator: must have verified Indian presence, Indian platform, or Indian mentions
     is_remote = any(k in loc for k in REMOTE_KEYWORDS) or any(k in t for k in ["remote", "worldwide"]) or "worldwide" in loc or "anywhere" in loc
     if is_remote:
-        # Must not have any foreign residency or authorization restrictions
-        if not is_foreign_location(loc) and not is_foreign_location(t):
+        # Strict foreign exclusion
+        if is_foreign_location(loc) or is_foreign_location(t) or is_foreign_location(d[:300]):
+            return False
+        # If it originates from an Indian job board or has .in domain
+        indian_domains = ["naukri", "instahyre", "cutshort", "hirist", "apna", "hiredoor", "unstop", "internshala", ".in/"]
+        if any(src in u for src in indian_domains):
             return True
+        # If India or Indian tech cities or INR/IST are mentioned in text
+        if re.search(r'\b(india|bharat|inr|ist|bengaluru|bangalore|pune|hyderabad|mumbai|delhi|noida|gurgaon|chennai|kolkata)\b', combined):
+            return True
+        # Do not treat generic global/US remote jobs as Indian openings
+        return False
 
     return False
 

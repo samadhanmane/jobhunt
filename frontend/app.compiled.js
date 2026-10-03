@@ -733,7 +733,13 @@ function App() {
   };
 
   // Global Platform Background Check / Crawler State
-  var _useState21 = useState(true),
+  var _useState21 = useState(function () {
+      try {
+        return localStorage.getItem("jobagent_crawler_enabled") === "true";
+      } catch (_unused5) {
+        return false;
+      }
+    }),
     _useState22 = _slicedToArray(_useState21, 2),
     bgCheckEnabled = _useState22[0],
     setBgCheckEnabled = _useState22[1];
@@ -747,22 +753,16 @@ function App() {
     setBgCheckMeta = _useState26[1];
   var fetchBgCheckStatus = /*#__PURE__*/function () {
     var _ref2 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee() {
-      var res, data;
+      var headers, res, data, isEnabled;
       return _regeneratorRuntime().wrap(function _callee$(_context) {
         while (1) switch (_context.prev = _context.next) {
           case 0:
-            if (token) {
-              _context.next = 2;
-              break;
-            }
-            return _context.abrupt("return");
-          case 2:
-            _context.prev = 2;
+            _context.prev = 0;
+            headers = {};
+            if (token) headers['Authorization'] = "Bearer ".concat(token);
             _context.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check"), {
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
+              headers: headers
             });
           case 5:
             res = _context.sent;
@@ -771,20 +771,24 @@ function App() {
           case 8:
             data = _context.sent;
             if (res.ok) {
-              setBgCheckEnabled(Boolean(data.enabled));
+              isEnabled = Boolean(data.enabled);
+              setBgCheckEnabled(isEnabled);
+              try {
+                localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+              } catch (_unused6) {}
               setBgCheckMeta(data);
             }
             _context.next = 15;
             break;
           case 12:
             _context.prev = 12;
-            _context.t0 = _context["catch"](2);
+            _context.t0 = _context["catch"](0);
             console.warn("Could not fetch background check status:", _context.t0);
           case 15:
           case "end":
             return _context.stop();
         }
-      }, _callee, null, [[2, 12]]);
+      }, _callee, null, [[0, 12]]);
     }));
     return function fetchBgCheckStatus() {
       return _ref2.apply(this, arguments);
@@ -792,7 +796,7 @@ function App() {
   }();
   var handleToggleBgCheck = /*#__PURE__*/function () {
     var _ref3 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee2() {
-      var willDisable, confirmMsg, res, data;
+      var willDisable, confirmMsg, res, data, isEnabled;
       return _regeneratorRuntime().wrap(function _callee2$(_context2) {
         while (1) switch (_context2.prev = _context2.next) {
           case 0:
@@ -810,7 +814,7 @@ function App() {
             return _context2.abrupt("return");
           case 5:
             willDisable = bgCheckEnabled;
-            confirmMsg = willDisable ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. The system will ONLY fetch jobs when a user actively searches on the website." : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
+            confirmMsg = willDisable ? "Are you sure you want to STOP background checking? This will halt continuous background crawling for everyone. Scheduled email alerts and on-demand user searches will continue working." : "Are you sure you want to ENABLE background checking? The system will resume periodic crawling in the background.";
             if (confirm(confirmMsg)) {
               _context2.next = 9;
               break;
@@ -837,8 +841,12 @@ function App() {
           case 16:
             data = _context2.sent;
             if (res.ok) {
-              setBgCheckEnabled(Boolean(data.enabled));
-              showToast(data.message, data.enabled ? "success" : "info");
+              isEnabled = Boolean(data.enabled);
+              setBgCheckEnabled(isEnabled);
+              try {
+                localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+              } catch (_unused7) {}
+              showToast(data.message, isEnabled ? "success" : "info");
               fetchBgCheckStatus();
             } else {
               showToast(data.detail || "Failed to update background check status", "error");
@@ -864,9 +872,7 @@ function App() {
     };
   }();
   useEffect(function () {
-    if (token) {
-      fetchBgCheckStatus();
-    }
+    fetchBgCheckStatus();
   }, [token, currentUser]);
   var handleLogout = function handleLogout() {
     setToken("");
@@ -1010,7 +1016,7 @@ function Navbar(_ref4) {
     _ref4$appliedJobsCoun = _ref4.appliedJobsCount,
     appliedJobsCount = _ref4$appliedJobsCoun === void 0 ? 0 : _ref4$appliedJobsCoun,
     _ref4$bgCheckEnabled = _ref4.bgCheckEnabled,
-    bgCheckEnabled = _ref4$bgCheckEnabled === void 0 ? true : _ref4$bgCheckEnabled,
+    bgCheckEnabled = _ref4$bgCheckEnabled === void 0 ? false : _ref4$bgCheckEnabled,
     _ref4$bgCheckLoading = _ref4.bgCheckLoading,
     bgCheckLoading = _ref4$bgCheckLoading === void 0 ? false : _ref4$bgCheckLoading,
     onToggleBgCheck = _ref4.onToggleBgCheck,
@@ -6933,7 +6939,13 @@ function AdminPortal(_ref43) {
     setCreating = _useState252[1];
 
   // Global Platform Background Check / Crawler State
-  var _useState253 = useState(true),
+  var _useState253 = useState(function () {
+      try {
+        return localStorage.getItem("jobagent_crawler_enabled") === "true";
+      } catch (_unused8) {
+        return false;
+      }
+    }),
     _useState254 = _slicedToArray(_useState253, 2),
     internalBgEnabled = _useState254[0],
     setInternalBgEnabled = _useState254[1];
@@ -6995,38 +7007,42 @@ function AdminPortal(_ref43) {
   }();
   var fetchBgCheckStatus = /*#__PURE__*/function () {
     var _ref45 = _asyncToGenerator( /*#__PURE__*/_regeneratorRuntime().mark(function _callee33() {
-      var res, data;
+      var headers, res, data, isEnabled;
       return _regeneratorRuntime().wrap(function _callee33$(_context33) {
         while (1) switch (_context33.prev = _context33.next) {
           case 0:
             _context33.prev = 0;
-            _context33.next = 3;
+            headers = {};
+            if (token) headers['Authorization'] = "Bearer ".concat(token);
+            _context33.next = 5;
             return fetch("".concat(API_BASE_URL, "/api/v1/admin/settings/background-check"), {
-              headers: {
-                'Authorization': "Bearer ".concat(token)
-              }
+              headers: headers
             });
-          case 3:
+          case 5:
             res = _context33.sent;
-            _context33.next = 6;
+            _context33.next = 8;
             return res.json();
-          case 6:
+          case 8:
             data = _context33.sent;
             if (res.ok) {
-              setInternalBgEnabled(Boolean(data.enabled));
+              isEnabled = Boolean(data.enabled);
+              setInternalBgEnabled(isEnabled);
+              try {
+                localStorage.setItem("jobagent_crawler_enabled", String(isEnabled));
+              } catch (_unused9) {}
               setInternalBgMeta(data);
             }
-            _context33.next = 13;
+            _context33.next = 15;
             break;
-          case 10:
-            _context33.prev = 10;
+          case 12:
+            _context33.prev = 12;
             _context33.t0 = _context33["catch"](0);
             console.warn("Could not fetch background check status:", _context33.t0);
-          case 13:
+          case 15:
           case "end":
             return _context33.stop();
         }
-      }, _callee33, null, [[0, 10]]);
+      }, _callee33, null, [[0, 12]]);
     }));
     return function fetchBgCheckStatus() {
       return _ref45.apply(this, arguments);

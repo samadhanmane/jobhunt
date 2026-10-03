@@ -204,19 +204,35 @@ class SchedulerService:
                     if is_within_days(job.get("posted_date"), max_days):
                         fresh_jobs.append(job)
 
-            # Freshness fallback: if strict 24h filter yields 0 fresh jobs, expand to 3 days for unsent jobs
-            if not fresh_jobs and max_days == 1:
-                print(f"[Scheduler] Notice: 0 unsent jobs found strictly within 24h for '{alert.email}'. Expanding to 3-day window for unsent openings...")
+            # Freshness fallback: if strict date filter yields 0 fresh jobs, progressively expand window for unsent openings
+            if not fresh_jobs:
+                print(f"[Scheduler] Notice: 0 unsent jobs found strictly within {max_days}d for '{alert.email}'. Expanding to 3-day window for unsent openings...")
                 for job in unique_batch:
                     j_hash = generate_job_hash(job)
                     if j_hash not in sent_hashes:
                         if is_within_days(job.get("posted_date"), 3):
                             fresh_jobs.append(job)
 
+            if not fresh_jobs:
+                print(f"[Scheduler] Notice: 0 unsent jobs found within 3 days for '{alert.email}'. Expanding to 7-day window for unsent openings...")
+                for job in unique_batch:
+                    j_hash = generate_job_hash(job)
+                    if j_hash not in sent_hashes:
+                        if is_within_days(job.get("posted_date"), 7):
+                            fresh_jobs.append(job)
+
+            if not fresh_jobs:
+                print(f"[Scheduler] Notice: 0 unsent jobs found within 7 days for '{alert.email}'. Expanding to 14-day window for unsent openings...")
+                for job in unique_batch:
+                    j_hash = generate_job_hash(job)
+                    if j_hash not in sent_hashes:
+                        if is_within_days(job.get("posted_date"), 14):
+                            fresh_jobs.append(job)
+
             print(f"[Scheduler] Found {len(raw_jobs)} raw jobs -> {len(unique_batch)} unique -> {len(fresh_jobs)} fresh matching date jobs.")
 
             if not fresh_jobs:
-                print(f"[Scheduler] Notice: 0 fresh unsent jobs matching max_days={max_days}. No stale fallback will be injected.")
+                print(f"[Scheduler] Notice: 0 fresh unsent jobs found across all windows for '{alert.email}'.")
 
             # 4. Rank with LLM & Heuristics
             ranked_jobs = await self.ranking_agent.rank_jobs(fresh_jobs, candidate_profile, preferences) if fresh_jobs else []
@@ -408,8 +424,6 @@ class SchedulerService:
         1 hour prior to their scheduled automation and periodically every 6-12 hours.
         Dispatches an email alert if a cookie has expired.
         """
-        if not self.is_background_discovery_enabled():
-            return
 
         db = SessionLocal()
         try:
@@ -523,18 +537,24 @@ class SchedulerService:
                         already_sent_today = True
 
                 if not already_sent_today:
-                    # Due window: current IST minute matches scheduled minute (within 5-min window)
-                    if pref_mins <= now_ist_mins <= pref_mins + 5:
+                    if alert.id in self._queued_or_running_alert_ids:
+                        # Already queued or running for today -> calculate wait until tomorrow at preferred time
+                        delay_mins = (1440 - now_ist_mins) + pref_mins
+                        delay_sec = max(5.0, delay_mins * 60.0 - now_ist.second)
+                        upcoming_delays.append(delay_sec)
+                        continue
+                    elif now_ist_mins >= pref_mins:
+                        # Scheduled time has arrived or passed today, and alert has not run today -> DUE NOW!
                         due_alert_ids.append(alert.id)
                         continue
-                    elif now_ist_mins < pref_mins:
-                        # Scheduled later today
+                    else:
+                        # Scheduled for later today
                         delay_mins = pref_mins - now_ist_mins
                         delay_sec = max(5.0, delay_mins * 60.0 - now_ist.second)
                         upcoming_delays.append(delay_sec)
                         continue
 
-                # If already sent today or scheduled time has passed today, next run is tomorrow at pref_mins
+                # If already sent today, next run is tomorrow at pref_mins
                 delay_mins = (1440 - now_ist_mins) + pref_mins
                 delay_sec = max(5.0, delay_mins * 60.0 - now_ist.second)
                 upcoming_delays.append(delay_sec)

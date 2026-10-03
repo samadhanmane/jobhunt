@@ -99,6 +99,9 @@ class OrchestratorAgent(BaseJobAgent):
         user_remote = preferences.get("remote_preference", "remote") == "remote"
         
         anchor_role = raw_user_role or (candidate_profile.get('target_roles', ["Professional"])[0] if candidate_profile.get('target_roles') else "Professional")
+        clean_anchor_lower = anchor_role.lower().strip()
+        if clean_anchor_lower in ["aiml", "ai/ml", "ai ml", "ai-ml"]:
+            anchor_role = "AI/ML Engineer"
         
         prompt = f"""
 Construct the optimal job board search plan strictly based on the user's requested role title:
@@ -213,8 +216,8 @@ Candidate Background:
 
         is_alert = bool(preferences.get("is_alert_run", False))
         if is_alert:
-            # During scheduled daily alerts, limit to top 1 primary query and semaphore 2 to strictly bound memory below 250MB
-            target_queries = search_queries[:1]
+            # During scheduled daily alerts, search top 2 queries to capture primary + role variation while staying under memory limit
+            target_queries = search_queries[:2]
             sem = asyncio.Semaphore(2)
         else:
             target_queries = search_queries[:3]

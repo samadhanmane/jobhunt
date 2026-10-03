@@ -16,11 +16,11 @@ def get_engine():
 
     return create_engine(
         settings.DATABASE_URL,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=10,
+        max_overflow=20,
         pool_pre_ping=True,
         pool_recycle=180,
-        pool_timeout=30,
+        pool_timeout=45,
         connect_args={
             "connect_timeout": 15,
             "keepalives": 1,
