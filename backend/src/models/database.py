@@ -14,8 +14,14 @@ def get_engine():
     if not settings.DATABASE_URL or settings.DATABASE_URL.startswith("sqlite"):
         raise RuntimeError("DATABASE_URL must be a valid PostgreSQL connection string. SQLite is deprecated.")
 
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
     return create_engine(
-        settings.DATABASE_URL,
+        db_url,
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,
