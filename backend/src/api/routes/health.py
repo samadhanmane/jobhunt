@@ -7,8 +7,10 @@ from src.services.cache_service import cache_service
 router = APIRouter()
 
 @router.get("/health")
+@router.head("/health")
 @router.get("/api/v1/health")
-def health_check(db: Session = Depends(get_db)):
+@router.head("/api/v1/health")
+async def health_check(db: Session = Depends(get_db)):
     db_status = "healthy"
     try:
         db.execute(text("SELECT 1"))

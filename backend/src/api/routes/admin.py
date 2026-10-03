@@ -151,6 +151,7 @@ class ToggleBackgroundCheckRequest(BaseModel):
     enabled: Optional[bool] = None
 
 @router.get("/settings/background-check")
+@router.head("/settings/background-check")
 def get_background_check_status(
     db: Session = Depends(get_db)
 ):
