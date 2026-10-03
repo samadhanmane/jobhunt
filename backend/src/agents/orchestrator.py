@@ -215,6 +215,7 @@ Candidate Background:
                     search_queries.append(cleaned_q)
 
         is_alert = bool(preferences.get("is_alert_run", False))
+        max_days = preferences.get("max_days") or (1 if is_alert else None)
         if is_alert:
             # During scheduled daily alerts, search top 2 queries to capture primary + role variation while staying under memory limit
             target_queries = search_queries[:2]
@@ -271,7 +272,7 @@ Candidate Background:
                     tasks.append(run_guarded(self.naukri.search(query=q_title, location=location, remote=remote)))
             if target_cat in ["all", "india"] and (not target_src or target_src in ["apna"]):
                 if idx == 0:
-                    tasks.append(run_guarded(self.apna.search(query=q_title, location=location, remote=remote)))
+                    tasks.append(run_guarded(self.apna.search(query=q_title, location=location, remote=remote, max_days=max_days)))
             if target_cat in ["all", "india"] and (not target_src or target_src in ["hiredoor"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.hiredoor.search(query=q_title, location=location, remote=remote)))
@@ -308,9 +309,9 @@ Candidate Background:
             if target_cat in ["all", "startups"] and (not target_src or target_src in ["ycombinator", "yc"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.ycombinator.search(query=q_title, location=location, remote=remote)))
-            if target_cat in ["all", "startups"] and (not target_src or target_src in ["builtin"]):
+            if target_cat in ["all", "startups", "india", "remote"] and (not target_src or target_src in ["builtin"]):
                 if idx == 0:
-                    tasks.append(run_guarded(self.builtin.search(query=q_title, location=location, remote=remote)))
+                    tasks.append(run_guarded(self.builtin.search(query=q_title, location=location, remote=remote, max_days=max_days)))
             if target_cat in ["all", "startups", "enterprise_workday"] and (not target_src or target_src in ["themuse", "muse"]):
                 if idx == 0:
                     tasks.append(run_guarded(self.themuse.search(query=q_title, location=location, remote=remote)))

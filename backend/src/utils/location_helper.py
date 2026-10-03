@@ -35,7 +35,7 @@ FOREIGN_CITIES = [
 ]
 
 FOREIGN_COUNTRIES = [
-    r'\b(us|u\.s\.|usa|united states|uk|u\.k\.|united kingdom|great britain|england|scotland|canada|germany|deutschland|france|spain|poland|netherlands|australia|brazil|japan|taiwan|egypt|romania|ireland|korea|south korea|dubai|uae|mexico|chile|argentina|peru|colombia|israel|singapore|china|hong kong|sweden|switzerland|italy|portugal|austria|belgium|denmark|norway|finland|czech|hungary|greece|turkey|saudi|philippines|vietnam|indonesia|malaysia|new zealand|south africa|nigeria|kenya)\b',
+    r'\b(us|u\.s\.|usa|united states|uk|u\.k\.|united kingdom|great britain|gbr|england|scotland|canada|can|germany|deutschland|deu|france|fra|spain|esp|poland|netherlands|nld|australia|aus|brazil|japan|taiwan|egypt|romania|ireland|korea|south korea|dubai|uae|mexico|chile|argentina|peru|colombia|israel|singapore|china|hong kong|sweden|switzerland|che|italy|ita|portugal|austria|belgium|denmark|norway|finland|czech|hungary|greece|turkey|saudi|philippines|vietnam|indonesia|malaysia|new zealand|south africa|nigeria|kenya)\b',
     r'\b(eu|emea|latam|latin america|americas|america|europe|dach|na|north america|nordics|benelux|socal|norcal|apac|anz|anzac|oceania)\b',
     r'\b(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy|dc)\b',
     r'\b(' + '|'.join(FOREIGN_US_STATES) + r')\b'
@@ -237,8 +237,8 @@ def is_india_location(location: str, url: str = "", title: str = "", description
     if re.search(r'\b(india|bharat)\b', loc) or re.search(r'\b(india|bharat)\b', t):
         return True
 
-    # Check for two-letter country code 'IN' only in location string
-    if re.search(r'(?:^|[,\s])in(?:[,\s]|$)', loc):
+    # Check for country codes 'IN' and 'IND' only in location string
+    if re.search(r'(?:^|[,\s])(in|ind)(?:[,\s]|$)', loc):
         return True
 
     # 3. Remote indicator: must have verified Indian presence, Indian platform, or Indian mentions
@@ -268,9 +268,10 @@ def detect_work_mode(location_str: str, title_str: str = "", description_str: st
     # Check for explicit on-site indicators or negative remote phrases
     NEGATIVE_REMOTE_PATTERNS = [
         "not remote", "no remote", "non-remote", "strictly on-site", 
-        "strictly onsite", "on-site only", "onsite only", "in-office only"
+        "strictly onsite", "on-site only", "onsite only", "in-office only",
+        "in-office", "in office", "office only", "work from office"
     ]
-    if any(neg in loc_lower or neg in desc_snippet for neg in NEGATIVE_REMOTE_PATTERNS):
+    if any(neg in loc_lower for neg in NEGATIVE_REMOTE_PATTERNS):
         return "On-site"
 
     # Prioritize location and title metadata
@@ -279,10 +280,22 @@ def detect_work_mode(location_str: str, title_str: str = "", description_str: st
     if any(k in loc_lower for k in REMOTE_KEYWORDS) or any(k in t_lower for k in REMOTE_KEYWORDS):
         return "Remote"
 
-    # Check description snippet
+    # Check description snippet for hybrid before negative phrases
+    # (since hybrid jobs commonly describe "X days in office and Y days remote")
     if any(k in desc_snippet for k in HYBRID_KEYWORDS):
         return "Hybrid"
-    if any(k in desc_snippet for k in REMOTE_KEYWORDS):
+
+    # Check description for explicit negative remote phrases
+    if any(neg in desc_snippet for neg in NEGATIVE_REMOTE_PATTERNS):
+        return "On-site"
+
+    # Only treat description as Remote if it explicitly states work arrangement,
+    # preventing casual mentions like 'collaborate with remote team' from misclassifying on-site/hybrid
+    EXPLICIT_REMOTE_DESC = [
+        "100% remote", "fully remote", "work from anywhere", "work from home", 
+        "remote role", "remote position", "remote job", "remote eligible", "remote first"
+    ]
+    if any(k in desc_snippet for k in EXPLICIT_REMOTE_DESC):
         return "Remote"
 
     return "On-site"
@@ -294,7 +307,8 @@ def is_job_location_match(
     job_source: str = "",
     job_description: str = "",
     job_title: str = "",
-    job_url: str = ""
+    job_url: str = "",
+    job_work_mode: str = ""
 ) -> bool:
     """
     Enhanced location & work arrangement matcher with precision city and country rules.
@@ -308,17 +322,27 @@ def is_job_location_match(
     job_desc = str(job_description or "")[:800].lower()
     t = str(job_title or "").lower()
     u = str(job_url or "").lower()
-    job_work_mode = detect_work_mode(job_loc, t, job_desc).lower()
+
+    if job_work_mode:
+        effective_work_mode = str(job_work_mode).lower().strip()
+        if "remote" in effective_work_mode:
+            effective_work_mode = "remote"
+        elif "hybrid" in effective_work_mode:
+            effective_work_mode = "hybrid"
+        else:
+            effective_work_mode = "on-site"
+    else:
+        effective_work_mode = detect_work_mode(job_loc, t, job_desc).lower()
 
     # Work Mode check
     if work_mode in ["remote", "remote_only"]:
-        if job_work_mode != "remote" and not any(k in job_loc for k in REMOTE_KEYWORDS):
+        if effective_work_mode != "remote" and not any(k in job_loc for k in REMOTE_KEYWORDS):
             return False
     elif work_mode in ["hybrid"]:
-        if job_work_mode != "hybrid":
+        if effective_work_mode != "hybrid":
             return False
     elif work_mode in ["onsite", "on-site"]:
-        if job_work_mode == "remote":
+        if effective_work_mode == "remote":
             return False
 
     # If location is empty or worldwide
@@ -377,7 +401,7 @@ def is_job_location_match(
                 return True
 
             # If the job is remote and user explicitly requested remote work mode, check if it's an Indian remote opening
-            if work_mode in ["remote", "remote_only"] and job_work_mode == "remote":
+            if work_mode in ["remote", "remote_only"] and effective_work_mode == "remote":
                 return is_india_location(job_loc, u, t, job_desc)
 
             return False

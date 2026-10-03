@@ -347,11 +347,13 @@ function generateJobsCSV(jobsList = [], scopeLabel = "Curated Matches", filename
 
     const rows = jobsList.map(j => {
         const loc = (j.location || "").toLowerCase();
-        let workMode = "Onsite";
-        if (loc.includes("remote") || loc.includes("wfh") || loc.includes("work from home") || j.source === "himalayas" || j.source === "jobicy" || j.source === "remoteok") {
-            workMode = "Remote";
-        } else if (loc.includes("hybrid") || (j.description || "").toLowerCase().includes("hybrid")) {
-            workMode = "Hybrid";
+        let workMode = j.work_mode || "On-site";
+        if (!j.work_mode) {
+            if (loc.includes("remote") || loc.includes("wfh") || loc.includes("work from home") || j.source === "himalayas" || j.source === "jobicy" || j.source === "remoteok") {
+                workMode = "Remote";
+            } else if (loc.includes("hybrid") || (j.description || "").toLowerCase().includes("hybrid")) {
+                workMode = "Hybrid";
+            }
         }
 
         const matchingSkillsStr = (j.matching_skills || []).join(", ");
@@ -2531,9 +2533,10 @@ function JobSearchDashboard({
             }
 
             // 3. Work Mode
-            const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere');
-            const isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid') || desc.includes('days in office') || desc.includes('days a week in office') || desc.includes('days per week in office');
-            const isOnsite = !isRemote && !isHybrid;
+            const rawMode = (job.work_mode || "").toLowerCase().trim();
+            const isRemote = rawMode === 'remote' || (!rawMode && (jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere')));
+            const isHybrid = rawMode === 'hybrid' || (!rawMode && (jobLoc.includes('hybrid') || desc.includes('hybrid') || desc.includes('days in office') || desc.includes('days a week in office') || desc.includes('days per week in office')));
+            const isOnsite = rawMode === 'onsite' || rawMode === 'on-site' || (!isRemote && !isHybrid);
 
             if (filterWorkMode === 'remote' && !isRemote) return false;
             if (filterWorkMode === 'hybrid' && !isHybrid) return false;
@@ -3974,7 +3977,7 @@ function JobCard({ job, jobScope = "curated", resumeSkills = [], isApplied = fal
 
                     {/* Work Mode */}
                     <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]">
-                        💼 {job.work_mode || 'Remote'}
+                        💼 {job.work_mode || (job.location?.toLowerCase().includes('remote') ? 'Remote' : 'On-site')}
                     </span>
 
                     {/* Freshness Label */}
@@ -4289,7 +4292,7 @@ function JobDetailModal({ job, user, token, resumeSkills, isApplied = false, onT
                                     <div className="space-y-1 text-slate-400">
                                         <div><strong className="text-slate-200">Size:</strong> {insights.size_indicator || 'Unknown'}</div>
                                         <div><strong className="text-slate-200">Industry:</strong> {insights.industry || 'Tech'}</div>
-                                        <div><strong className="text-slate-200">Work Mode:</strong> {job.location?.toLowerCase().includes('remote') ? 'Remote' : 'Onsite / Hybrid'}</div>
+                                        <div><strong className="text-slate-200">Work Mode:</strong> {job.work_mode || (job.location?.toLowerCase().includes('remote') ? 'Remote' : 'Onsite / Hybrid')}</div>
                                     </div>
                                 </div>
 
@@ -5396,9 +5399,10 @@ function EmailAlertsView({ token, user, cookieStatusInfo, onOpenCookieModal, sho
             }
 
             // 3. Work Mode filter
-            const isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || jobLoc.includes('anywhere');
-            const isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid');
-            const isOnsite = !isRemote && !isHybrid;
+            const rawMode = (job.work_mode || "").toLowerCase().trim();
+            const isRemote = rawMode === 'remote' || (!rawMode && (jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || jobLoc.includes('anywhere')));
+            const isHybrid = rawMode === 'hybrid' || (!rawMode && (jobLoc.includes('hybrid') || desc.includes('hybrid')));
+            const isOnsite = rawMode === 'onsite' || rawMode === 'on-site' || (!isRemote && !isHybrid);
             if (snapshotFilterWorkMode === 'remote' && !isRemote) return false;
             if (snapshotFilterWorkMode === 'hybrid' && !isHybrid) return false;
             if (snapshotFilterWorkMode === 'onsite' && !isOnsite) return false;

@@ -26,6 +26,7 @@ from src.llm.embeddings import embedding_client
 from src.llm.llm_client import get_llm
 from src.services.vector_service import vector_service
 from src.utils.date_utils import format_posted_date_for_csv
+from src.utils.location_helper import detect_work_mode
 
 # Global In-Memory Cache for Live Streaming Search Sessions (LRU with capacity 50 and TTL 1 hour)
 ACTIVE_SEARCH_SESSIONS: Dict[str, Dict[str, Any]] = {}
@@ -444,7 +445,7 @@ class JobService:
                     "experience_fit": raw_j.get("experience_fit", "Standard Fit"),
                     "sub_domain": raw_j.get("sub_domain", "AI/ML General"),
                     "ai_facets": raw_j.get("ai_facets", []),
-                    "work_mode": raw_j.get("work_mode", "Remote"),
+                    "work_mode": raw_j.get("work_mode") or detect_work_mode(raw_j.get("location", ""), raw_j.get("title", ""), raw_j.get("description", "")),
                     "role_match_score": raw_j.get("role_match_score", 70),
                     "skill_match_score": raw_j.get("skill_match_score", 70),
                     "exp_match_score": raw_j.get("exp_match_score", 70),
@@ -984,7 +985,7 @@ class JobService:
                 "experience_required": j.experience_required or exp_meta["experience_required"],
                 "min_experience_years": j.min_experience_years if j.min_experience_years is not None else exp_meta["min_experience_years"],
                 "seniority_level": j.seniority_level or exp_meta["seniority_level"],
-                "work_mode": j.work_mode or "Remote",
+                "work_mode": j.work_mode or detect_work_mode(j.location or "", j.title or "", j.description or ""),
                 "is_repost": j.is_repost or False,
                 "repost_badge": j.repost_badge or "Standard",
                 "supported_skills": j.supported_skills or [],

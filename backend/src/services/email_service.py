@@ -113,7 +113,8 @@ class EmailService:
             job_sub = job.get("sub_domain") or sub_domain
             sub_badge = f'<span style="display: inline-block; background: rgba(99, 102, 241, 0.2); color: #a5b4fc; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-right: 6px; font-weight: bold; border: 1px solid rgba(99, 102, 241, 0.3);">⚡ {job_sub}</span>' if job_sub and job_sub != "All" else ""
 
-            wmode = job.get("work_mode") or "Remote"
+            from src.utils.location_helper import detect_work_mode
+            wmode = job.get("work_mode") or detect_work_mode(job.get("location", ""), job.get("title", ""), job.get("description", ""))
             mode_icon = "🏠" if wmode == "Remote" else ("🔄" if wmode == "Hybrid" else "🏢")
             mode_badge = f'<span style="display: inline-block; background: rgba(6, 182, 212, 0.15); color: #67e8f9; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-right: 6px; font-weight: 500;">{mode_icon} {wmode}</span>'
 

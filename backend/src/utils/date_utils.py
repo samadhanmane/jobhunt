@@ -6,11 +6,20 @@ import pandas as pd
 def parse_relative_posted_date(s_val: str) -> Optional[str]:
     """
     Parses relative date strings like '5d ago', 'today', 'yesterday',
-    '2 weeks ago', '3h ago' into a standard 'YYYY-MM-DD' date string.
+    '2 weeks ago', '3h ago', 'reposted 6 hours ago', 'one month ago' into a standard 'YYYY-MM-DD' date string.
     """
     if not s_val:
         return None
-    s = s_val.lower().strip()
+    s = s_val.lower().replace("reposted", "").strip()
+    # Normalize word numbers to digits
+    word_map = {
+        "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+        "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+        "a": "1", "an": "1"
+    }
+    for word, num in word_map.items():
+        s = re.sub(rf'\b{word}\b', num, s)
+
     now = datetime.datetime.utcnow()
     
     if s in ["today", "just now", "moments ago", "few seconds ago", "recently", "active today"]:

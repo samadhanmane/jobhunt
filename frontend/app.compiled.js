@@ -341,11 +341,13 @@ function generateJobsCSV() {
   var rows = jobsList.map(function (j) {
     var _j$min_experience_yea, _j$salary_range$min, _j$salary_range, _j$salary_range$max, _j$salary_range2, _j$salary_range3;
     var loc = (j.location || "").toLowerCase();
-    var workMode = "Onsite";
-    if (loc.includes("remote") || loc.includes("wfh") || loc.includes("work from home") || j.source === "himalayas" || j.source === "jobicy" || j.source === "remoteok") {
-      workMode = "Remote";
-    } else if (loc.includes("hybrid") || (j.description || "").toLowerCase().includes("hybrid")) {
-      workMode = "Hybrid";
+    var workMode = j.work_mode || "On-site";
+    if (!j.work_mode) {
+      if (loc.includes("remote") || loc.includes("wfh") || loc.includes("work from home") || j.source === "himalayas" || j.source === "jobicy" || j.source === "remoteok") {
+        workMode = "Remote";
+      } else if (loc.includes("hybrid") || (j.description || "").toLowerCase().includes("hybrid")) {
+        workMode = "Hybrid";
+      }
     }
     var matchingSkillsStr = (j.matching_skills || []).join(", ");
     var missingSkillsStr = (j.missing_skills || []).join(", ");
@@ -3039,9 +3041,10 @@ function JobSearchDashboard(_ref15) {
       }
 
       // 3. Work Mode
-      var isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere');
-      var isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid') || desc.includes('days in office') || desc.includes('days a week in office') || desc.includes('days per week in office');
-      var isOnsite = !isRemote && !isHybrid;
+      var rawMode = (job.work_mode || "").toLowerCase().trim();
+      var isRemote = rawMode === 'remote' || !rawMode && (jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || source === 'himalayas' || source === 'jobicy' || source === 'remoteok' || jobLoc.includes('anywhere'));
+      var isHybrid = rawMode === 'hybrid' || !rawMode && (jobLoc.includes('hybrid') || desc.includes('hybrid') || desc.includes('days in office') || desc.includes('days a week in office') || desc.includes('days per week in office'));
+      var isOnsite = rawMode === 'onsite' || rawMode === 'on-site' || !isRemote && !isHybrid;
       if (filterWorkMode === 'remote' && !isRemote) return false;
       if (filterWorkMode === 'hybrid' && !isHybrid) return false;
       if (filterWorkMode === 'onsite' && !isOnsite) return false;
@@ -4495,7 +4498,7 @@ function getJobSkillLists(job) {
 // Component: Single Job Card (Minimal Aesthetic)
 // ==========================================
 function JobCard(_ref21) {
-  var _job$experience_compa, _job$experience_compa2;
+  var _job$experience_compa, _job$experience_compa2, _job$location;
   var job = _ref21.job,
     _ref21$jobScope = _ref21.jobScope,
     jobScope = _ref21$jobScope === void 0 ? "curated" : _ref21$jobScope,
@@ -4576,7 +4579,7 @@ function JobCard(_ref21) {
     className: "px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm"
   }, "\u23F3 Exp: ", ((_job$experience_compa = job.experience_comparison) === null || _job$experience_compa === void 0 ? void 0 : _job$experience_compa.required) || getJobExperienceBadge(job), " ", (_job$experience_compa2 = job.experience_comparison) !== null && _job$experience_compa2 !== void 0 && _job$experience_compa2.candidate ? "(You: ".concat(job.experience_comparison.candidate, ")") : ''), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
-  }, "\uD83D\uDCBC ", job.work_mode || 'Remote'), /*#__PURE__*/React.createElement("span", {
+  }, "\uD83D\uDCBC ", job.work_mode || ((_job$location = job.location) !== null && _job$location !== void 0 && _job$location.toLowerCase().includes('remote') ? 'Remote' : 'On-site')), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
   }, "\u23F0 ", job.freshness_label || 'Recently posted'), /*#__PURE__*/React.createElement("span", {
     className: "px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/[0.06]"
@@ -4672,7 +4675,7 @@ function JobCard(_ref21) {
 // Component: Interactive Job Details Modal
 // ==========================================
 function JobDetailModal(_ref22) {
-  var _job$location;
+  var _job$location2;
   var job = _ref22.job,
     user = _ref22.user,
     token = _ref22.token,
@@ -4865,7 +4868,7 @@ function JobDetailModal(_ref22) {
     className: "text-slate-200"
   }, "Industry:"), " ", insights.industry || 'Tech'), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", {
     className: "text-slate-200"
-  }, "Work Mode:"), " ", (_job$location = job.location) !== null && _job$location !== void 0 && _job$location.toLowerCase().includes('remote') ? 'Remote' : 'Onsite / Hybrid'))), /*#__PURE__*/React.createElement("div", {
+  }, "Work Mode:"), " ", job.work_mode || ((_job$location2 = job.location) !== null && _job$location2 !== void 0 && _job$location2.toLowerCase().includes('remote') ? 'Remote' : 'Onsite / Hybrid')))), /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 rounded-xl bg-slate-900/80 border border-white/[0.06] space-y-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] font-bold text-slate-300 uppercase tracking-wider"
@@ -6423,9 +6426,10 @@ function EmailAlertsView(_ref32) {
       }
 
       // 3. Work Mode filter
-      var isRemote = jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || jobLoc.includes('anywhere');
-      var isHybrid = jobLoc.includes('hybrid') || desc.includes('hybrid');
-      var isOnsite = !isRemote && !isHybrid;
+      var rawMode = (job.work_mode || "").toLowerCase().trim();
+      var isRemote = rawMode === 'remote' || !rawMode && (jobLoc.includes('remote') || jobLoc.includes('wfh') || jobLoc.includes('work from home') || jobLoc.includes('anywhere'));
+      var isHybrid = rawMode === 'hybrid' || !rawMode && (jobLoc.includes('hybrid') || desc.includes('hybrid'));
+      var isOnsite = rawMode === 'onsite' || rawMode === 'on-site' || !isRemote && !isHybrid;
       if (snapshotFilterWorkMode === 'remote' && !isRemote) return false;
       if (snapshotFilterWorkMode === 'hybrid' && !isHybrid) return false;
       if (snapshotFilterWorkMode === 'onsite' && !isOnsite) return false;

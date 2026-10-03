@@ -51,7 +51,7 @@ class EnrichmentAgent(BaseJobAgent):
                 "title": title_hint or "Unknown Role",
                 "company": company_hint or "Unknown Company",
                 "location": loc_hint or "Remote",
-                "work_mode": "Remote" if "remote" in loc_hint.lower() else "Onsite",
+                "work_mode": scraped_item.get("work_mode") or ("Remote" if "remote" in loc_hint.lower() else "Onsite"),
                 "seniority_level": "Mid",
                 "experience_required_years": {"min": None, "max": None},
                 "salary_range": None,
@@ -123,7 +123,7 @@ Job Posting Text:
             title = extracted.get("title") or title_hint or "Role"
             company = extracted.get("company") or company_hint or "Company"
             location = extracted.get("location") or loc_hint or "Remote"
-            work_mode = extracted.get("work_mode", "Remote" if "remote" in location.lower() else "Onsite")
+            work_mode = extracted.get("work_mode") or scraped_item.get("work_mode") or ("Remote" if "remote" in location.lower() else "Onsite")
             seniority = extracted.get("seniority_level", "Mid")
             
             salary = extracted.get("salary")
