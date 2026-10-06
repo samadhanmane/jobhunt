@@ -54,9 +54,9 @@ class TestSchedulerAndThreadOptimization(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(svc._discovery_running)
 
     def test_keepalive_configuration(self):
-        """Verify keepalive uses configurable interval settings and is disabled by default to save credits."""
-        self.assertEqual(settings.KEEPALIVE_INTERVAL_SECONDS, 180)
-        self.assertFalse(settings.KEEPALIVE_ENABLED)
+        """Verify keepalive is enabled by default to keep scheduler alive on Render free tier."""
+        self.assertEqual(settings.KEEPALIVE_INTERVAL_SECONDS, 600)
+        self.assertTrue(settings.KEEPALIVE_ENABLED)
 
     async def test_linkedin_cookie_validation_async(self):
         """Verify validate_cookie_async safely handles unconfigured cookie without blocking."""

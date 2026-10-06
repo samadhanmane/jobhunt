@@ -78,9 +78,9 @@ def test_foreign_location_exclusion_for_india():
     assert is_job_location_match("Hinjawadi, Pune", "Pune") is True
     assert is_job_location_match("Kharadi, Pune", "Pune") is True
 
-def test_keepalive_conserve_credits():
-    # Ensure KEEPALIVE_ENABLED is False by default to prevent credit consumption
-    assert settings.KEEPALIVE_ENABLED is False
+def test_keepalive_enabled_for_scheduler():
+    # Ensure KEEPALIVE_ENABLED is True by default so scheduler stays alive on Render
+    assert settings.KEEPALIVE_ENABLED is True
     # Stopping keepalive service works without error
     keepalive_service.stop()
     assert keepalive_service._running is False

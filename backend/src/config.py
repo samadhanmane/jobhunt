@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     # Background Checking & Concurrency Settings
     BACKGROUND_DISCOVERY_INTERVAL_MINUTES: int = 60
     BACKGROUND_DISCOVERY_ENABLED: bool = False
-    KEEPALIVE_ENABLED: bool = False
-    KEEPALIVE_INTERVAL_SECONDS: int = 180
+    KEEPALIVE_ENABLED: bool = True
+    KEEPALIVE_INTERVAL_SECONDS: int = 600
     WORKER_THREAD_POOL_SIZE: int = 8
 
     # Static Admin Access Credentials (from .env)

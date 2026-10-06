@@ -342,21 +342,37 @@ class SchedulerService:
             )
 
             # 7. Update Database with sent hashes and last_sent_at ONLY on successful delivery
+            # Use a FRESH session to avoid stale ORM object crash after long scraping
             if sent_success:
+                update_db = SessionLocal()
                 try:
-                    sent_curated_hashes = list(sent_hashes)
-                    for j in curated_jobs:
-                        sent_curated_hashes.append(generate_job_hash(j))
-                    alert.sent_job_hashes = list(dict.fromkeys(sent_curated_hashes))[-300:]
-                    alert.last_sent_at = datetime.utcnow()
-                    db.commit()
-                    print(f"[Scheduler] [OK] Alert {alert.id} ({alert.email}) successfully delivered and last_sent_at updated.")
+                    fresh_alert = update_db.query(EmailAlert).filter(EmailAlert.id == alert_id).first()
+                    if fresh_alert:
+                        existing_hashes = list(fresh_alert.sent_job_hashes or [])
+                        for j in curated_jobs:
+                            existing_hashes.append(generate_job_hash(j))
+                        fresh_alert.sent_job_hashes = list(dict.fromkeys(existing_hashes))[-300:]
+                        fresh_alert.last_sent_at = datetime.utcnow()
+                        update_db.commit()
+                        print(f"[Scheduler] [OK] Alert {alert_id} ({alert.email}) successfully delivered and last_sent_at updated.")
+                    else:
+                        print(f"[Scheduler] [WARN] Alert {alert_id} no longer exists in DB. Skipping hash update.")
                 except Exception as db_err:
                     print(f"[Scheduler] Notice during database hash update ({db_err}). Continuing gracefully.")
+                    try:
+                        update_db.rollback()
+                    except Exception:
+                        pass
+                finally:
+                    try:
+                        update_db.close()
+                    except Exception:
+                        pass
             else:
                 print(f"[Scheduler] [WARN] Email delivery failed or partial for {alert.email}. last_sent_at preserved for safe retry.")
 
-            # 8. Record in AutomationHistory for interactive website inspection
+            # 8. Record in AutomationHistory for interactive website inspection (fresh session)
+            hist_db = SessionLocal()
             try:
                 from src.models.automation_history import AutomationHistory
                 history_record = AutomationHistory(
@@ -378,10 +394,19 @@ class SchedulerService:
                     raw_jobs=raw_jobs,
                     sent_at=datetime.utcnow()
                 )
-                db.add(history_record)
-                db.commit()
+                hist_db.add(history_record)
+                hist_db.commit()
             except Exception as hist_err:
                 print(f"[Scheduler] Notice during automation history save: {hist_err}")
+                try:
+                    hist_db.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    hist_db.close()
+                except Exception:
+                    pass
 
             return {
                 "status": "success" if sent_success else "partial",
